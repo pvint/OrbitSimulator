@@ -10,7 +10,8 @@ prototype settled the physics model and the UI ideas; this is the full version.
 
 ## Hard rules
 
-- **`src/core` never includes Qt.** Plain C++20 and the standard library only.
+- **`src/core` never includes Qt.** Plain C++20, the standard library, and
+  nlohmann/json (only inside `scenario.cpp`).
   The CLI, the tests and the GUI are all clients of the core.
 - **Physics uses `double` and SI units** (m, kg, s; angles in radians inside
   the core, degrees only at the UI boundary). Qt's float types (`QVector3D`)
@@ -34,6 +35,8 @@ cmake --workflow --preset dev # all three in one go
 
 build/dev/src/app/orbitsim            # GUI
 build/dev/src/app/orbitsim --screenshot out.png   # render the window to a file and quit
+build/dev/src/app/orbitsim scenarios/kick-angle-sweep.json   # open a scenario
+build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
 build/dev/src/cli/orbitsim-cli        # CLI
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
 cmake --build build/release --target package   # archive in build/release/
@@ -48,6 +51,8 @@ src/app/       Qt app. orbitsim_ui (static lib): panels + SimulationController, 
                orbitsim (exe): main window, GlobeView (3D + playback), PlotPanel,
                custom Quick 3D geometries, QML scenes in qml/, textures in assets/
 tools/         make_earth_texture.sh: rebuilds the Earth texture from NASA's original
+scenarios/     example scenario files (built into the app's File ▸ Examples; each is
+               loaded and flown by a test)
 tests/         Catch2 tests for the core; tests/app: Qt Test GUI tests of orbitsim_ui
 cmake/         CompilerWarnings.cmake (orbit_set_warnings), Packaging.cmake (CPack)
 docs/          decisions.md (why things are the way they are), physics.md (the physics, explained)
@@ -71,6 +76,13 @@ prototype/web/ the original JavaScript prototype, kept for reference
 - Visual checks: use `orbitsim --screenshot FILE` (captures only the app's own
   window). Never grab the desktop or "active window" with screen tools: that
   can capture the user's other applications.
+- Scenario files: JSON, keys and display units from the parameter table. If the
+  format changes, bump `kScenarioFormatVersion` and upgrade older files in
+  `scenarioFromJson()`; never break existing files. New example scenarios go
+  in `scenarios/` with a name and description, and must load without warnings
+  (a test checks).
+- Saved window layout is versioned (`kLayoutVersion` in main_window.cpp): bump
+  it when panels are added or removed.
 - 3D scene: 1 unit = 1 km, axes (x, z, −y) of the physics frame; always convert
   with `scene::fromPhysics()` (src/app/scene_coordinates.hpp).
 - Git: one branch per milestone (`m1-physics`, ...), small focused commits,
@@ -102,18 +114,22 @@ Each milestone ends with something that runs.
 | M1 | 3D physics core: port the prototype to 3D state vectors. Launch site lat/lon + azimuth (exact), rotating Earth, inclination. Dormand–Prince 5(4) adaptive integrator with event location. Orbital elements (a, e, i, Ω, ω, ν). Pitch program + auto-circularize. Port and extend the prototype's tests. CLI runs a scenario and prints stats / CSV | done |
 | M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | done |
 | M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow), playback | done |
-| M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | next |
-| M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | |
+| M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | done |
+| M5 (next) | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | |
 | M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | |
 | Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |
 
-### App structure in brief (M2, M3)
+### App structure in brief (M2–M4)
 
-`ParameterPanel` emits `missionChanged` → `SimulationController::setMission`
-runs `simulate()` on a worker thread (latest wins) → `resultReady` feeds
-`FlightStatsPanel`, `PlotPanel` and `GlobeView`. `GlobeView` fills the
+`MainWindow` owns the state: mission, optional sweep, latest `RunSet`, the
+selected flight, the scenario file. `ParameterPanel` / `SweepPanel` report
+user changes → `SimulationController::run(mission, sweep)` simulates on worker
+threads (latest wins; sweep flights in parallel) → `resultReady(RunSet)` →
+`MainWindow::showSelection()` feeds `FlightStatsPanel`, `PlotPanel` (selected
+bold, other sweep flights faint), `GlobeView` (ditto in 3D, or fading ghosts
+of recent single flights) and the sweep legend. `GlobeView` fills the
 trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
 `qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
 Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
