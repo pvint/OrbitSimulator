@@ -9,6 +9,7 @@
 #include "scene_coordinates.hpp"
 
 #include <QComboBox>
+#include <QFile>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
@@ -25,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <utility>
 
 namespace {
@@ -49,6 +51,22 @@ constexpr double kGroundTrackLift = 3000.0; // m
 /// fill the history with near-identical paths within a second.
 constexpr std::size_t kMaxGhosts = 8;
 constexpr qint64 kMinGhostIntervalMs = 150;
+
+/// The Moon keeps one face towards the Earth. Its texture's longitude 0 is
+/// the centre of that near side, and its spin axis is within 1.5° of the
+/// ecliptic pole. So: local +x (longitude 0, see GlobeGeometry) towards the
+/// Earth, local +y (north) towards ecliptic north, and local +z = x × y
+/// completes the frame. (The small wobble called libration is left out.)
+QQuaternion moonOrientation(double epoch) {
+    const orbit::Vec3 toEarth = -orbit::normalized(orbit::moonPosition(epoch));
+    constexpr double obliquity = 23.43928 * std::numbers::pi / 180.0;
+    const orbit::Vec3 eclipticNorth{0.0, -std::sin(obliquity), std::cos(obliquity)};
+    const orbit::Vec3 north =
+        orbit::normalized(eclipticNorth - orbit::dot(eclipticNorth, toEarth) * toEarth);
+    const QVector3D x = scene::fromPhysics(toEarth).normalized();
+    const QVector3D y = scene::fromPhysics(north).normalized();
+    return QQuaternion::fromAxes(x, y, QVector3D::crossProduct(x, y));
+}
 
 QList<QVector3D> trajectoryPoints(const orbit::SimResult& result) {
     QList<QVector3D> points;
@@ -155,6 +173,10 @@ void GlobeView::connectScene() {
     m_groundTrack =
         qobject_cast<PolylineGeometry*>(m_scene->property("groundTrack").value<QObject*>());
     m_moonOrbit = qobject_cast<PolylineGeometry*>(m_scene->property("moonOrbit").value<QObject*>());
+    // The Moon's colour map is optional (see src/app/CMakeLists.txt).
+    if (QFile::exists(QStringLiteral(":/textures/moon.jpg"))) {
+        m_scene->setProperty("moonTexture", QStringLiteral("qrc:/textures/moon.jpg"));
+    }
     if (!m_trajectory || !m_groundTrack || !m_moonOrbit) {
         qWarning() << "GlobeScene.qml: a line geometry was not found";
     }
@@ -316,6 +338,8 @@ void GlobeView::setPlaybackTime(double t) {
     m_scene->setProperty("earthRotation", orbit::radToDeg(theta));
     const double epoch = m_result->mission.launchEpoch + m_time;
     m_scene->setProperty("moonPosition", scene::fromPhysics(orbit::moonPosition(epoch)));
+    m_scene->setProperty("moonRotation", moonOrientation(epoch));
+
     // Turn the light's −z axis onto the sunlight's direction of travel.
     const QVector3D towardsSun =
         scene::fromPhysics(orbit::normalized(orbit::sunPosition(epoch))).normalized();

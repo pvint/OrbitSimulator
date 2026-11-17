@@ -20,6 +20,10 @@ Item {
     property vector3d rocketPosition: Qt.vector3d(0, 0, 0)
     property vector3d launchSitePosition: Qt.vector3d(0, 0, 0) // Earth-fixed
     property vector3d moonPosition: Qt.vector3d(384400, 0, 0)
+    /// Turns the Moon so its near side faces the Earth (tidal locking).
+    property quaternion moonRotation: Qt.quaternion(1, 0, 0, 0)
+    /// The Moon's colour map, or "" to draw it plain grey.
+    property string moonTexture: ""
     property quaternion sunlightRotation: Qt.quaternion(1, 0, 0, 0)
     /// What the camera circles: 0 = the Earth, 1 = the rocket, 2 = the Moon.
     property int followTarget: 0
@@ -144,12 +148,20 @@ Item {
         Model {
             geometry: GlobeGeometry {}
             position: root.moonPosition
+            rotation: root.moonRotation
             scale: Qt.vector3d(root.moonRadius, root.moonRadius, root.moonRadius)
             materials: PrincipledMaterial {
-                baseColor: "#a4a4a4"
+                baseColor: root.moonTexture === "" ? "#a4a4a4" : "#ffffff"
+                baseColorMap: root.moonTexture === "" ? null : moonColour
                 roughness: 1.0
                 metalness: 0.0
                 specularAmount: 0.05
+            }
+            Texture {
+                id: moonColour
+                source: root.moonTexture
+                generateMipmaps: true
+                mipFilter: Texture.Linear
             }
         }
         Model {

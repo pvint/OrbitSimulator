@@ -69,12 +69,21 @@ qt_add_resources(orbitsim "example_scenarios"
 # Earth texture, compiled into the executable (qrc:/textures/...). BIG_RESOURCES
 # embeds it as object code instead of a huge generated C++ array.
 # Source and how it was made: tools/make_earth_texture.sh.
+# The Moon's colour map is optional: the Moon is drawn grey without it. It
+# isn't in the repository until it can be downloaded with a verified
+# connection; see tools/make_moon_texture.sh.
+set(orbitsim_textures assets/textures/earth_day.jpg)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/textures/moon.jpg")
+    list(APPEND orbitsim_textures assets/textures/moon.jpg)
+endif()
+# JPEGs are already compressed, so rcc shouldn't try again (with zstd it can
+# also trip a linker restriction on some distributions' Qt builds).
 qt_add_resources(orbitsim "textures"
     PREFIX "/"
     BASE assets
     BIG_RESOURCES
-    FILES
-        assets/textures/earth_day.jpg
+    OPTIONS -no-compress
+    FILES ${orbitsim_textures}
 )
 
 target_link_libraries(orbitsim PRIVATE
