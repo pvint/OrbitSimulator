@@ -3,10 +3,11 @@
 // outcome, or write the trajectory as CSV.
 //
 //   orbitsim-cli                          default mission
-//   orbitsim-cli --kick-angle 30 --lat 0  change parameters (see --help)
+//   orbitsim-cli --kick-angle 30 --latitude 0   change parameters (see --help)
 //   orbitsim-cli --csv flight.csv         also write every sample
 
 #include "orbit/core/angles.hpp"
+#include "orbit/core/mission_parameters.hpp"
 #include "orbit/core/simulation.hpp"
 #include "orbit/core/version.hpp"
 
@@ -14,7 +15,6 @@
 #include <charconv>
 #include <cmath>
 #include <fstream>
-#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <span>
@@ -25,56 +25,26 @@
 
 namespace {
 
-/// A numeric command-line option. Values are typed in friendly units
-/// (t, kN, km, degrees) and converted for the physics by `set`.
-struct NumericOption {
-    std::string_view name;
-    std::string_view unit;
-    std::string_view help;
-    std::function<void(orbit::Mission&, double)> set;
-};
-
-std::vector<NumericOption> numericOptions() {
-    using orbit::degToRad;
-    using orbit::Mission;
-    return {
-        {"--dry-mass", "t", "rocket mass without propellant",
-         [](Mission& m, double v) { m.rocket.dryMass = v * 1000.0; }},
-        {"--propellant", "t", "propellant mass at liftoff",
-         [](Mission& m, double v) { m.rocket.propellantMass = v * 1000.0; }},
-        {"--thrust", "kN", "engine thrust",
-         [](Mission& m, double v) { m.rocket.thrust = v * 1e3; }},
-        {"--isp", "s", "specific impulse", [](Mission& m, double v) { m.rocket.isp = v; }},
-        {"--lat", "deg", "launch latitude",
-         [](Mission& m, double v) { m.site.latitude = degToRad(v); }},
-        {"--lon", "deg", "launch longitude",
-         [](Mission& m, double v) { m.site.longitude = degToRad(v); }},
-        {"--azimuth", "deg", "launch direction, clockwise from north (90 = east)",
-         [](Mission& m, double v) { m.guidance.azimuth = degToRad(v); }},
-        {"--pitch-start", "s", "time of the pitch-over kick",
-         [](Mission& m, double v) { m.guidance.pitchStartTime = v; }},
-        {"--kick-angle", "deg", "kick angle from vertical",
-         [](Mission& m, double v) { m.guidance.kickAngle = degToRad(v); }},
-        {"--kick-hold", "s", "how long the kick angle is held",
-         [](Mission& m, double v) { m.guidance.kickHoldTime = v; }},
-        {"--target-alt", "km", "auto-circularize target altitude",
-         [](Mission& m, double v) { m.targetAltitude = v * 1000.0; }},
-    };
+/// `text` padded with spaces to `width` characters. Counts characters, not
+/// bytes, so "°" (two bytes in UTF-8) lines up.
+std::string padded(std::string_view text, std::size_t width) {
+    const auto chars = static_cast<std::size_t>(std::ranges::count_if(
+        text, [](char c) { return (static_cast<unsigned char>(c) & 0xC0U) != 0x80U; }));
+    return std::string(text) + std::string(width > chars ? width - chars : 0, ' ');
 }
 
 void printUsage() {
     std::cout << "Usage: orbitsim-cli [options]\n\n"
                  "Flies one mission with the orbit simulator physics and prints the result.\n\n"
                  "Mission options (defaults: the prototype's rocket from Cape Canaveral):\n";
-    for (const auto& opt : numericOptions()) {
-        std::cout << "  " << std::left << std::setw(16) << opt.name << std::setw(5) << opt.unit
-                  << opt.help << '\n';
+    for (const auto& p : orbit::missionParameters()) {
+        std::cout << "  --" << padded(p.key, 17) << padded(p.unit, 4) << p.help << '\n';
     }
-    std::cout << "  --no-circularize      burn until the propellant runs out\n"
+    std::cout << "  --no-circularize       burn until the propellant runs out\n"
                  "\nOutput options:\n"
-                 "  --csv FILE            write every sample (SI units) to FILE\n"
-                 "  --version             print the version and exit\n"
-                 "  --help                show this help\n";
+                 "  --csv FILE             write every sample (SI units) to FILE\n"
+                 "  --version              print the version and exit\n"
+                 "  --help                 show this help\n";
 }
 
 bool parseNumber(std::string_view text, double& out) {
@@ -151,7 +121,6 @@ int main(int argc, char* argv[]) {
     const std::span args(argv + 1, static_cast<std::size_t>(argc - 1));
     orbit::Mission mission = orbit::defaultMission();
     std::string csvPath;
-    const auto options = numericOptions();
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
@@ -167,8 +136,9 @@ int main(int argc, char* argv[]) {
             mission.autoCircularize = false;
             continue;
         }
-        const auto option = std::ranges::find(options, arg, &NumericOption::name);
-        if (arg != "--csv" && option == options.end()) {
+        const orbit::ParameterInfo* param =
+            arg.starts_with("--") ? orbit::findParameter(arg.substr(2)) : nullptr;
+        if (arg != "--csv" && param == nullptr) {
             std::cerr << "Unknown option: " << arg << "\n\n";
             printUsage();
             return 1;
@@ -187,7 +157,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "Not a number for " << arg << ": " << value << '\n';
             return 1;
         }
-        option->set(mission, number);
+        param->set(mission, number);
     }
 
     const orbit::SimResult result = orbit::simulate(mission);
