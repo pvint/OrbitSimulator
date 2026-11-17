@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orbit Simulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Left: parameters and mode -->
+  <aside class="panel" id="controls">
+    <header>
+      <h1>Orbit Simulator</h1>
+      <p class="muted">Launch a rocket and watch where it goes.</p>
+    </header>
+
+    <!-- Filled by ui/controls.js from ui/params.js -->
+    <div id="param-groups"></div>
+
+    <section>
+      <h2>Derived</h2>
+      <dl id="derived" class="stats"></dl>
+    </section>
+
+    <section>
+      <div class="tabs">
+        <button class="tab active" data-mode="live">Live</button>
+        <button class="tab" data-mode="sweep">Sweep</button>
+      </div>
+
+      <div id="live-panel">
+        <p class="muted">Drag any slider and the flight re-simulates instantly. Recent paths
+          fade out as grey ghosts.</p>
+        <button id="clear-ghosts">Clear ghosts</button>
+      </div>
+
+      <div id="sweep-panel" hidden>
+        <form id="sweep-form" class="sweep-form">
+          <label>Variable
+            <select id="sweep-var"></select>
+          </label>
+          <div class="range-row">
+            <label>From <input type="number" id="sweep-min" step="any"></label>
+            <label>to <input type="number" id="sweep-max" step="any"></label>
+            <span id="sweep-unit" class="unit"></span>
+          </div>
+          <label>Steps <input type="number" id="sweep-steps" min="1" max="60" value="10"></label>
+          <button type="submit" class="primary">Run sweep</button>
+        </form>
+        <p class="muted">Sliders still work in sweep mode: each change re-runs the whole sweep.</p>
+      </div>
+    </section>
+  </aside>
+
+  <!-- Centre: trajectory view -->
+  <main id="stage">
+    <canvas id="view"></canvas>
+    <div class="toolbar">
+      <button id="fit-earth">Fit to Earth</button>
+      <button id="fit-trajectory">Fit to trajectory</button>
+    </div>
+    <div class="view-hint">Scroll to zoom · drag to pan · thick line = engine burning · rings = engine events</div>
+  </main>
+
+  <!-- Right: readouts -->
+  <aside class="panel" id="readouts">
+    <section>
+      <h2>Flight</h2>
+      <dl id="stats" class="stats"></dl>
+    </section>
+
+    <section id="legend-section" hidden>
+      <h2>Sweep results</h2>
+      <p class="muted">Click a row to highlight it and show it in the graphs.</p>
+      <ol id="legend" class="legend"></ol>
+    </section>
+
+    <section>
+      <h2>Graphs</h2>
+      <label class="toggle"><input type="checkbox" id="graph-ascent"> Zoom to powered flight</label>
+      <canvas id="graph-altitude" class="graph"></canvas>
+      <canvas id="graph-speed" class="graph"></canvas>
+      <canvas id="graph-mass" class="graph"></canvas>
+    </section>
+  </aside>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

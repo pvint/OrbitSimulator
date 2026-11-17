@@ -1,0 +1,10 @@
+{
+  "name": "orbit-simulator",
+  "private": true,
+  "description": "2D rocket launch and orbit simulator. No build step, no dependencies.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "start": "python3 -m http.server 8000"
+  }
+}
