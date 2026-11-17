@@ -389,6 +389,6 @@ Item {
         anchors.margins: 8
         color: "#8592ad"
         font.pixelSize: 11
-        text: qsTr("Drag to turn · right-drag to pan · wheel to zoom · Earth imagery: NASA Earth Observatory (Blue Marble)")
+        text: qsTr("Drag to turn · right-drag to pan · wheel to zoom · Imagery: NASA Earth Observatory, NASA SVS / LRO")
     }
 }
