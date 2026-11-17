@@ -4,9 +4,9 @@
 #include <QMainWindow>
 
 class FlightStatsPanel;
+class GlobeView;
 class ParameterPanel;
 class PlotPanel;
-class QQuickWidget;
 class SimulationController;
 
 /// The application window: the 3D view in the centre, parameters on the
@@ -22,7 +22,6 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    void createSceneView();
     void createDocks();
     void createMenus();
     void connectSimulation();
@@ -30,7 +29,7 @@ private:
     void showAbout();
 
     SimulationController* m_simulation = nullptr;
-    QQuickWidget* m_sceneView = nullptr;
+    GlobeView* m_globe = nullptr;
     ParameterPanel* m_parameters = nullptr;
     FlightStatsPanel* m_flightStats = nullptr;
     PlotPanel* m_plots = nullptr;

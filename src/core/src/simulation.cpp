@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iterator>
 #include <limits>
 
 namespace orbit {
@@ -371,6 +372,20 @@ SimResult FlightSimulator::run() {
 
 SimResult simulate(const Mission& mission, const SimOptions& options) {
     return FlightSimulator(mission, options).run();
+}
+
+State stateAt(const SimResult& result, double t) {
+    const auto& samples = result.samples;
+    if (samples.empty()) return {};
+    if (t <= samples.front().t) return samples.front().state;
+    if (t >= samples.back().t) return samples.back().state;
+    // First sample later than t; the one before it is at or before t.
+    const auto next = std::ranges::upper_bound(samples, t, {}, &Sample::t);
+    const Sample& a = *std::prev(next);
+    const Sample& b = *next;
+    const double span = b.t - a.t;
+    const double f = span > 0.0 ? (t - a.t) / span : 0.0;
+    return a.state + f * (b.state - a.state);
 }
 
 std::string_view toString(Outcome outcome) {

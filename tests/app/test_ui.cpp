@@ -4,6 +4,7 @@
 #include "flight_stats_panel.hpp"
 #include "orbit/core/angles.hpp"
 #include "parameter_panel.hpp"
+#include "scene_coordinates.hpp"
 #include "simulation_controller.hpp"
 
 #include <QCheckBox>
@@ -103,6 +104,17 @@ private slots:
 
         QCOMPARE(spy.count(), 0);
         QCOMPARE(panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-latitude"))->value(), -12.5);
+    }
+
+    // Physics (z = north, metres) → scene (y = up, km) must be a rotation, not
+    // a mirror image, or east and west would swap on the globe.
+    void sceneMappingIsARotation() {
+        const QVector3D x = scene::fromPhysics({1000.0, 0.0, 0.0});
+        const QVector3D y = scene::fromPhysics({0.0, 1000.0, 0.0});
+        const QVector3D z = scene::fromPhysics({0.0, 0.0, 1000.0});
+        QCOMPARE(x, QVector3D(1, 0, 0));
+        QCOMPARE(z, QVector3D(0, 1, 0));            // north pole is up
+        QCOMPARE(QVector3D::crossProduct(x, y), z); // right-handed in, right-handed out
     }
 
     void statsPanelShowsTheOutcome() {

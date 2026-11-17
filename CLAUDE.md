@@ -33,6 +33,7 @@ ctest --preset dev            # run tests
 cmake --workflow --preset dev # all three in one go
 
 build/dev/src/app/orbitsim            # GUI
+build/dev/src/app/orbitsim --screenshot out.png   # render the window to a file and quit
 build/dev/src/cli/orbitsim-cli        # CLI
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
 cmake --build build/release --target package   # archive in build/release/
@@ -44,7 +45,9 @@ cmake --build build/release --target package   # archive in build/release/
 src/core/      physics library (namespace orbit). Public headers in include/orbit/core/
 src/cli/       orbitsim-cli
 src/app/       Qt app. orbitsim_ui (static lib): panels + SimulationController, no QML.
-               orbitsim (exe): main window, PlotPanel, QML scenes in qml/
+               orbitsim (exe): main window, GlobeView (3D + playback), PlotPanel,
+               custom Quick 3D geometries, QML scenes in qml/, textures in assets/
+tools/         make_earth_texture.sh: rebuilds the Earth texture from NASA's original
 tests/         Catch2 tests for the core; tests/app: Qt Test GUI tests of orbitsim_ui
 cmake/         CompilerWarnings.cmake (orbit_set_warnings), Packaging.cmake (CPack)
 docs/          decisions.md (why things are the way they are), physics.md (the physics, explained)
@@ -65,6 +68,11 @@ prototype/web/ the original JavaScript prototype, kept for reference
 - Widgets that tests need to find get an `objectName` (e.g. `spin-kick-angle`).
   New panel behaviour gets a Qt Test in `tests/app/test_ui.cpp` (runs offscreen).
 - Simulations never run on the GUI thread: go through `SimulationController`.
+- Visual checks: use `orbitsim --screenshot FILE` (captures only the app's own
+  window). Never grab the desktop or "active window" with screen tools: that
+  can capture the user's other applications.
+- 3D scene: 1 unit = 1 km, axes (x, z, −y) of the physics frame; always convert
+  with `scene::fromPhysics()` (src/app/scene_coordinates.hpp).
 - Git: one branch per milestone (`m1-physics`, ...), small focused commits,
   merged to `main` when the milestone runs. Commit messages: a short summary
   line, then why.
@@ -93,19 +101,22 @@ Each milestone ends with something that runs.
 | M0 | Skeleton: CMake + presets, core lib, CLI, tests, Qt window with an embedded Quick 3D view, packaging, tooling | done |
 | M1 | 3D physics core: port the prototype to 3D state vectors. Launch site lat/lon + azimuth (exact), rotating Earth, inclination. Dormand–Prince 5(4) adaptive integrator with event location. Orbital elements (a, e, i, Ω, ω, ν). Pitch program + auto-circularize. Port and extend the prototype's tests. CLI runs a scenario and prints stats / CSV | done |
 | M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | done |
-| M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow) | next |
-| M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | |
+| M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow), playback | done |
+| M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | next |
 | M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | |
 | M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | |
 | Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |
 
-### App structure in brief (M2)
+### App structure in brief (M2, M3)
 
 `ParameterPanel` emits `missionChanged` → `SimulationController::setMission`
 runs `simulate()` on a worker thread (latest wins) → `resultReady` feeds
-`FlightStatsPanel` and `PlotPanel`. `PlotPanel` pushes data into Qt Graphs
+`FlightStatsPanel`, `PlotPanel` and `GlobeView`. `GlobeView` fills the
+trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
+`qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
+Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
 series it finds through properties on `qml/Plots.qml`.
 
 ### Core API in brief (M1)

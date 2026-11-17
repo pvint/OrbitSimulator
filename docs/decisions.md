@@ -132,6 +132,36 @@ would (set spin boxes, toggle checkboxes, wait for results). Tests run with
 widgets, the mission and the worker thread needs automatic checks. Qt Test
 (QSignalSpy, QTRY_COMPARE) suits widgets and signals better than Catch2.
 
+### 13. Earth texture: Blue Marble Next Generation, 8192 × 4096 (2026-11-17, M3)
+
+**Decision:** the day-side texture is NASA's Blue Marble Next Generation
+with topography, July 2004 (public domain; credit "NASA Earth Observatory").
+It is downscaled from the 21600 × 10800 original to 8192 × 4096 (3.9 MB JPEG)
+and compiled into the executable as a Qt resource.
+`tools/make_earth_texture.sh` reproduces it.
+
+**Why:** it's the best freely licensed global true-colour image. The
+variant without ocean-floor shading looks like the real view from space. 8192
+wide is the largest single texture that is safe on most GPUs; 16384 would
+need over 500 MB of video memory with mipmaps. Embedding keeps deployment
+simple on all platforms.
+
+**Later options:** night lights (NASA Black Marble, also public domain),
+clouds, and a higher-resolution texture as a setting for strong GPUs.
+
+### 14. 3D scene conventions (2026-11-17, M3)
+
+**Decision:** scene units are kilometres, with axes (x, z, −y) of the physics
+frame (Quick 3D is y-up). The globe is a custom latitude/longitude mesh, not
+Quick 3D's built-in sphere. The trajectory is drawn in the inertial frame,
+while the ground track and launch site are children of the rotating Earth.
+
+**Why:** in km a 32-bit float resolves under a metre near Earth and about
+30 m at the Moon, so no camera-relative tricks are needed yet. The (x, z, −y)
+mapping is a rotation, not a mirror image, so east stays east; a test
+checks this. The custom mesh puts texture coordinates exactly on
+latitude/longitude; the built-in sphere's mapping is undocumented.
+
 ---
 
 ## Open questions

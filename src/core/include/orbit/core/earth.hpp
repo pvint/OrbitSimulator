@@ -48,6 +48,9 @@ Vec3 positionFromLatLon(double latitude, double longitude, double radius);
 /// Earth rotation angle θ at time t (s), given the angle at t = 0.
 double earthRotationAngle(double t, double angleAtStart);
 
+/// An ECI position expressed in the Earth-fixed frame: r_ecef = Rz(−θ) · r_eci.
+Vec3 eciToEcef(const Vec3& rEci, double rotationAngle);
+
 /// The point on the ground directly below an ECI position.
 GeoPoint groundPoint(const Vec3& rEci, double rotationAngle);
 

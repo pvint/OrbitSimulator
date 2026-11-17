@@ -87,3 +87,11 @@ TEST_CASE("Downrange starts along the launch azimuth and stays horizontal", "[ea
     REQUIRE_THAT(dot(d, normalized(later)), WithinAbs(0.0, 1e-12));
     REQUIRE_THAT(dot(d, n), WithinAbs(0.0, 1e-12));
 }
+
+TEST_CASE("eciToEcef undoes the Earth's rotation", "[earth]") {
+    const Vec3 ecef = positionFromLatLon(degToRad(28.5), degToRad(-80.6), kRadiusEarth);
+    const double theta = earthRotationAngle(5000.0, 0.3);
+    const Vec3 eci = rotateZ(ecef, theta);
+    requireNear(eciToEcef(eci, theta), ecef, 1e-6);
+    REQUIRE_THAT(groundPoint(eci, theta).latitude, WithinAbs(degToRad(28.5), 1e-12));
+}

@@ -3,6 +3,7 @@
 
 #include "display_format.hpp"
 #include "flight_stats_panel.hpp"
+#include "globe_view.hpp"
 #include "parameter_panel.hpp"
 #include "plot_panel.hpp"
 #include "simulation_controller.hpp"
@@ -13,16 +14,15 @@
 #include <QLocale>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QQmlError>
-#include <QQuickWidget>
 #include <QScrollArea>
 #include <QSettings>
 #include <QStatusBar>
 
 MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent), m_simulation(new SimulationController(this)) {
+    : QMainWindow(parent), m_simulation(new SimulationController(this)),
+      m_globe(new GlobeView(this)) {
     setWindowTitle(QApplication::applicationName());
-    createSceneView();
+    setCentralWidget(m_globe);
     createMenus();
     createDocks();
     connectSimulation();
@@ -30,23 +30,6 @@ MainWindow::MainWindow(QWidget* parent)
 
     // First flight: the default mission.
     m_simulation->setMission(m_parameters->mission());
-}
-
-void MainWindow::createSceneView() {
-    m_sceneView = new QQuickWidget(this);
-    m_sceneView->setResizeMode(QQuickWidget::SizeRootObjectToView);
-    m_sceneView->setSource(QUrl(QStringLiteral("qrc:/qt/qml/OrbitSim/qml/SceneView.qml")));
-
-    // QML errors would otherwise only appear on the console; show them where
-    // they can't be missed.
-    if (m_sceneView->status() == QQuickWidget::Error) {
-        QStringList messages;
-        for (const QQmlError& error : m_sceneView->errors()) {
-            messages << error.toString();
-        }
-        qWarning().noquote() << messages.join(QLatin1Char('\n'));
-    }
-    setCentralWidget(m_sceneView);
 }
 
 void MainWindow::createMenus() {
@@ -101,6 +84,7 @@ void MainWindow::connectSimulation() {
             [this](const std::shared_ptr<const orbit::SimResult>& result, double milliseconds) {
                 m_flightStats->showResult(*result);
                 m_plots->showResult(result);
+                m_globe->showResult(result);
                 statusBar()->showMessage(tr("%1 · simulated %2 of flight in %3 ms")
                                              .arg(display::outcomeLabel(result->outcome),
                                                   display::duration(result->duration),
@@ -131,6 +115,8 @@ void MainWindow::showAbout() {
            "<p>A rocket launch and orbit simulator for building intuition "
            "about orbital mechanics.</p>"
            "<p>Free software under the GNU General Public License, "
-           "version 3 or later.</p>")
+           "version 3 or later.</p>"
+           "<p>Earth imagery: Blue Marble Next Generation, "
+           "NASA Earth Observatory (Reto Stöckli).</p>")
             .arg(QApplication::applicationName(), QApplication::applicationVersion()));
 }

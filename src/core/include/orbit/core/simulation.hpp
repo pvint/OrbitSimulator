@@ -128,6 +128,11 @@ struct SimResult {
 
 SimResult simulate(const Mission& mission, const SimOptions& options = {});
 
+/// The rocket's state at time t, interpolated linearly between samples
+/// (clamped to the start and end of the flight). Samples are close enough
+/// together that this is accurate to a few metres. Used for playback.
+State stateAt(const SimResult& result, double t);
+
 std::string_view toString(Outcome outcome);
 std::string_view toString(EventType type);
 std::string_view toString(EndReason reason);

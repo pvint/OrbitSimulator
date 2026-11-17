@@ -4,10 +4,11 @@ A desktop app for building intuition about orbital mechanics. Launch a rocket
 from anywhere on a rotating Earth, see where it goes, and sweep a parameter
 to compare a whole family of trajectories side by side.
 
-**Status:** early development. The desktop app has live parameter sliders,
-flight results and graphs, re-simulating as you drag. The physics core is 3D
-and tested, and `orbitsim-cli` flies missions from the command line. The 3D
-view (a placeholder Earth for now) is next. See the roadmap in [CLAUDE.md](CLAUDE.md). The
+**Status:** early development. The desktop app shows the flight on a textured
+3D Earth with playback, plus live parameter sliders, flight results and
+graphs, re-simulating as you drag. The physics core is 3D and tested, and
+`orbitsim-cli` flies missions from the command line. Parameter sweeps and
+scenario files are next. See the roadmap in [CLAUDE.md](CLAUDE.md). The
 original 2D browser prototype, which already works, is in
 [prototype/web](prototype/web/README.md).
 
@@ -36,6 +37,15 @@ build/dev/src/app/orbitsim        # start the app
 
 Drag any slider and the flight re-simulates at once. The panels are docks:
 move, stack or hide them (View menu), and the layout is remembered.
+
+In the 3D view, drag to turn the camera and use the mouse wheel to zoom. The
+playback bar underneath plays the flight (Space), scrubs through it, sets the
+speed and can follow the rocket. Burns are drawn orange, coasting blue, and
+the ground track (the path over the ground) yellow. The orbit stays fixed in
+space while the Earth turns underneath, which is why the ground track drifts
+west each orbit.
+
+`orbitsim --screenshot FILE` saves an image of the window and quits.
 ```
 
 ### Trying the physics from the command line
@@ -79,10 +89,17 @@ it isn't by default, since a distribution's Qt can't be bundled reliably; see
 src/core/      the physics, in plain C++ (no Qt)
 src/cli/       orbitsim-cli: runs the physics without a GUI
 src/app/       the Qt desktop app (Widgets, plus QML for the 3D view and plots)
+tools/         helper scripts (rebuilding the Earth texture)
 tests/         physics tests (Catch2)
 docs/          design decisions and physics notes
 prototype/web/ the original 2D browser prototype
 ```
+
+## Credits
+
+Earth imagery: *Blue Marble: Next Generation*, NASA Earth Observatory
+(Reto Stöckli), public domain. See `tools/make_earth_texture.sh` for exactly
+which file and how it was processed.
 
 ## Licence
 
