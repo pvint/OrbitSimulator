@@ -110,9 +110,39 @@ soon as the rocket moves, the thrust direction oscillates and the
 integrator stalls (found when testing a launch from 90°N). The fixed plane is
 defined everywhere and is closer to what real ascent guidance does.
 
+### 11. Mission parameters are described once, in the core (2026-11-17, M2)
+
+**Decision:** `orbit/core/mission_parameters.hpp` lists every adjustable number
+(key, label, unit, range, getter/setter in display units). The GUI builds
+its sliders and the CLI its options from it; sweeps and scenario files will
+use the same keys.
+
+**Why:** without it, every new parameter would need edits in three or four
+places, and they would drift apart. Keeping it in the core (it's plain
+data, no Qt) lets non-GUI tools share it.
+
+### 12. GUI tests with Qt Test, run offscreen (2026-11-17, M2)
+
+**Decision:** the panels and the simulation controller live in a small
+library (`orbitsim_ui`) that a Qt Test executable drives the way a user
+would (set spin boxes, toggle checkboxes, wait for results). Tests run with
+`QT_QPA_PLATFORM=offscreen`, so no display is needed.
+
+**Why:** the user doesn't click through every change, so the wiring between
+widgets, the mission and the worker thread needs automatic checks. Qt Test
+(QSignalSpy, QTRY_COMPARE) suits widgets and signals better than Catch2.
+
 ---
 
 ## Open questions
+
+- **Scripting for complex paths.** The user wants scripting eventually.
+  Plan: in M5 the hard-coded flight sequence becomes a data-driven *flight
+  program* (steps such as "burn prograde until apoapsis = X", "coast until
+  …"). Scripts then build or steer flight programs rather than reaching
+  into the integrator. Candidate languages: Lua (small, embeddable, common in
+  simulators) or Qt's QJSEngine (JavaScript, no new dependency). Either way
+  the scripting layer lives outside `src/core`, which stays Qt-free.
 
 - **App icon and identifier.** The macOS bundle id is a placeholder
   (`io.github.orbitsim`).

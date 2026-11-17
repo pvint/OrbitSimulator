@@ -4,9 +4,10 @@ A desktop app for building intuition about orbital mechanics. Launch a rocket
 from anywhere on a rotating Earth, see where it goes, and sweep a parameter
 to compare a whole family of trajectories side by side.
 
-**Status:** early development. The 3D physics core works and is tested, and
-`orbitsim-cli` flies missions from the command line. The Qt interface is
-next. See the roadmap in [CLAUDE.md](CLAUDE.md). The
+**Status:** early development. The desktop app has live parameter sliders,
+flight results and graphs, re-simulating as you drag. The physics core is 3D
+and tested, and `orbitsim-cli` flies missions from the command line. The 3D
+view (a placeholder Earth for now) is next. See the roadmap in [CLAUDE.md](CLAUDE.md). The
 original 2D browser prototype, which already works, is in
 [prototype/web](prototype/web/README.md).
 
@@ -32,13 +33,16 @@ Then:
 ```sh
 cmake --workflow --preset dev     # configure, build and run the tests
 build/dev/src/app/orbitsim        # start the app
+
+Drag any slider and the flight re-simulates at once. The panels are docks:
+move, stack or hide them (View menu), and the layout is remembered.
 ```
 
 ### Trying the physics from the command line
 
 ```sh
 build/dev/src/cli/orbitsim-cli                        # default rocket from Cape Canaveral
-build/dev/src/cli/orbitsim-cli --lat 0 --azimuth 270  # launch west from the equator
+build/dev/src/cli/orbitsim-cli --latitude 0 --azimuth 270  # launch west from the equator
 build/dev/src/cli/orbitsim-cli --help                 # all options
 build/dev/src/cli/orbitsim-cli --csv flight.csv       # every sample, for plotting
 ```
