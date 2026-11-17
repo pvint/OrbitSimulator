@@ -197,7 +197,7 @@ void GlobeView::clearGhosts() {
 void GlobeView::updateSelectedLines() {
     if (!m_trajectory || !m_groundTrack || !m_result) return;
     const auto& samples = m_result->samples;
-    const double theta0 = m_result->mission.earthRotationAngleAtLaunch;
+    const double theta0 = orbit::earthRotationAngleAt(m_result->mission.launchEpoch);
 
     // Single flights: burns orange, coasting blue. In a sweep the selected
     // flight keeps its sweep colour (lighter where the engine burns) and is
@@ -268,8 +268,8 @@ void GlobeView::setPlaybackTime(double t) {
     m_time = std::clamp(t, 0.0, m_result->duration);
 
     const orbit::State state = orbit::stateAt(*m_result, m_time);
-    const double theta =
-        orbit::earthRotationAngle(m_time, m_result->mission.earthRotationAngleAtLaunch);
+    const double theta = orbit::earthRotationAngle(
+        m_time, orbit::earthRotationAngleAt(m_result->mission.launchEpoch));
     m_scene->setProperty("rocketPosition", scene::fromPhysics(state.r));
     m_scene->setProperty("earthRotation", orbit::radToDeg(theta));
 
@@ -306,8 +306,8 @@ void GlobeView::resetView() {
     if (!m_scene || !m_result) return;
     // The launch site, where it is at the current playback time.
     const orbit::LaunchSite& site = m_result->mission.site;
-    const double theta =
-        orbit::earthRotationAngle(m_time, m_result->mission.earthRotationAngleAtLaunch);
+    const double theta = orbit::earthRotationAngle(
+        m_time, orbit::earthRotationAngleAt(m_result->mission.launchEpoch));
     const orbit::Vec3 siteEci = orbit::rotateZ(
         orbit::positionFromLatLon(site.latitude, site.longitude, orbit::kRadiusEarth), theta);
     m_follow->setChecked(false);

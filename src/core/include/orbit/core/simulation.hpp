@@ -26,6 +26,7 @@
 // coasting, when an escaping rocket passes `escapeDistance`, or at `maxTime`.
 #pragma once
 
+#include "orbit/core/astro_time.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/guidance.hpp"
 #include "orbit/core/integrator.hpp"
@@ -51,13 +52,15 @@ struct Mission {
     AscentGuidance guidance;
     bool autoCircularize = true;
     double targetAltitude = 200e3; ///< m, used when autoCircularize is on
-    /// Earth's rotation angle at liftoff (radians). Sets where the launch site
-    /// is in inertial space. It will matter once the Moon is in the sim.
-    double earthRotationAngleAtLaunch = 0.0;
+    /// Liftoff time: seconds since J2000 (astro_time.hpp). It sets where the
+    /// launch site is in inertial space (the Earth's rotation angle), and
+    /// where the Sun and Moon are.
+    double launchEpoch = 0.0;
 };
 
-/// The default rocket and flight from the prototype. It reaches a roughly
-/// 190 × 200 km orbit from Cape Canaveral's latitude.
+/// The default rocket and flight from the prototype. It reaches a 200 km
+/// circular orbit from Cape Canaveral, launched at Apollo 11's liftoff time
+/// (1969-07-16 13:32 UTC).
 Mission defaultMission();
 
 /// Numerical settings. The defaults suit everything up to lunar distances.

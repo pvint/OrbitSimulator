@@ -2,6 +2,7 @@
 // Sweeps and scenario files.
 
 #include "orbit/core/angles.hpp"
+#include "orbit/core/astro_time.hpp"
 #include "orbit/core/mission_parameters.hpp"
 #include "orbit/core/scenario.hpp"
 #include "orbit/core/sweep.hpp"
@@ -127,4 +128,23 @@ TEST_CASE("Saved values are tidy, not full of conversion noise", "[scenario]") {
     Scenario s; // latitude 28.5° goes through radians and back
     const std::string json = scenarioToJson(s);
     REQUIRE_THAT(json, ContainsSubstring("\"latitude\": 28.5,"));
+}
+
+TEST_CASE("The launch moment is saved as UTC text and read back", "[scenario]") {
+    Scenario s;
+    s.mission.launchEpoch = *parseIsoUtc("2024-03-15T06:45:00Z");
+    const std::string json = scenarioToJson(s);
+    REQUIRE_THAT(json, ContainsSubstring(R"("launch-utc": "2024-03-15T06:45:00Z")"));
+    REQUIRE_THAT(json, !ContainsSubstring("launch-hour")); // stored within launch-utc
+    REQUIRE(scenarioFromJson(json).scenario.mission.launchEpoch == s.mission.launchEpoch);
+
+    // launch-hour in a file adjusts the time of day, keeping the date.
+    const LoadedScenario loaded = scenarioFromJson(R"({
+        "format": "orbitsim-scenario", "version": 1,
+        "mission": { "launch-utc": "2024-03-15T06:45:00Z", "launch-hour": 18.5 } })");
+    REQUIRE(formatIsoUtc(loaded.scenario.mission.launchEpoch) == "2024-03-15T18:30:00Z");
+
+    REQUIRE_THROWS_WITH(scenarioFromJson(R"({"format": "orbitsim-scenario", "version": 1,
+                                             "mission": {"launch-utc": "soon"}})"),
+                        ContainsSubstring("launch-utc"));
 }

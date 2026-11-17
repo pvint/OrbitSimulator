@@ -2,11 +2,13 @@
 #include "parameter_panel.hpp"
 
 #include "display_format.hpp"
+#include "orbit/core/astro_time.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/earth.hpp"
 #include "orbit/core/rocket.hpp"
 
 #include <QCheckBox>
+#include <QDateEdit>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGridLayout>
@@ -62,6 +64,28 @@ ParameterPanel::ParameterPanel(QWidget* parent)
             grid->setColumnStretch(0, 1);
             layout->addWidget(group);
 
+            if (p.group == "Launch site") {
+                // The date has no slider: it's a calendar, not a number.
+                m_launchDate = new QDateEdit(group);
+                m_launchDate->setObjectName(QStringLiteral("launchDate"));
+                m_launchDate->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+                m_launchDate->setCalendarPopup(true);
+                m_launchDate->setDateRange(QDate(1900, 1, 1), QDate(2100, 12, 31));
+                m_launchDate->setToolTip(
+                    tr("Launch date (UTC). With the launch time it sets where the Moon "
+                       "and the Sun are."));
+                const int row = grid->rowCount();
+                grid->addWidget(new QLabel(tr("Launch date"), group), row, 0);
+                grid->addWidget(m_launchDate, row, 1);
+                connect(m_launchDate, &QDateEdit::dateChanged, this, [this](QDate date) {
+                    const double hour = orbit::launchHourOfDay(m_mission);
+                    m_mission.launchEpoch = orbit::epochFromCalendar({date.year(), date.month(),
+                                                                      date.day(), 0, 0, 0.0}) +
+                                            hour * 3600.0;
+                    refreshWidgets();
+                    emit missionChanged(m_mission);
+                });
+            }
             if (p.group == "Orbit insertion") {
                 m_autoCircularize = new QCheckBox(tr("Auto-circularize at apoapsis"), group);
                 m_autoCircularize->setObjectName(QStringLiteral("autoCircularize"));
@@ -187,6 +211,9 @@ void ParameterPanel::refreshWidgets() {
     }
     const QSignalBlocker blockCheck(m_autoCircularize);
     m_autoCircularize->setChecked(m_mission.autoCircularize);
+    const orbit::CalendarTime launch = orbit::calendarFromEpoch(m_mission.launchEpoch);
+    const QSignalBlocker blockDate(m_launchDate);
+    m_launchDate->setDate(QDate(launch.year, launch.month, launch.day));
     refreshDerived();
 }
 

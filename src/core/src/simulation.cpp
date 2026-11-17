@@ -26,6 +26,7 @@ Mission defaultMission() {
                   .kickHoldTime = 10.0};
     m.autoCircularize = true;
     m.targetAltitude = 200e3;
+    m.launchEpoch = epochFromCalendar({1969, 7, 16, 13, 32, 0.0});
     return m;
 }
 
@@ -191,7 +192,7 @@ SimResult FlightSimulator::run() {
     // On the pad: at the launch site, moving with the ground.
     const Vec3 padEcef =
         positionFromLatLon(m_mission.site.latitude, m_mission.site.longitude, kRadiusEarth);
-    m_y.r = rotateZ(padEcef, m_mission.earthRotationAngleAtLaunch);
+    m_y.r = rotateZ(padEcef, earthRotationAngleAt(m_mission.launchEpoch));
     m_y.v = groundVelocity(m_y.r);
     m_y.m = m0;
     m_launchPlaneNormal = launchPlaneNormal(m_y.r, m_mission.guidance.azimuth);

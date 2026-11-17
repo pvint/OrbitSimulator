@@ -16,6 +16,8 @@ FetchContent_MakeAvailable(nlohmann_json)
 configure_file(version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/orbit/core/version.hpp" @ONLY)
 
 add_library(orbit_core STATIC
+    src/astro_time.cpp
+    src/ephemeris.cpp
     src/earth.cpp
     src/guidance.cpp
     src/integrator.cpp

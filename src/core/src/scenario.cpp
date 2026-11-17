@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "orbit/core/scenario.hpp"
 
+#include "orbit/core/astro_time.hpp"
 #include "orbit/core/mission_parameters.hpp"
 
 #include <array>
@@ -17,6 +18,7 @@ namespace {
 using nlohmann::json;
 
 constexpr std::string_view kAutoCircularizeKey = "auto-circularize";
+constexpr std::string_view kLaunchUtcKey = "launch-utc";
 
 /// Rounds to 12 significant figures, so values that went through a unit
 /// conversion are saved as 28.5 rather than 28.500000000000004.
@@ -50,6 +52,16 @@ Mission readMission(const json& object, std::vector<std::string>& warnings) {
     if (!object.is_object()) throw ScenarioError("\"mission\" must be an object");
     Mission mission = defaultMission();
 
+    // The launch moment first, so a "launch-hour" given as well can adjust it.
+    if (const auto it = object.find(std::string(kLaunchUtcKey)); it != object.end()) {
+        const std::optional<double> epoch =
+            it->is_string() ? parseIsoUtc(it->get<std::string>()) : std::nullopt;
+        if (!epoch) {
+            throw ScenarioError(R"(mission.launch-utc must be a time like "1969-07-16T13:32:00Z")");
+        }
+        mission.launchEpoch = *epoch;
+    }
+
     // Ordinary parameters first, then derived ones (burn time), which are
     // computed from the others.
     for (const bool derivedPass : {false, true}) {
@@ -68,7 +80,7 @@ Mission readMission(const json& object, std::vector<std::string>& warnings) {
     }
 
     for (const auto& [key, value] : object.items()) {
-        if (key != kAutoCircularizeKey && findParameter(key) == nullptr) {
+        if (key != kAutoCircularizeKey && key != kLaunchUtcKey && findParameter(key) == nullptr) {
             warnings.push_back("ignored unknown mission parameter \"" + key + "\"");
         }
     }
@@ -144,10 +156,11 @@ std::string scenarioToJson(const Scenario& scenario) {
     // than alphabetical.
     nlohmann::ordered_json mission = nlohmann::ordered_json::object();
     for (const ParameterInfo& p : missionParameters()) {
-        if (p.derived) continue; // follows from the others
+        if (p.derived || !p.inScenario) continue; // follows from the others
         mission[std::string(p.key)] = tidy(p.get(scenario.mission));
     }
     mission[std::string(kAutoCircularizeKey)] = scenario.mission.autoCircularize;
+    mission[std::string(kLaunchUtcKey)] = formatIsoUtc(scenario.mission.launchEpoch);
 
     nlohmann::ordered_json doc;
     doc["format"] = kScenarioFormatName;

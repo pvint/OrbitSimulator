@@ -12,6 +12,7 @@
 
 class QBoxLayout;
 class QCheckBox;
+class QDateEdit;
 class QDoubleSpinBox;
 class QLabel;
 class QSlider;
@@ -57,6 +58,7 @@ private:
     std::vector<Row> m_rows;
     std::string m_lockedKey;
     QCheckBox* m_autoCircularize = nullptr;
+    QDateEdit* m_launchDate = nullptr;
 
     QLabel* m_burnTime = nullptr;
     QLabel* m_massFlow = nullptr;

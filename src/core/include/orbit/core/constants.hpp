@@ -12,9 +12,11 @@ inline constexpr double kMuEarth = 3.986004418e14;
 inline constexpr double kRadiusEarth = 6.371e6;
 
 /// Earth's rotation rate relative to the stars (rad/s): one turn per sidereal
-/// day of 23 h 56 min 4 s. At the equator this gives a surface speed of
+/// day of 23 h 56 min 4.1 s. At the equator this gives a surface speed of
 /// ω·R ≈ 465 m/s, a free boost for eastward launches.
-inline constexpr double kOmegaEarth = 7.2921159e-5;
+/// (2π × 1.00273781191135448 turns per day, the rate in the IERS definition of
+/// the Earth rotation angle, so the physics and the clock agree.)
+inline constexpr double kOmegaEarth = 7.292115146706979e-5;
 
 /// Standard gravity (m/s²). Only used to convert specific impulse (seconds)
 /// into exhaust velocity: v_e = Isp · g0.

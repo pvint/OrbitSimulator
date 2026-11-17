@@ -2,11 +2,23 @@
 #include "orbit/core/mission_parameters.hpp"
 
 #include "orbit/core/angles.hpp"
+#include "orbit/core/astro_time.hpp"
 #include "orbit/core/rocket.hpp"
 
 #include <array>
 
 namespace orbit {
+
+double launchHourOfDay(const Mission& mission) {
+    const CalendarTime t = calendarFromEpoch(mission.launchEpoch);
+    const double midnight = epochFromCalendar({t.year, t.month, t.day, 0, 0, 0.0});
+    return (mission.launchEpoch - midnight) / 3600.0;
+}
+
+void setLaunchHourOfDay(Mission& mission, double hours) {
+    const CalendarTime t = calendarFromEpoch(mission.launchEpoch);
+    mission.launchEpoch = epochFromCalendar({t.year, t.month, t.day, 0, 0, 0.0}) + hours * 3600.0;
+}
 
 namespace {
 
@@ -40,6 +52,11 @@ constexpr std::array kParameters{
     ParameterInfo{"longitude", "Longitude", "°", "Launch site", "East positive", -180.0, 180.0, 0.5,
                   [](const Mission& m) { return radToDeg(m.site.longitude); },
                   [](Mission& m, double v) { m.site.longitude = degToRad(v); }},
+    ParameterInfo{"launch-hour", "Launch time", "h UTC", "Launch site",
+                  "Time of day of liftoff (UTC, decimal hours). Sets where the Earth has "
+                  "turned to, and so the orbit's orientation in space",
+                  0.0, 23.95, 0.05, [](const Mission& m) { return launchHourOfDay(m); },
+                  [](Mission& m, double v) { setLaunchHourOfDay(m, v); }, false, false},
     ParameterInfo{"azimuth", "Direction (azimuth)", "°", "Launch site",
                   "Clockwise from north: 90° = east, 270° = west", 0.0, 360.0, 1.0,
                   [](const Mission& m) { return radToDeg(m.guidance.azimuth); },
