@@ -8,6 +8,23 @@ trajectories side by side. Later it flies to the Moon.
 It started as a 2D browser prototype (`prototype/web/`, see its README). That
 prototype settled the physics model and the UI ideas; this is the full version.
 
+## Where we are (end of the first stretch, 2026-11-17)
+
+- Milestones M0–M6 are done and merged to `main`, and the Moon texture is in.
+  65 test suites pass (GCC, Clang, ASan/UBSan); clang-tidy is clean.
+- The app flies a single-stage rocket from any site and date to low orbit or
+  to the Moon (flyby, capture, impact), with sweeps, ghosts, scenario files,
+  eight-plus example scenarios, a textured Earth and Moon lit by the real Sun,
+  and an 11-step demo tour.
+- **Just done by the user:** the project folder was renamed from the typo
+  `OrbitSumulator` to `OrbitSimulator`. Old build folders hold absolute paths:
+  delete `build/` and reconfigure with the presets before building.
+- **Next:** the user picks from the "Later" rows of the roadmap below
+  (atmosphere + drag, staging, scripting, natural bodies, solar system,
+  distribution / GitHub / ebuild). Ask which, don't assume.
+- **Open questions:** see the end of `docs/decisions.md` (scripting
+  language, how to specify natural bodies, app icon).
+
 ## Hard rules
 
 - **`src/core` never includes Qt.** Plain C++20, the standard library, and
