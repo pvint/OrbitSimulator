@@ -27,11 +27,18 @@ target_link_libraries(orbitsim_ui PUBLIC orbit::core Qt6::Widgets Qt6::Concurren
 orbit_set_warnings(orbitsim_ui)
 
 qt_add_executable(orbitsim
+    globe_geometry.cpp
+    globe_geometry.hpp
+    globe_view.cpp
+    globe_view.hpp
     main.cpp
     main_window.cpp
     main_window.hpp
     plot_panel.cpp
     plot_panel.hpp
+    polyline_geometry.cpp
+    polyline_geometry.hpp
+    scene_coordinates.hpp
 )
 
 # QML files are compiled into the executable as resources, under the module
@@ -40,9 +47,20 @@ qt_add_qml_module(orbitsim
     URI OrbitSim
     VERSION 1.0
     QML_FILES
+        qml/GlobeScene.qml
         qml/Plots.qml
-        qml/SceneView.qml
         qml/TimeGraph.qml
+)
+
+# Earth texture, compiled into the executable (qrc:/textures/...). BIG_RESOURCES
+# embeds it as object code instead of a huge generated C++ array.
+# Source and how it was made: tools/make_earth_texture.sh.
+qt_add_resources(orbitsim "textures"
+    PREFIX "/"
+    BASE assets
+    BIG_RESOURCES
+    FILES
+        assets/textures/earth_day.jpg
 )
 
 target_link_libraries(orbitsim PRIVATE
