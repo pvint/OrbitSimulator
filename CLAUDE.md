@@ -1,81 +1,100 @@
-# Orbit Simulator: Plan
+# Orbit Simulator
 
-## Context
-The goal is to build intuition for orbital mechanics with a graphical simulator. A rocket launches from a site on Earth and its trajectory is drawn. You can also sweep one variable (mass, burn time, pitch angle, ...) and see a family of trajectories next to each other. The project directory (`~/Documents/src/OrbitSumulator`) is currently empty.
+A cross-platform desktop app for building intuition about orbital mechanics. A
+rocket launches from anywhere on a rotating 3D Earth. You see its trajectory,
+orbit and graphs, and you can sweep one parameter to compare a family of
+trajectories side by side. Later it flies to the Moon.
 
-Decisions from the clarification round:
-- **Web browser** app, starting with a **2D** view. 3D comes later.
-- Physics: point-mass Earth gravity plus **Earth's rotation** (launch latitude and direction matter). No drag or staging yet.
-- Steering: a **simple pitch program** (vertical rise, pitch-over, then gravity turn).
-- Sweeps: **both** a live slider with fading "ghost" paths and a batch sweep (variable, range and steps give N colour-coded lines).
-- Readouts: **orbit stats** and **time-series graphs** (altitude, speed, mass).
-- Code style: clean and well commented so you can **read and tweak** it, especially the physics.
+It started as a 2D browser prototype (`prototype/web/`, see its README). That
+prototype settled the physics model and the UI ideas; this is the full version.
 
-## Approach
-Plain HTML, CSS and JavaScript ES modules with **no build step and no dependencies**. All drawing uses Canvas 2D. Physics lives in pure modules with no DOM access, so Node can unit-test it. To run it: `python3 -m http.server` in the project folder, then open `localhost:8000`.
+## Hard rules
 
-### File layout
+- **`src/core` never includes Qt.** Plain C++20 and the standard library only.
+  The CLI, the tests and the GUI are all clients of the core.
+- **Physics uses `double` and SI units** (m, kg, s; angles in radians inside
+  the core, degrees only at the UI boundary). Qt's float types (`QVector3D`)
+  are for rendering only, using coordinates relative to the camera.
+- **Physics changes come with tests** in `tests/`. The user doesn't write
+  tests; Claude writes and maintains them.
+- **Zero warnings** with `dev` (GCC) and `dev-clang`, where warnings are
+  errors. Also keep clang-tidy clean and run clang-format on changed files.
+- **Physics code is commented for a reader learning the subject**: say which
+  equation is used and why, as the prototype did.
+- **Cross-platform:** no OS-specific APIs outside Qt. The code must build with
+  MSVC, Apple Clang and GCC (so C++20, not C++23).
+
+## Commands
+
+```sh
+cmake --preset dev            # configure (also: dev-clang, asan, release)
+cmake --build --preset dev    # build
+ctest --preset dev            # run tests
+cmake --workflow --preset dev # all three in one go
+
+build/dev/src/app/orbitsim            # GUI
+build/dev/src/cli/orbitsim-cli        # CLI
+clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
+cmake --build build/release --target package   # archive in build/release/
 ```
-index.html            layout: canvas, control panel, stats panel, graph area
-style.css
-src/
-  constants.js        G·M_earth, R_earth, ω_earth, g0 (SI units, commented)
-  vec.js              tiny 2D vector helpers
-  rocket.js           rocket parameters → thrust, mass flow (F / (Isp·g0)), burn time
-  guidance.js         pitch program: vertical → pitch-over kick → gravity turn
-  integrator.js       RK4 step for state {x, y, vx, vy, m}
-  simulate.js         simulate(params) → { samples[], outcome, orbit }
-  orbit.js            state vector → energy, a, e, periapsis, apoapsis, period
-  sweep.js            runSweep(baseParams, varName, min, max, steps) → results[]
-  ui/
-    params.js         parameter definitions (name, unit, default, min, max) used by the UI and the sweep dropdown
-    view.js           trajectory canvas: Earth, paths, pan/zoom, colour legend
-    graphs.js         small canvas line charts (altitude, speed, mass vs time)
-    controls.js       sliders, ghost-path history, sweep form, wiring
-  main.js
-test/
-  physics.test.js     node:test checks (see Verification)
-README.md             how to run, plus a short "physics in this sim" explainer
+
+## Layout
+
+```
+src/core/      physics library (namespace orbit). Public headers in include/orbit/core/
+src/cli/       orbitsim-cli
+src/app/       Qt Widgets app: main window, docks, panels. QML scenes in qml/
+tests/         Catch2 tests for the core
+cmake/         CompilerWarnings.cmake (orbit_set_warnings), Packaging.cmake (CPack)
+docs/          decisions.md (why things are the way they are), physics notes
+prototype/web/ the original JavaScript prototype, kept for reference
 ```
 
-### Physics model (in `simulate.js` and the modules it uses)
-- **Frame:** a 2D inertial frame in the plane of the trajectory, with Earth centred at the origin. The launch site sits on the surface. It starts with Earth-rotation velocity `ω·R·cos(latitude)`, projected onto the launch direction (east gets the full boost, west a penalty). Simplification: the trajectory plane contains the launch direction. This is exact for launches due east or west and approximate for other directions.
-- **Forces:** gravity `−μ r/|r|³` plus thrust `F` along the guidance direction while there is propellant left. Mass drops at `ṁ = F/(Isp·g0)`.
-- **Guidance:** vertical until `pitchStartTime`. The rocket then tilts to `pitchKickAngle` from vertical and holds that angle for a few seconds. After that, thrust points along the velocity vector (gravity turn).
-- **Integrator:** fixed-step RK4. A small step (0.1 s) during the burn and a larger one (about 1–5 s) when coasting, so orbits stay closed and accurate.
-- **End conditions:** impact (r < R), escape (positive energy and r far from Earth), completing N orbits, or a maximum simulated time.
-- **Outcome:** `crashed`, `suborbital` (periapsis below the surface), `orbit` (with periapsis and apoapsis altitudes), or `escape`.
+## Conventions
 
-### Parameters you can adjust and sweep (`ui/params.js`)
-Dry mass, propellant mass, thrust, Isp, launch latitude, launch direction (east/west), pitch start time, pitch kick angle. Derived values (burn time, initial thrust-to-weight ratio, ideal Δv from the rocket equation) are shown live. Burn time can also be swept directly: in that mode propellant is adjusted to match the burn time.
+- Files: `snake_case.hpp` / `.cpp`. Types `PascalCase`, functions and
+  variables `camelCase`, constants `kPascalCase`, Qt class members `m_name`.
+- One class or concept per file. Core headers are included as
+  `"orbit/core/<name>.hpp"`.
+- Include order (clang-format enforces it): our own headers, then Qt, then std.
+- Every new target calls `orbit_set_warnings(<target>)`.
+- Git: one branch per milestone (`m1-physics`, ...), small focused commits,
+  merged to `main` when the milestone runs. Commit messages: a short summary
+  line, then why.
+- Big or hard-to-reverse decisions get an entry in `docs/decisions.md`.
 
-### UI
-- **Main canvas:** Earth (with a thin "100 km line" ring), trajectories, and a marker for the launch site. Mouse wheel zooms, dragging pans, and there are "fit to Earth" and "fit to trajectory" buttons.
-- **Live mode:** sliders re-simulate on every change. The last ~8 paths stay as fading ghosts, and a "clear ghosts" button removes them.
-- **Sweep mode:** choose a variable, min, max and number of steps, then click Run. You get N lines on a colour gradient, and a legend lists each value with its outcome and periapsis/apoapsis. Clicking a legend entry highlights that line and shows it in the graphs.
-- **Stats panel:** outcome, periapsis/apoapsis altitude, period, eccentricity, Δv used, and maximum altitude.
-- **Graphs:** altitude, speed and mass against time for the selected run, with the other sweep runs overlaid faintly.
+## Tech stack
 
-### Build order (each step leaves something you can run)
-1. Physics core, orbit maths and Node tests.
-2. Canvas view that draws one trajectory, with fixed parameters.
-3. Sliders, live re-simulation and ghost paths.
-4. Stats panel and time-series graphs.
-5. Batch sweep with legend and highlighting.
-6. README with run instructions and a short physics explainer.
+C++20, CMake 3.25+ with presets, Ninja. Qt 6.8+ (developed against 6.11):
+- Widgets for the window, docks and forms.
+- Qt Quick 3D for the 3D view, and Qt Graphs for the plots. Both are QML scenes
+  embedded with `QQuickWidget`.
 
-Later ideas (not in this plan): atmospheric drag, staging, a 3D globe, an editable burn sequence for maneuvers like circularizing, and the Moon.
+Tests use Catch2 v3 (installed system package first, FetchContent fallback).
+See `docs/decisions.md` for the reasons.
 
-## Verification
-- `node --test test/` checks the physics:
-  - A circular orbit started at 400 km with v = √(μ/r) keeps its radius within 0.1% and its energy constant over 10 orbits.
-  - The period matches `2π√(a³/μ)`.
-  - `orbit.js` returns the right periapsis and apoapsis for a known elliptical state.
-  - The rocket's Δv matches the Tsiolkovsky equation `Isp·g0·ln(m0/mf)`.
-  - An eastward launch from the equator reaches higher speed than a westward one with the same rocket (a difference of about 930 m/s).
-- Manual checks in the browser (`python3 -m http.server`, then `localhost:8000`):
-  - The default rocket reaches a low orbit.
-  - A sweep of propellant mass shows the change from crash → suborbital → orbit → escape.
-  - Ghost paths fade as you drag sliders.
-  - The graphs update when you select a legend entry.
-  - I can also open it in Chrome to check for console errors.
+## Roadmap
+
+Each milestone ends with something that runs.
+
+| # | Milestone | Status |
+|---|---|---|
+| M0 | Skeleton: CMake + presets, core lib, CLI, tests, Qt window with an embedded Quick 3D view, packaging, tooling | done |
+| M1 | 3D physics core: port the prototype to 3D state vectors. Launch site lat/lon + azimuth (exact), rotating Earth, inclination. Dormand–Prince 5(4) adaptive integrator with event location. Orbital elements (a, e, i, Ω, ω, ν). Pitch program + auto-circularize. Port and extend the prototype's tests. CLI runs a scenario and prints stats / CSV | next |
+| M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | |
+| M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow) | |
+| M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned) | |
+| M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, simple burn sequence (trans-lunar injection), Moon in the 3D view | |
+| Later | Atmosphere + drag, staging, full maneuver editor, other bodies, GitHub + CI builds for Windows/macOS/Linux (AppImage) | |
+
+### Lessons from the prototype (keep in mind for M1)
+
+- A pure gravity turn with one burn to depletion almost never reaches a clean
+  orbit: it's a knife edge. Auto-circularize (cut off at the target apoapsis,
+  coast, burn towards circular velocity) fixes this.
+- The gravity turn must follow velocity relative to the *ground*, otherwise
+  Earth's 465 m/s rotation tips the rocket over at liftoff.
+- Adding propellant at fixed thrust lowers thrust-to-weight, so the same kick
+  over-rotates and crashes. Sweeps show this; it is physics, not a bug.
+- Defaults that worked: dry 4 t, propellant 60 t, thrust 1200 kN, Isp 340 s,
+  lat 28.5°, azimuth 90°, pitch start 10 s, kick 25° held 10 s, target 200 km.

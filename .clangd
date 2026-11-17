@@ -1,0 +1,6 @@
+# Tells clangd (editor code intelligence) where the compile commands are.
+# Configure the dev preset first: cmake --preset dev
+CompileFlags:
+  CompilationDatabase: build/dev
+  # GCC-only flag that Qt adds; clangd doesn't understand it.
+  Remove: [-mno-direct-extern-access]

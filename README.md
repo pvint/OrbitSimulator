@@ -1,153 +1,77 @@
 # Orbit Simulator
 
-A 2D rocket launch simulator for building intuition about orbital mechanics.
-A rocket lifts off from a spinning Earth, follows a simple pitch program, and
-you see where it ends up: back on the ground, on a suborbital hop, in orbit or
-escaping. Drag sliders and the flight re-simulates instantly, or sweep one parameter to see
-a whole family of trajectories side by side.
+A desktop app for building intuition about orbital mechanics. Launch a rocket
+from anywhere on a rotating Earth, see where it goes, and sweep a parameter
+to compare a whole family of trajectories side by side.
 
-Plain HTML, CSS and JavaScript modules. No build step, no dependencies.
+**Status:** early development. Milestone M0 (project skeleton) is done; the
+3D physics core is next. See the roadmap in [CLAUDE.md](CLAUDE.md). The
+original 2D browser prototype, which already works, is in
+[prototype/web](prototype/web/README.md).
 
-## Running it
+## Building
 
-```sh
-python3 -m http.server 8000     # or: npm start
-```
+You need:
 
-Then open <http://localhost:8000>. (The page loads ES modules, which browsers
-refuse to load from `file://`, so it needs a local server.)
+- a C++20 compiler: GCC 11+, Clang 14+, MSVC 2022 or Xcode 15+
+- CMake 3.25+ and Ninja
+- Qt 6.8 or newer with **Qt Quick 3D** and **Qt Graphs**
+- Catch2 v3 for the tests (optional: CMake downloads it if it isn't installed)
 
-Run the physics tests with Node 18 or newer:
-
-```sh
-node --test                      # or: npm test
-```
-
-## Using it
-
-- **Live mode**: every slider change re-simulates. Recent paths stay on
-  screen as fading grey ghosts so you can compare. *Clear ghosts* removes them.
-- **Sweep mode**: pick a variable, a range and a number of steps, then *Run
-  sweep*. Each run gets a colour from blue to red, and the legend lists its outcome
-  and orbit. Click a legend row to highlight it and show it in the graphs.
-  Sliders still work: each change re-runs the whole sweep, and the swept
-  parameter's slider is locked.
-- **View**: scroll to zoom (around the cursor) and drag to pan. Thick lines
-  are engine burns, thin lines are coasting, and small rings mark engine
-  events. The dashed ring is the 100 km "edge of space" line, and the orange
-  triangle is the launch site.
-- **Graphs**: altitude, speed and mass against time. Dashed orange lines mark
-  engine events. *Zoom to powered flight* trims the time axis to the burns.
-
-## Things to try
-
-- **East vs west.** Set the direction to 270° (west). The pad now moves
-  *against* you, so you need about 930 m/s more Δv at the equator. Sweep
-  latitude to see the boost shrink towards the poles. (*Earth rotation boost*
-  under *Derived* shows the number.)
-- **Kick angle.** Sweep it from 0° to 45°. Too small and the rocket goes up
-  steeply, burns most of its propellant fighting gravity, and has none left to
-  circularize. Too large and it turns over early and flies into the ground.
-- **Propellant and thrust-to-weight ratio.** Sweep propellant with the thrust
-  fixed. More propellant means more Δv but a heavier rocket and a lower
-  liftoff T/W. Past a point the same kick tips the rocket over and it crashes.
-- **Turn off auto-circularize.** Now the engine burns until the tank is empty.
-  Getting a clean orbit this way is a knife edge: the gravity turn has to
-  level off at exactly the moment orbital speed is reached. This is why real
-  rockets coast to apoapsis and do a second burn.
-- **Escape.** With auto-circularize off, raise Isp to about 450 s and thrust to
-  3000 kN, then sweep propellant. Past about 11 km/s of Δv the rocket leaves
-  for good.
-
-## The physics in this sim
-
-Everything lives in `src/` as plain functions with no access to the page.
-`simulate.js` is the place to start reading.
-
-**Frame.** A 2D, non-rotating frame centred on Earth, in the plane that
-contains the launch direction. The rocket starts at the top of the Earth and
-flies clockwise.
-
-**Gravity.** A point-mass Earth: `a = −μ r / |r|³`, with
-μ = 3.986×10¹⁴ m³/s². No drag yet.
-
-**Earth's rotation.** The launch pad already moves east at
-`ω·R·cos(latitude)` (465 m/s at the equator). Only the part along the launch
-direction lies in our plane: `ω·R·cos(lat)·sin(azimuth)`. The rocket starts
-with that velocity. This is exact for launches due east or west and
-approximate for other directions.
-
-**Rocket.** Constant thrust `F`. Propellant burns at `ṁ = F / (Isp·g0)`. The
-ideal Δv is the Tsiolkovsky rocket equation `Isp·g0·ln(m0 / m_dry)`. The Δv
-actually delivered is the same, but some of it goes into fighting gravity
-("gravity losses") instead of building speed.
-
-**Pitch program** (`guidance.js`):
-1. Climb vertically until *pitch start*.
-2. Tilt to *kick angle* from vertical and hold it for *kick hold* seconds.
-3. Gravity turn: point along the velocity relative to the ground. Gravity
-   bends the path over, and the thrust follows it.
-
-**Auto-circularize** (when on):
-1. Cut the engine as soon as the apoapsis (high point of the current orbit)
-   reaches the target altitude.
-2. Coast up to apoapsis.
-3. Burn in the direction `Δv = v_circular − v`: the velocity change that turns
-   the current motion into a circular orbit at this altitude. At apoapsis
-   that means burning horizontally, and it tilts up if the rocket starts to
-   sink. Stop when Δv reaches zero.
-
-The burn starts at apoapsis instead of being centred on it, so the result is
-a few km short of perfectly circular.
-
-**Integration.** Fourth-order Runge–Kutta (`integrator.js`) with a 0.1 s step
-while the engine fires. Steps are shortened to land exactly on guidance
-changes, burnout and engine cutoffs. While coasting the step grows with
-distance (about 1/1250 of an orbit), so orbits stay closed. The test suite
-checks that a 400 km orbit holds its radius to 0.1% over 10 revolutions.
-
-**Orbit stats** (`orbit.js`) come from two numbers that stay constant
-while coasting:
-- energy `ε = v²/2 − μ/r`
-- angular momentum `h = r × v`
-
-From them: semi-major axis `a = −μ/2ε`, eccentricity `e = √(1 + 2εh²/μ²)`,
-periapsis `h²/μ / (1+e)`, apoapsis `2a − r_p` and period `2π√(a³/μ)`. The
-stats panel shows the orbit after the *last* engine shutdown.
-
-**Outcomes:**
-| Outcome | Meaning |
+| Platform | Getting the dependencies |
 |---|---|
-| Crashed | Hit the ground without reaching 100 km |
-| Suborbital | Reached space, but the orbit dips underground, so it comes back down |
-| Orbit | The whole orbit stays above the surface |
-| Escape | Energy ≥ 0, so it never comes back. Its listed periapsis is where the hyperbola *would* have come closest, which may be underground. |
+| Linux | Your distribution's packages, e.g. Gentoo `dev-qt/qtquick3d dev-qt/qtgraphs dev-cpp/catch`, Debian/Ubuntu `qt6-quick3d-dev qt6-graphs-dev catch2` |
+| macOS | Qt from the [online installer](https://www.qt.io/download-qt-installer) (tick Qt Quick 3D and Qt Graphs), then `brew install cmake ninja` |
+| Windows | Qt from the online installer (MSVC 2022 64-bit build, plus Qt Quick 3D and Qt Graphs). Build from a "Developer Command Prompt for VS 2022" |
 
-A simulation ends on impact, after one full orbit of coasting, once an escaping
-rocket passes 10 Earth radii, or after 3 simulated days.
+If CMake can't find Qt, point it there, e.g. `-DCMAKE_PREFIX_PATH=~/Qt/6.11.0/macos`.
 
-## Files
+Then:
 
-```
-index.html, style.css     layout and look
-src/constants.js          μ, R, ω, g0
-src/vec.js                2D vector helpers
-src/rocket.js             mass flow, burn time, Δv, T/W
-src/guidance.js           pitch program and circularization steering
-src/integrator.js         RK4 step
-src/simulate.js           one full flight → samples, events, outcome, orbit
-src/orbit.js              state vector → orbital elements
-src/sweep.js              run one parameter across a range
-src/ui/params.js          parameter list (labels, units, ranges, defaults)
-src/ui/view.js            trajectory canvas with pan and zoom
-src/ui/graphs.js          time-series charts
-src/ui/stats.js           number formatting, stats and derived panels
-src/ui/controls.js        sliders, ghost history, sweep form, legend
-src/main.js               app state and wiring
-test/physics.test.js      node:test checks
+```sh
+cmake --workflow --preset dev     # configure, build and run the tests
+build/dev/src/app/orbitsim        # start the app
 ```
 
-## Ideas for later
+### Build presets
 
-Atmospheric drag, staging, a 3D globe, an editable burn sequence (Hohmann
-transfers, plane changes), and the Moon.
+| Preset | What it is |
+|---|---|
+| `dev` | Debug build, warnings are errors |
+| `dev-clang` | Same with Clang; also used for clang-tidy |
+| `asan` | Debug with AddressSanitizer and UndefinedBehaviorSanitizer (Linux/macOS): catches memory bugs at run time |
+| `release` | Optimised build |
+
+Each preset builds into `build/<preset>/`. Use them as `cmake --preset X`,
+`cmake --build --preset X` and `ctest --preset X`.
+
+### Packaging
+
+```sh
+cmake --preset release && cmake --build --preset release
+cmake --build build/release --target package
+```
+
+This produces a `.zip` on Windows, a `.dmg` on macOS and a `.tar.gz` on Linux
+in `build/release/`. On Windows and macOS the Qt runtime is bundled. On Linux
+it isn't by default, since a distribution's Qt can't be bundled reliably; see
+[docs/decisions.md](docs/decisions.md).
+
+## Project layout
+
+```
+src/core/      the physics, in plain C++ (no Qt)
+src/cli/       orbitsim-cli: runs the physics without a GUI
+src/app/       the Qt desktop app (Widgets, plus QML for the 3D view and plots)
+tests/         physics tests (Catch2)
+docs/          design decisions and physics notes
+prototype/web/ the original 2D browser prototype
+```
+
+## Development
+
+- Code style: `.clang-format` (most editors apply it on save). Lint:
+  `clang-tidy -p build/dev-clang <files>`.
+- Editor support: `.clangd` points clangd at `build/dev`, so configure the
+  `dev` preset once.
+- The reasons behind the bigger choices are in [docs/decisions.md](docs/decisions.md).
