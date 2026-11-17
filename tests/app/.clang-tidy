@@ -1,0 +1,4 @@
+# Qt Test runs private slots as test functions, so they must stay member
+# functions even when they don't use `this`.
+InheritParentConfig: true
+Checks: -readability-convert-member-functions-to-static

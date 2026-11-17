@@ -26,3 +26,8 @@ orbit_set_warnings(orbit_core_tests)
 # Register each TEST_CASE as its own CTest test.
 include(Catch)
 catch_discover_tests(orbit_core_tests)
+
+# GUI-level tests of the app's panels (Qt Test).
+if(ORBIT_BUILD_APP)
+    add_subdirectory(app)
+endif()
