@@ -1,0 +1,31 @@
+# Static analysis. Run: clang-tidy -p build/dev-clang <files>
+# (Use the Clang build: GCC builds of Qt apps contain GCC-only flags.)
+#
+# A focused set of checks that find real bugs without too much noise.
+# Turned off on purpose:
+#   modernize-use-designated-initializers  Vec3{1, 2, 3} reads better in physics
+#                                          code than Vec3{.x = 1, .y = 2, .z = 3}
+#   readability-math-missing-parentheses   a*b + c*d is ordinary maths
+#   ...-magic-numbers                      physics is full of meaningful numbers
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  performance-*,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  -modernize-use-designated-initializers,
+  readability-*,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -readability-uppercase-literal-suffix,
+  -readability-math-missing-parentheses,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-avoid-do-while
+HeaderFilterRegex: 'src/.*'
+WarningsAsErrors: ''

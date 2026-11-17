@@ -1,0 +1,19 @@
+# Code style, applied with: clang-format -i <files>  (most editors do it on save)
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+PointerAlignment: Left
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: Yes
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Our own headers, then Qt, then the standard library and everything else.
+  - Regex: '^"'
+    Priority: 1
+  - Regex: '^<Q|^<qt'
+    Priority: 2
+  - Regex: '^<'
+    Priority: 3

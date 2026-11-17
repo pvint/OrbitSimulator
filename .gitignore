@@ -1,5 +1,17 @@
-node_modules/
-.DS_Store
-*.log
+# Build output
+/build/
+/out/
+
+# Personal CMake presets (CMakePresets.json is shared, this one is not)
+CMakeUserPresets.json
+
+# Editors and tools
+.cache/
 .vscode/
 .idea/
+*.user
+.DS_Store
+
+# Prototype
+node_modules/
+*.log
