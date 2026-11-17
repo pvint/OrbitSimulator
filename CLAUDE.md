@@ -87,8 +87,9 @@ Each milestone ends with something that runs.
 | M1 | 3D physics core: port the prototype to 3D state vectors. Launch site lat/lon + azimuth (exact), rotating Earth, inclination. Dormand–Prince 5(4) adaptive integrator with event location. Orbital elements (a, e, i, Ω, ω, ν). Pitch program + auto-circularize. Port and extend the prototype's tests. CLI runs a scenario and prints stats / CSV | done |
 | M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | next |
 | M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow) | |
-| M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned) | |
+| M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | |
 | M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, simple burn sequence (trans-lunar injection), Moon in the 3D view | |
+| M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | |
 | Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
 | Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |
 
