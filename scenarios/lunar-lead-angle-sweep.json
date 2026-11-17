@@ -1,0 +1,13 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 1,
+  "name": "Lunar timing: lead angle sweep",
+  "description": "The same trip to the Moon, starting the injection burn a little earlier or later. A degree of timing moves the arrival point by about 2500 km: near zero the rocket hits the Moon; either side it passes close enough to brake into orbit.",
+  "mission": {
+    "launch-utc": "1969-07-16T13:32:00Z",
+    "azimuth": 72.52,
+    "isp": 450,
+    "plan": "lunar-orbit"
+  },
+  "sweep": { "parameter": "lead-angle-adjust", "from": -4, "to": 4, "steps": 17 }
+}

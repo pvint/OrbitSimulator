@@ -78,7 +78,7 @@ void FlightStatsPanel::showResult(const orbit::SimResult& result) {
     for (const orbit::FlightEvent& e : result.events) {
         html += QStringLiteral("<tr><td>T+%1</td><td>&nbsp;%2</td></tr>"
                                "<tr><td></td><td style='color:#8592ad'>&nbsp;%3, %4</td></tr>")
-                    .arg(display::duration(e.sample.t), display::eventLabel(e.type),
+                    .arg(display::duration(e.sample.t), QString::fromStdString(e.description),
                          display::altitude(e.sample.altitude()), display::speed(e.sample.speed()));
     }
     html += QStringLiteral("</table>");

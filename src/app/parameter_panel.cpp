@@ -5,9 +5,10 @@
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/earth.hpp"
+#include "orbit/core/lunar_targeting.hpp"
 #include "orbit/core/rocket.hpp"
 
-#include <QCheckBox>
+#include <QComboBox>
 #include <QDateEdit>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -15,6 +16,7 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QLocale>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -40,6 +42,16 @@ int decimalsFor(double step) {
 
 QString toQString(std::string_view text) {
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
+}
+
+/// Does this parameter make a difference with this flight plan?
+bool appliesToPlan(const orbit::ParameterInfo& p, orbit::FlightPlan plan) {
+    using orbit::FlightPlan;
+    const bool lunar = plan == FlightPlan::LunarFlyby || plan == FlightPlan::LunarOrbit;
+    if (p.key == "target-altitude") return plan != FlightPlan::BurnToDepletion;
+    if (p.key == "capture-apoapsis") return plan == FlightPlan::LunarOrbit;
+    if (p.group == "Lunar transfer") return lunar;
+    return true;
 }
 
 } // namespace
@@ -87,18 +99,32 @@ ParameterPanel::ParameterPanel(QWidget* parent)
                 });
             }
             if (p.group == "Orbit insertion") {
-                m_autoCircularize = new QCheckBox(tr("Auto-circularize at apoapsis"), group);
-                m_autoCircularize->setObjectName(QStringLiteral("autoCircularize"));
-                m_autoCircularize->setToolTip(
-                    tr("Cut the engine when apoapsis reaches the target altitude, coast up, "
-                       "then burn to make the orbit circular. Off: burn until the propellant "
-                       "runs out."));
-                grid->addWidget(m_autoCircularize, grid->rowCount(), 0, 1, 2);
-                connect(m_autoCircularize, &QCheckBox::toggled, this, [this](bool on) {
-                    m_mission.autoCircularize = on;
+                m_plan = new QComboBox(group);
+                m_plan->setObjectName(QStringLiteral("flightPlan"));
+                for (const orbit::FlightPlan plan :
+                     {orbit::FlightPlan::Orbit, orbit::FlightPlan::BurnToDepletion,
+                      orbit::FlightPlan::LunarFlyby, orbit::FlightPlan::LunarOrbit}) {
+                    m_plan->addItem(toQString(orbit::planLabel(plan)), static_cast<int>(plan));
+                }
+                m_plan->setToolTip(
+                    tr("Orbit: cut the engine when the apoapsis reaches the target altitude, "
+                       "coast up, then burn to make the orbit circular.\n"
+                       "Burn until empty: a pure gravity turn with no second burn.\n"
+                       "Lunar flyby / orbit: from that circular parking orbit, a trans-lunar "
+                       "injection burn towards the Moon, and for an orbit, braking there."));
+                const int row = grid->rowCount();
+                grid->addWidget(new QLabel(tr("Flight plan"), group), row, 0);
+                grid->addWidget(m_plan, row, 1);
+                connect(m_plan, &QComboBox::currentIndexChanged, this, [this](int index) {
+                    m_mission.plan =
+                        static_cast<orbit::FlightPlan>(m_plan->itemData(index).toInt());
                     refreshWidgets();
                     emit missionChanged(m_mission);
                 });
+            }
+            if (p.group == "Lunar transfer") {
+                m_lunarGroup = group;
+                buildLunarButtons(grid);
             }
         }
 
@@ -172,6 +198,42 @@ void ParameterPanel::buildDerivedSection(QBoxLayout* layout) {
     layout->addWidget(group);
 }
 
+/// "Aim at the Moon" and "Best launch time": set the launch so that the
+/// parking orbit's plane passes through the Moon (lunar_targeting.hpp).
+void ParameterPanel::buildLunarButtons(QGridLayout* grid) {
+    auto* group = m_lunarGroup;
+    m_aimButton = new QPushButton(tr("Aim at the Moon"), group);
+    m_aimButton->setObjectName(QStringLiteral("aimAtMoon"));
+    m_aimButton->setToolTip(tr("Set the launch direction so that the orbit's plane passes "
+                               "through the Moon when the rocket arrives"));
+    m_bestTimeButton = new QPushButton(tr("Best launch time"), group);
+    m_bestTimeButton->setObjectName(QStringLiteral("bestLaunchTime"));
+    m_bestTimeButton->setToolTip(tr("Pick the time of day (on the launch date) when the "
+                                    "rocket can head for the Moon flying due east, the "
+                                    "cheapest direction, and aim"));
+    const int row = grid->rowCount();
+    grid->addWidget(m_aimButton, row, 0);
+    grid->addWidget(m_bestTimeButton, row, 1);
+
+    const auto aim = [this] {
+        const std::optional<double> azimuth = orbit::azimuthToMoon(m_mission);
+        if (!azimuth) {
+            QMessageBox::information(this, tr("Aim at the Moon"),
+                                     tr("The rocket doesn't reach orbit with these settings, "
+                                        "so there is nothing to aim yet."));
+            return;
+        }
+        m_mission.guidance.azimuth = *azimuth;
+        refreshWidgets();
+        emit missionChanged(m_mission);
+    };
+    connect(m_aimButton, &QPushButton::clicked, this, aim);
+    connect(m_bestTimeButton, &QPushButton::clicked, this, [this, aim] {
+        orbit::setLaunchHourOfDay(m_mission, orbit::bestLaunchHourForMoon(m_mission));
+        aim();
+    });
+}
+
 void ParameterPanel::setMission(const orbit::Mission& mission) {
     m_mission = mission;
     refreshWidgets();
@@ -198,19 +260,22 @@ void ParameterPanel::refreshWidgets() {
         r.slider->setValue(toSliderSteps(*r.info, value));
         r.spinBox->setValue(value);
 
-        // The target altitude only matters with auto-circularize on, and a
-        // swept parameter is set by the sweep, not the slider.
+        // Parameters only matter for some flight plans, and a swept parameter
+        // is set by the sweep, not the slider.
         const bool locked = r.info->key == m_lockedKey;
-        const bool active =
-            !locked && (r.info->key != "target-altitude" || m_mission.autoCircularize);
+        const bool active = !locked && appliesToPlan(*r.info, m_mission.plan);
         r.label->setEnabled(active);
         r.slider->setEnabled(active);
         r.spinBox->setEnabled(active);
         r.label->setToolTip(locked ? tr("Being swept: see the Sweep panel")
                                    : toQString(r.info->help));
     }
-    const QSignalBlocker blockCheck(m_autoCircularize);
-    m_autoCircularize->setChecked(m_mission.autoCircularize);
+    const QSignalBlocker blockPlan(m_plan);
+    m_plan->setCurrentIndex(m_plan->findData(static_cast<int>(m_mission.plan)));
+    const bool lunar = m_mission.plan == orbit::FlightPlan::LunarFlyby ||
+                       m_mission.plan == orbit::FlightPlan::LunarOrbit;
+    m_aimButton->setEnabled(lunar);
+    m_bestTimeButton->setEnabled(lunar);
     const orbit::CalendarTime launch = orbit::calendarFromEpoch(m_mission.launchEpoch);
     const QSignalBlocker blockDate(m_launchDate);
     m_launchDate->setDate(QDate(launch.year, launch.month, launch.day));

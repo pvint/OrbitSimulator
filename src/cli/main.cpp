@@ -9,6 +9,8 @@
 //   orbitsim-cli --csv flight.csv                 also write every sample
 
 #include "orbit/core/angles.hpp"
+#include "orbit/core/astro_time.hpp"
+#include "orbit/core/lunar_targeting.hpp"
 #include "orbit/core/mission_parameters.hpp"
 #include "orbit/core/scenario.hpp"
 #include "orbit/core/simulation.hpp"
@@ -45,7 +47,10 @@ void printUsage() {
     for (const auto& p : orbit::missionParameters()) {
         std::cout << "  --" << padded(p.key, 17) << padded(p.unit, 4) << p.help << '\n';
     }
-    std::cout << "  --no-circularize       burn until the propellant runs out\n"
+    std::cout << "  --plan PLAN            orbit, burn-to-depletion, lunar-flyby or lunar-orbit\n"
+                 "  --no-circularize       same as --plan burn-to-depletion\n"
+                 "  --best-launch-hour     pick the time of day that lets a lunar flight go east\n"
+                 "  --aim-moon             set the azimuth so the orbit plane meets the Moon\n"
                  "\nScenarios and sweeps:\n"
                  "  --scenario FILE        start from a scenario file (put it first; later\n"
                  "                         options change it)\n"
@@ -101,8 +106,12 @@ std::string duration(double seconds) {
     os << std::fixed << std::setprecision(1);
     if (seconds < 120.0) {
         os << seconds << " s";
-    } else {
+    } else if (seconds < 7200.0) {
         os << seconds / 60.0 << " min";
+    } else if (seconds < 2.0 * 86400.0) {
+        os << seconds / 3600.0 << " h";
+    } else {
+        os << seconds / 86400.0 << " days";
     }
     return os.str();
 }
@@ -123,12 +132,23 @@ void printResult(const orbit::SimResult& r) {
               << "Max altitude:     " << km(r.maxAltitude) << '\n'
               << std::setprecision(0) << "Delta-v used:     " << r.deltaVUsed << " m/s\n"
               << "Propellant left:  " << r.propellantLeft << " kg\n";
+    const orbit::LunarSummary& moon = r.lunar;
+    if (moon.enteredSphereOfInfluence || r.mission.plan == orbit::FlightPlan::LunarFlyby ||
+        r.mission.plan == orbit::FlightPlan::LunarOrbit) {
+        std::cout << "Moon:             closest approach " << km(moon.closestApproachAltitude)
+                  << " above the surface, at T+" << duration(moon.closestApproachTime) << '\n';
+        if (moon.finalOrbit) {
+            std::cout << "  orbit round it: " << km(moon.finalOrbit->periapsisAltitude) << " x "
+                      << km(moon.finalOrbit->apoapsisAltitude) << ", inclination "
+                      << std::setprecision(1) << radToDeg(moon.finalOrbit->inclination) << " deg\n";
+        }
+    }
     if (!r.events.empty()) {
         std::cout << "Events:\n";
         for (const auto& e : r.events) {
-            std::cout << std::setprecision(1) << "  T+" << std::setw(7) << e.sample.t << " s  "
-                      << std::left << std::setw(36) << orbit::toString(e.type) << std::right
-                      << " alt " << km(e.sample.altitude()) << ", speed " << std::setprecision(0)
+            std::cout << "  T+" << std::left << std::setw(10) << duration(e.sample.t) << std::left
+                      << std::setw(48) << e.description << std::right << " alt "
+                      << km(e.sample.altitude()) << ", speed " << std::setprecision(0)
                       << e.sample.speed() << " m/s\n";
         }
     }
@@ -153,17 +173,19 @@ void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec) {
     const auto values = orbit::sweepValues(spec);
     const auto missions = orbit::sweepMissions(base, spec);
     std::cout << "Sweep of " << p.label << " (" << p.unit << ")\n\n"
-              << std::right << std::setw(10) << "value" << "  " << std::left << std::setw(11)
+              << std::right << std::setw(10) << "value" << "  " << std::left << std::setw(13)
               << "outcome" << std::right << std::setw(13) << "periapsis" << std::setw(13)
-              << "apoapsis" << std::setw(9) << "incl." << std::setw(11) << "dv used" << '\n';
+              << "apoapsis" << std::setw(9) << "incl." << std::setw(11) << "dv used"
+              << std::setw(16) << "nearest Moon" << '\n';
     for (std::size_t i = 0; i < missions.size(); ++i) {
         const orbit::SimResult r = orbit::simulate(missions[i]);
         std::cout << std::fixed << std::setprecision(2) << std::setw(10) << values[i] << "  "
-                  << std::left << std::setw(11) << orbit::toString(r.outcome) << std::right
+                  << std::left << std::setw(13) << orbit::toString(r.outcome) << std::right
                   << std::setw(13) << km(r.orbit.periapsisAltitude) << std::setw(13)
                   << km(r.orbit.apoapsisAltitude) << std::setprecision(1) << std::setw(9)
                   << orbit::radToDeg(r.orbit.inclination) << std::setprecision(0) << std::setw(7)
-                  << r.deltaVUsed << " m/s\n";
+                  << r.deltaVUsed << " m/s" << std::setw(16) << km(r.lunar.closestApproachAltitude)
+                  << '\n';
     }
 }
 
@@ -174,6 +196,8 @@ int main(int argc, char* argv[]) {
     orbit::Scenario scenario;
     std::string csvPath;
     std::string savePath;
+    bool aimMoon = false;
+    bool bestHour = false;
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
@@ -186,15 +210,23 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (arg == "--no-circularize") {
-            scenario.mission.autoCircularize = false;
+            scenario.mission.plan = orbit::FlightPlan::BurnToDepletion;
+            continue;
+        }
+        if (arg == "--aim-moon") {
+            aimMoon = true;
+            continue;
+        }
+        if (arg == "--best-launch-hour") {
+            bestHour = true;
             continue;
         }
         if (arg == "--no-sweep") {
             scenario.sweep.reset();
             continue;
         }
-        const bool takesText =
-            arg == "--csv" || arg == "--scenario" || arg == "--sweep" || arg == "--save-scenario";
+        const bool takesText = arg == "--csv" || arg == "--scenario" || arg == "--sweep" ||
+                               arg == "--save-scenario" || arg == "--plan";
         const orbit::ParameterInfo* param =
             arg.starts_with("--") ? orbit::findParameter(arg.substr(2)) : nullptr;
         if (!takesText && param == nullptr) {
@@ -210,6 +242,12 @@ int main(int argc, char* argv[]) {
 
         if (arg == "--csv") {
             csvPath = value;
+        } else if (arg == "--plan") {
+            if (!orbit::planFromKey(value, scenario.mission.plan)) {
+                std::cerr
+                    << "--plan must be orbit, burn-to-depletion, lunar-flyby or lunar-orbit\n";
+                return 1;
+            }
         } else if (arg == "--save-scenario") {
             savePath = value;
         } else if (arg == "--scenario") {
@@ -238,6 +276,22 @@ int main(int argc, char* argv[]) {
             }
             param->set(scenario.mission, number);
         }
+    }
+
+    // Lunar aiming happens after all other options, which it depends on.
+    if (bestHour) {
+        orbit::setLaunchHourOfDay(scenario.mission, orbit::bestLaunchHourForMoon(scenario.mission));
+        std::cout << "Launch time: " << orbit::formatIsoUtc(scenario.mission.launchEpoch) << '\n';
+    }
+    if (aimMoon) {
+        const std::optional<double> azimuth = orbit::azimuthToMoon(scenario.mission);
+        if (!azimuth) {
+            std::cerr << "Can't aim at the Moon: the rocket doesn't reach orbit\n";
+            return 1;
+        }
+        scenario.mission.guidance.azimuth = *azimuth;
+        std::cout << std::fixed << std::setprecision(2)
+                  << "Launch azimuth: " << orbit::radToDeg(*azimuth) << " deg\n\n";
     }
 
     if (!savePath.empty()) {

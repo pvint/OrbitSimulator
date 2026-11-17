@@ -52,6 +52,10 @@ QString outcomeLabel(orbit::Outcome outcome) {
         return tr("Orbit");
     case orbit::Outcome::Escape:
         return tr("Escape");
+    case orbit::Outcome::LunarImpact:
+        return tr("Lunar impact");
+    case orbit::Outcome::LunarOrbit:
+        return tr("Lunar orbit");
     }
     return {};
 }
@@ -67,22 +71,12 @@ QColor outcomeColor(orbit::Outcome outcome) {
         return {0x4a, 0xde, 0x80};
     case orbit::Outcome::Escape:
         return {0xc0, 0x84, 0xfc};
+    case orbit::Outcome::LunarImpact:
+        return {0xe8, 0x79, 0xf9};
+    case orbit::Outcome::LunarOrbit:
+        return {0xe2, 0xe8, 0xf0}; // moonlight
     }
     return Qt::white;
-}
-
-QString eventLabel(orbit::EventType type) {
-    switch (type) {
-    case orbit::EventType::Cutoff:
-        return tr("Engine cutoff (apoapsis at target)");
-    case orbit::EventType::CircularizationStart:
-        return tr("Circularization burn start");
-    case orbit::EventType::CircularizationEnd:
-        return tr("Circularization burn end");
-    case orbit::EventType::Burnout:
-        return tr("Propellant exhausted");
-    }
-    return {};
 }
 
 } // namespace display

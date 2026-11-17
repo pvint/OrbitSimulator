@@ -9,6 +9,7 @@
 #include "sweep_panel.hpp"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QPushButton>
@@ -18,6 +19,7 @@
 #include <QTableWidget>
 #include <QTest>
 
+#include <cmath>
 #include <memory>
 
 Q_DECLARE_METATYPE(std::shared_ptr<const RunSet>)
@@ -119,16 +121,36 @@ private slots:
         QCOMPARE(spin->value(), 50.0);
     }
 
-    void autoCircularizeToggleDisablesTargetAltitude() {
+    void flightPlanEnablesTheParametersThatApply() {
         ParameterPanel panel;
-        auto* check = panel.findChild<QCheckBox*>(QStringLiteral("autoCircularize"));
+        auto* plan = panel.findChild<QComboBox*>(QStringLiteral("flightPlan"));
         auto* target = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-target-altitude"));
-        QVERIFY(check && target);
+        auto* tli = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-tli-apoapsis"));
+        auto* aim = panel.findChild<QPushButton*>(QStringLiteral("aimAtMoon"));
+        QVERIFY(plan && target && tli && aim);
         QVERIFY(target->isEnabled());
+        QVERIFY(!tli->isEnabled()); // lunar settings are off for a plain orbit
+        QVERIFY(!aim->isEnabled());
 
-        check->setChecked(false);
-        QVERIFY(!panel.mission().autoCircularize);
+        plan->setCurrentIndex(plan->findData(static_cast<int>(orbit::FlightPlan::BurnToDepletion)));
+        QVERIFY(panel.mission().plan == orbit::FlightPlan::BurnToDepletion);
         QVERIFY(!target->isEnabled());
+
+        plan->setCurrentIndex(plan->findData(static_cast<int>(orbit::FlightPlan::LunarOrbit)));
+        QVERIFY(target->isEnabled()); // the parking orbit
+        QVERIFY(tli->isEnabled());
+        QVERIFY(aim->isEnabled());
+    }
+
+    void aimAtTheMoonSetsTheAzimuth() {
+        ParameterPanel panel;
+        QSignalSpy spy(&panel, &ParameterPanel::missionChanged);
+        auto* plan = panel.findChild<QComboBox*>(QStringLiteral("flightPlan"));
+        plan->setCurrentIndex(plan->findData(static_cast<int>(orbit::FlightPlan::LunarOrbit)));
+        panel.findChild<QPushButton*>(QStringLiteral("aimAtMoon"))->click();
+        // Apollo 11's launch time: about 72.5°, as Apollo 11 itself (72.0°).
+        QVERIFY(std::abs(orbit::radToDeg(panel.mission().guidance.azimuth) - 72.5) < 1.0);
+        QCOMPARE(spy.count(), 2); // the plan change, then the aim
     }
 
     void setMissionUpdatesWidgetsWithoutEmitting() {

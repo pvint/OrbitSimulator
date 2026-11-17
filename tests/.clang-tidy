@@ -1,0 +1,4 @@
+# Tests call optional::value() after REQUIRE(has_value()) on purpose: value()
+# throws if it's empty, which fails the test cleanly.
+InheritParentConfig: true
+Checks: -bugprone-unchecked-optional-access

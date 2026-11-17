@@ -75,9 +75,28 @@ constexpr std::array kParameters{
                   [](Mission& m, double v) { m.guidance.kickHoldTime = v; }},
 
     ParameterInfo{"target-altitude", "Target altitude", "km", "Orbit insertion",
-                  "Auto-circularize: cut the engine when apoapsis reaches this", 80.0, 2000.0, 5.0,
-                  [](const Mission& m) { return m.targetAltitude / 1000.0; },
+                  "Altitude of the circular orbit (the parking orbit, for trips to the Moon)", 80.0,
+                  2000.0, 5.0, [](const Mission& m) { return m.targetAltitude / 1000.0; },
                   [](Mission& m, double v) { m.targetAltitude = v * 1000.0; }},
+
+    ParameterInfo{"tli-apoapsis", "TLI apoapsis", "km", "Lunar transfer",
+                  "Trans-lunar injection raises the apoapsis to this altitude, a little "
+                  "beyond the Moon (about 380,000 km away)",
+                  200000.0, 1000000.0, 1000.0,
+                  [](const Mission& m) { return m.lunar.tliApoapsisAltitude / 1000.0; },
+                  [](Mission& m, double v) { m.lunar.tliApoapsisAltitude = v * 1000.0; }},
+    ParameterInfo{"lead-angle-adjust", "Lead angle adjust", "°", "Lunar transfer",
+                  "Added to the computed angle the Moon should be ahead at injection. "
+                  "Sweep it to see timing decide between hitting, orbiting and missing",
+                  -45.0, 45.0, 0.1,
+                  [](const Mission& m) { return radToDeg(m.lunar.leadAngleAdjust); },
+                  [](Mission& m, double v) { m.lunar.leadAngleAdjust = degToRad(v); }},
+    ParameterInfo{"capture-apoapsis", "Capture apoapsis", "km", "Lunar transfer",
+                  "Lunar orbit insertion brakes until the orbit round the Moon reaches "
+                  "no higher than this above its surface",
+                  100.0, 60000.0, 100.0,
+                  [](const Mission& m) { return m.lunar.captureApoapsisAltitude / 1000.0; },
+                  [](Mission& m, double v) { m.lunar.captureApoapsisAltitude = v * 1000.0; }},
 };
 
 } // namespace

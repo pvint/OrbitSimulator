@@ -42,7 +42,7 @@ TEST_CASE("A scenario survives a round trip through JSON", "[scenario]") {
     s.description = "A scenario with \"quotes\" and ° signs";
     findParameter("kick-angle")->set(s.mission, 31.25);
     findParameter("latitude")->set(s.mission, -12.5);
-    s.mission.autoCircularize = false;
+    s.mission.plan = FlightPlan::LunarOrbit;
     s.sweep = SweepSpec{"thrust", 800.0, 2000.0, 7};
 
     const LoadedScenario loaded = scenarioFromJson(scenarioToJson(s));
@@ -50,14 +50,14 @@ TEST_CASE("A scenario survives a round trip through JSON", "[scenario]") {
     const Scenario& back = loaded.scenario;
     REQUIRE(back.name == s.name);
     REQUIRE(back.description == s.description);
-    REQUIRE_FALSE(back.mission.autoCircularize);
+    REQUIRE(back.mission.plan == FlightPlan::LunarOrbit);
     for (const ParameterInfo& p : missionParameters()) {
         CAPTURE(p.key);
         REQUIRE_THAT(p.get(back.mission), WithinAbs(p.get(s.mission), 1e-9));
     }
     REQUIRE(back.sweep.has_value());
-    REQUIRE(back.sweep->parameter == "thrust"); // NOLINT(bugprone-unchecked-optional-access)
-    REQUIRE(back.sweep->steps == 7);            // NOLINT(bugprone-unchecked-optional-access)
+    REQUIRE(back.sweep->parameter == "thrust");
+    REQUIRE(back.sweep->steps == 7);
 }
 
 TEST_CASE("A minimal scenario fills in defaults, in display units", "[scenario]") {
@@ -147,4 +147,15 @@ TEST_CASE("The launch moment is saved as UTC text and read back", "[scenario]") 
     REQUIRE_THROWS_WITH(scenarioFromJson(R"({"format": "orbitsim-scenario", "version": 1,
                                              "mission": {"launch-utc": "soon"}})"),
                         ContainsSubstring("launch-utc"));
+}
+
+TEST_CASE("Older files with auto-circularize still load", "[scenario]") {
+    const auto plan = [](const char* json) { return scenarioFromJson(json).scenario.mission.plan; };
+    REQUIRE(plan(R"({"format": "orbitsim-scenario", "version": 1,
+                    "mission": {"auto-circularize": false}})") == FlightPlan::BurnToDepletion);
+    REQUIRE(plan(R"({"format": "orbitsim-scenario", "version": 1,
+                    "mission": {"auto-circularize": true}})") == FlightPlan::Orbit);
+    REQUIRE_THROWS_WITH(scenarioFromJson(R"({"format": "orbitsim-scenario", "version": 1,
+                                            "mission": {"plan": "to-mars"}})"),
+                        ContainsSubstring("mission.plan"));
 }

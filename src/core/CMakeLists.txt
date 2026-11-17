@@ -18,9 +18,11 @@ configure_file(version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/orbit/core/
 add_library(orbit_core STATIC
     src/astro_time.cpp
     src/ephemeris.cpp
+    src/flight_program.cpp
     src/earth.cpp
     src/guidance.cpp
     src/integrator.cpp
+    src/lunar_targeting.cpp
     src/mission_parameters.cpp
     src/orbit.cpp
     src/rocket.cpp

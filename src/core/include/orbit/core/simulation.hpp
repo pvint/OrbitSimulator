@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Flies one rocket from launch until it crashes, escapes or completes its orbits.
+// Flies one rocket through its flight program, from launch until it crashes,
+// escapes, or the program ends.
 //
 // FRAME
 // Earth-centred inertial (see earth.hpp). The launch site sits on the
@@ -7,34 +8,38 @@
 // rocket already moves with the ground: ω × r, up to 465 m/s eastward.
 //
 // FORCES
-//   gravity  a = −μ r / |r|³              (point-mass Earth)
-//   thrust   a = F/m along the guidance direction, while the engine runs
+//   Earth    a = −μ r / |r|³              (point mass)
+//   Moon,    a = μ_b ((r_b − r)/|r_b − r|³ − r_b/|r_b|³)   for body b at r_b.
+//   Sun      The second term is there because the frame's origin, the Earth,
+//            is itself pulled towards the body; only the *difference* in pull
+//            moves the rocket relative to the Earth.
+//   thrust   a = F/m along the steering direction, while the engine runs
 //   mass     dm/dt = −F / (Isp·g0)
 // No drag and no staging yet.
 //
-// FLIGHT SEQUENCE
-// With autoCircularize off, the engine burns until the propellant runs out,
-// following the pitch program (guidance.hpp), and then the rocket coasts.
-// With it on:
-//   ASCENT             pitch program, until the apoapsis reaches the target altitude
-//   COAST_TO_APOAPSIS  engine off, climbing towards the high point
-//   CIRCULARIZE        burn towards circular-orbit velocity (guidance.hpp)
-//   COAST              engine off
-// The engine also stops if the propellant runs out partway through.
-//
-// The simulation ends on impact, after `orbitsAfterCutoff` revolutions of
-// coasting, when an escaping rocket passes `escapeDistance`, or at `maxTime`.
+// FLIGHT PROGRAM
+// The mission's flight plan becomes a list of burn and coast steps
+// (flight_program.hpp), run in order. For a plain orbit:
+//   Ascent             pitch program, until the apoapsis reaches the target altitude
+//   Coast to apoapsis
+//   Circularization    burn towards circular-orbit velocity (guidance.hpp)
+//   Coast              one revolution
+// The simulation ends when the program does, on impact (Earth or Moon), when
+// an escaping rocket passes `escapeDistance`, or at `maxTime`.
 #pragma once
 
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/constants.hpp"
+#include "orbit/core/flight_program.hpp"
 #include "orbit/core/guidance.hpp"
 #include "orbit/core/integrator.hpp"
 #include "orbit/core/orbit.hpp"
 #include "orbit/core/rocket.hpp"
 #include "orbit/core/state.hpp"
 
+#include <limits>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -45,13 +50,27 @@ struct LaunchSite {
     double longitude = 0.0; ///< radians, east positive
 };
 
+/// Settings for the lunar flight plans.
+struct LunarTransfer {
+    /// The trans-lunar injection burn raises the apoapsis to this altitude
+    /// (m), a little beyond the Moon so the rocket meets it on the way out.
+    double tliApoapsisAltitude = 450e6;
+    /// Added to the automatically computed lead angle (radians). Sweep it to
+    /// see how timing decides between hitting, orbiting and missing the Moon.
+    double leadAngleAdjust = 0.0;
+    /// Lunar orbit insertion brakes until the orbit round the Moon has its
+    /// apoapsis no higher than this (m above the Moon's surface).
+    double captureApoapsisAltitude = 10e6;
+};
+
 /// Everything that defines one flight.
 struct Mission {
     Rocket rocket;
     LaunchSite site;
     AscentGuidance guidance;
-    bool autoCircularize = true;
-    double targetAltitude = 200e3; ///< m, used when autoCircularize is on
+    FlightPlan plan = FlightPlan::Orbit;
+    double targetAltitude = 200e3; ///< m: the orbit (or lunar parking orbit) altitude
+    LunarTransfer lunar;
     /// Liftoff time: seconds since J2000 (astro_time.hpp). It sets where the
     /// launch site is in inertial space (the Earth's rotation angle), and
     /// where the Sun and Moon are.
@@ -66,36 +85,52 @@ Mission defaultMission();
 /// Numerical settings. The defaults suit everything up to lunar distances.
 struct SimOptions {
     double mu = kMuEarth;
+    /// Include the Moon's and Sun's gravity. Off for idealised tests.
+    bool thirdBodyGravity = true;
     Tolerances tolerances;
     double initialStep = 0.1;        ///< s
     double maxBurnStep = 2.0;        ///< s: keeps steering smooth during burns
     double maxCoastStep = 300.0;     ///< s
     double burnOutputInterval = 1.0; ///< s between output samples during burns
     /// While coasting, output samples are spaced by this fraction of √(r³/μ)
-    /// (a circular period / 2π), so each orbit gets about 1250 points.
+    /// (a circular period / 2π) around the Earth, or around the Moon when
+    /// that is shorter, so each orbit gets about 1250 points.
     double coastOutputFraction = 0.005;
     double maxCoastOutputInterval = 600.0; ///< s
-    double orbitsAfterCutoff = 1.0;
-    double escapeDistance = 10.0 * kRadiusEarth; ///< m
-    double maxTime = 3.0 * 86400.0;              ///< s
-    int maxSteps = 1'000'000;
+    double escapeDistance = 1.5e9;         ///< m (about four times the Moon's distance)
+    double maxTime = 30.0 * 86400.0;       ///< s
+    int maxSteps = 2'000'000;
+    /// Start from this state instead of the launch pad (tests, and later
+    /// scenarios that begin in orbit). Time 0 is still the launch epoch.
+    std::optional<State> initialState;
 };
 
 enum class Outcome {
-    Crashed,    ///< hit the ground without reaching space (100 km)
-    Suborbital, ///< reached space, but the orbit dips underground
-    Orbit,      ///< the whole orbit stays above the surface
-    Escape,     ///< energy ≥ 0: never comes back
+    Crashed,     ///< hit the ground without reaching space (100 km)
+    Suborbital,  ///< reached space, but the orbit dips underground
+    Orbit,       ///< the whole orbit stays above the surface
+    Escape,      ///< energy ≥ 0: never comes back
+    LunarImpact, ///< hit the Moon
+    LunarOrbit,  ///< ended in orbit around the Moon
 };
 
 enum class EventType {
-    Cutoff,               ///< engine cut because apoapsis reached the target
-    CircularizationStart, ///< engine relit at apoapsis
-    CircularizationEnd,   ///< orbit is circular, engine off
-    Burnout,              ///< propellant ran out
+    EngineStart,         ///< a burn step begins
+    EngineStop,          ///< a burn step ends as planned
+    Burnout,             ///< the propellant ran out
+    EnterMoonSphere,     ///< entered the Moon's sphere of influence
+    LeaveMoonSphere,     ///< left it again
+    MoonClosestApproach, ///< closest point to the Moon
 };
 
-enum class EndReason { Impact, OrbitsComplete, EscapeDistance, MaxTime, MaxSteps };
+enum class EndReason {
+    Impact,         ///< hit the Earth
+    MoonImpact,     ///< hit the Moon
+    ProgramDone,    ///< the flight program's last step ended
+    EscapeDistance, ///< escaping, and far away
+    MaxTime,
+    MaxSteps,
+};
 
 /// The rocket's state at one moment, as stored for drawing and graphs.
 struct Sample {
@@ -109,18 +144,32 @@ struct Sample {
 
 struct FlightEvent {
     EventType type = EventType::Burnout;
+    std::string description; ///< e.g. "Trans-lunar injection: engine off"
     Sample sample;
+};
+
+/// What happened near the Moon.
+struct LunarSummary {
+    bool enteredSphereOfInfluence = false;
+    double closestApproachAltitude =
+        std::numeric_limits<double>::infinity(); ///< m above the surface
+    double closestApproachTime = 0.0;            ///< s after liftoff
+    /// The orbit around the Moon at the end of the flight, if the rocket was
+    /// then inside the Moon's sphere of influence.
+    std::optional<OrbitalElements> finalOrbit;
 };
 
 struct SimResult {
     Mission mission;
+    FlightProgram program;
     std::vector<Sample> samples;
     std::vector<FlightEvent> events;
     /// Where the engine last shut down: the start of the final coast.
     std::optional<Sample> cutoff;
-    /// The orbit the rocket coasts on after `cutoff` (or at the end, if the
-    /// engine never shut down).
+    /// The orbit around the Earth: after `cutoff` (or at the end, if the engine
+    /// never shut down, or if the Moon has since changed the orbit).
     OrbitalElements orbit;
+    LunarSummary lunar;
     Outcome outcome = Outcome::Crashed;
     EndReason endReason = EndReason::MaxTime;
     double maxAltitude = 0.0;    ///< m, highest sample
@@ -129,7 +178,13 @@ struct SimResult {
     double duration = 0.0;       ///< s of simulated time
 };
 
+/// Fly the mission's flight plan.
 SimResult simulate(const Mission& mission, const SimOptions& options = {});
+
+/// Fly any flight program (the mission supplies the rocket, launch site,
+/// pitch program and launch time). This is what scripting will call.
+SimResult simulateProgram(const Mission& mission, const FlightProgram& program,
+                          const SimOptions& options = {});
 
 /// The rocket's state at time t, interpolated linearly between samples
 /// (clamped to the start and end of the flight). Samples are close enough

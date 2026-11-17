@@ -17,6 +17,8 @@ namespace {
 
 using nlohmann::json;
 
+constexpr std::string_view kPlanKey = "plan";
+/// Older files: "auto-circularize": false meant burn until empty.
 constexpr std::string_view kAutoCircularizeKey = "auto-circularize";
 constexpr std::string_view kLaunchUtcKey = "launch-utc";
 
@@ -76,11 +78,18 @@ Mission readMission(const json& object, std::vector<std::string>& warnings) {
         if (!it->is_boolean()) {
             throw ScenarioError("mission.auto-circularize must be true or false");
         }
-        mission.autoCircularize = it->get<bool>();
+        mission.plan = it->get<bool>() ? FlightPlan::Orbit : FlightPlan::BurnToDepletion;
+    }
+    if (const auto it = object.find(std::string(kPlanKey)); it != object.end()) {
+        if (!it->is_string() || !planFromKey(it->get<std::string>(), mission.plan)) {
+            throw ScenarioError(R"(mission.plan must be "orbit", "burn-to-depletion", )"
+                                R"("lunar-flyby" or "lunar-orbit")");
+        }
     }
 
     for (const auto& [key, value] : object.items()) {
-        if (key != kAutoCircularizeKey && key != kLaunchUtcKey && findParameter(key) == nullptr) {
+        if (key != kAutoCircularizeKey && key != kPlanKey && key != kLaunchUtcKey &&
+            findParameter(key) == nullptr) {
             warnings.push_back("ignored unknown mission parameter \"" + key + "\"");
         }
     }
@@ -159,7 +168,7 @@ std::string scenarioToJson(const Scenario& scenario) {
         if (p.derived || !p.inScenario) continue; // follows from the others
         mission[std::string(p.key)] = tidy(p.get(scenario.mission));
     }
-    mission[std::string(kAutoCircularizeKey)] = scenario.mission.autoCircularize;
+    mission[std::string(kPlanKey)] = planKey(scenario.mission.plan);
     mission[std::string(kLaunchUtcKey)] = formatIsoUtc(scenario.mission.launchEpoch);
 
     nlohmann::ordered_json doc;
