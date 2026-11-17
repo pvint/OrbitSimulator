@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # orbit_set_warnings(<target>)
 #
 # Turns on a strict set of compiler warnings for one of our own targets.

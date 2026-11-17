@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # orbitsim: the Qt desktop app.
 #
 # The window, panels and forms are Qt Widgets. The 3D view (and, from M2, the
@@ -44,7 +45,7 @@ set_target_properties(orbitsim PROPERTIES
 
 install(TARGETS orbitsim
     BUNDLE DESTINATION .
-    RUNTIME DESTINATION bin)
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # Bundling Qt: copy the Qt libraries, plugins and QML modules the app needs
 # next to it on install, so the packaged app runs without Qt installed.

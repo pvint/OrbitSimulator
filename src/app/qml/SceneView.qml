@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The 3D scene. For M0 it is only a placeholder Earth that proves Qt Quick 3D
 // works inside the widget window. M3 replaces it with the real globe and
 // trajectories.

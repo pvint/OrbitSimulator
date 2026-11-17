@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.25)
 
 project(OrbitSimulator
@@ -21,6 +22,10 @@ option(ORBIT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
 
+# Standard install locations (bin/, share/doc/, ...). Distribution packaging,
+# such as a Gentoo ebuild, relies on these.
+include(GNUInstallDirs)
+
 # The physics core comes first and has no Qt dependency. Everything else is
 # a client of it.
 add_subdirectory(src/core)
@@ -34,5 +39,7 @@ if(ORBIT_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+install(FILES LICENSE README.md TYPE DOC)
 
 include(Packaging)

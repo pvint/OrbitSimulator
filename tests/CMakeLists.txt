@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Physics tests, using Catch2 v3.
 #
 # FetchContent first looks for an installed Catch2 (FIND_PACKAGE_ARGS). Only if

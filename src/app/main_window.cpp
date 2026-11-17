@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "main_window.hpp"
 
 #include <QApplication>
@@ -87,6 +88,8 @@ void MainWindow::showAbout() {
         this, tr("About %1").arg(QApplication::applicationName()),
         tr("<h3>%1 %2</h3>"
            "<p>A rocket launch and orbit simulator for building intuition "
-           "about orbital mechanics.</p>")
+           "about orbital mechanics.</p>"
+           "<p>Free software under the GNU General Public License, "
+           "version 3 or later.</p>")
             .arg(QApplication::applicationName(), QApplication::applicationVersion()));
 }

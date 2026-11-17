@@ -68,6 +68,11 @@ docs/          design decisions and physics notes
 prototype/web/ the original 2D browser prototype
 ```
 
+## Licence
+
+GPL-3.0-or-later: see [LICENSE](LICENSE). You may use, change and share this
+program, but versions you distribute must also be free software under the GPL.
+
 ## Development
 
 - Code style: `.clang-format` (most editors apply it on save). Lint:

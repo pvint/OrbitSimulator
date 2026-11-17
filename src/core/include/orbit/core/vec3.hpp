@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // A small 3D vector of doubles for positions, velocities and accelerations.
 //
 // Physics always uses double precision. Qt's own QVector3D uses float, which

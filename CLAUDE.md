@@ -62,6 +62,10 @@ prototype/web/ the original JavaScript prototype, kept for reference
   merged to `main` when the milestone runs. Commit messages: a short summary
   line, then why.
 - Big or hard-to-reverse decisions get an entry in `docs/decisions.md`.
+- Licence GPL-3.0-or-later. Every new source file (C++, QML, CMake) starts with
+  `// SPDX-License-Identifier: GPL-3.0-or-later` (`#` in CMake).
+- Install paths use GNUInstallDirs (`${CMAKE_INSTALL_BINDIR}` etc.), so distro
+  packaging works.
 
 ## Tech stack
 
@@ -85,7 +89,8 @@ Each milestone ends with something that runs.
 | M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow) | |
 | M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned) | |
 | M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, simple burn sequence (trans-lunar injection), Moon in the 3D view | |
-| Later | Atmosphere + drag, staging, full maneuver editor, other bodies, GitHub + CI builds for Windows/macOS/Linux (AppImage) | |
+| Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
+| Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |
 
 ### Lessons from the prototype (keep in mind for M1)
 

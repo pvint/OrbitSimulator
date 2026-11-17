@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # orbit_core: the physics library.
 #
 # Rule: nothing in here may depend on Qt. Plain C++20 and the standard library

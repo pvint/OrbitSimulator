@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "orbit/core/vec3.hpp"
 
 #include <ostream>

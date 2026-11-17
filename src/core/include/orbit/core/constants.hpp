@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Physical constants. Everything is in SI units: metres, kilograms, seconds.
 #pragma once
 

@@ -90,11 +90,18 @@ the target altitude, coasts to apoapsis, then burns towards circular velocity
 produced a clean low orbit from a single burn to depletion. Real launchers
 also use closed-loop guidance and a second burn.
 
+### 9. Licence: GPL-3.0-or-later (2026-11-17)
+
+**Decision:** the project is licensed GPL-3.0-or-later. `LICENSE` holds the
+full text, and every source file starts with an
+`SPDX-License-Identifier: GPL-3.0-or-later` line.
+
+**Why:** the user's choice: anyone may use, change and share it, but
+modified versions must stay free. Qt's LGPL is compatible.
+
 ---
 
 ## Open questions
 
-- **Licence.** MIT, GPL-3.0 or something else? Qt is LGPL, so any of them work.
-  Decide before the code goes public.
 - **App icon and identifier.** The macOS bundle id is a placeholder
   (`io.github.orbitsim`).

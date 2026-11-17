@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Command-line front end to the physics core.
 //
 // For now it only reports its version and the constants it uses. From M1 on
