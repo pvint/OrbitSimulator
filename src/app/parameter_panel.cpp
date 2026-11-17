@@ -54,6 +54,7 @@ ParameterPanel::ParameterPanel(QWidget* parent)
     m_rows.reserve(params.size());
 
     for (const orbit::ParameterInfo& p : params) {
+        if (p.derived) continue; // e.g. burn time: shown under Derived, swept from the Sweep panel
         if (p.group != currentGroup) {
             currentGroup = p.group;
             group = new QGroupBox(toQString(p.group), this);
@@ -152,6 +153,11 @@ void ParameterPanel::setMission(const orbit::Mission& mission) {
     refreshWidgets();
 }
 
+void ParameterPanel::setLockedParameter(std::string_view key) {
+    m_lockedKey = key == "burn-time" ? std::string("propellant") : std::string(key);
+    refreshWidgets();
+}
+
 void ParameterPanel::onValueEdited(const Row& row, double value) {
     row.info->set(m_mission, value);
     refreshWidgets();
@@ -168,11 +174,16 @@ void ParameterPanel::refreshWidgets() {
         r.slider->setValue(toSliderSteps(*r.info, value));
         r.spinBox->setValue(value);
 
-        // The target altitude only matters with auto-circularize on.
-        const bool active = r.info->key != "target-altitude" || m_mission.autoCircularize;
+        // The target altitude only matters with auto-circularize on, and a
+        // swept parameter is set by the sweep, not the slider.
+        const bool locked = r.info->key == m_lockedKey;
+        const bool active =
+            !locked && (r.info->key != "target-altitude" || m_mission.autoCircularize);
         r.label->setEnabled(active);
         r.slider->setEnabled(active);
         r.spinBox->setEnabled(active);
+        r.label->setToolTip(locked ? tr("Being swept: see the Sweep panel")
+                                   : toQString(r.info->help));
     }
     const QSignalBlocker blockCheck(m_autoCircularize);
     m_autoCircularize->setChecked(m_mission.autoCircularize);

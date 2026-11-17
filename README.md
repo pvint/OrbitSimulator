@@ -4,11 +4,11 @@ A desktop app for building intuition about orbital mechanics. Launch a rocket
 from anywhere on a rotating Earth, see where it goes, and sweep a parameter
 to compare a whole family of trajectories side by side.
 
-**Status:** early development. The desktop app shows the flight on a textured
-3D Earth with playback, plus live parameter sliders, flight results and
-graphs, re-simulating as you drag. The physics core is 3D and tested, and
-`orbitsim-cli` flies missions from the command line. Parameter sweeps and
-scenario files are next. See the roadmap in [CLAUDE.md](CLAUDE.md). The
+**Status:** early development. The desktop app shows flights on a textured
+3D Earth with playback, live parameter sliders, results and graphs, parameter
+sweeps that compare a whole family of flights, and scenario files with
+built-in examples. `orbitsim-cli` flies missions and sweeps from the command
+line. Next: the Moon. See the roadmap in [CLAUDE.md](CLAUDE.md). The
 original 2D browser prototype, which already works, is in
 [prototype/web](prototype/web/README.md).
 
@@ -45,6 +45,20 @@ the ground track (the path over the ground) yellow. The orbit stays fixed in
 space while the Earth turns underneath, which is why the ground track drifts
 west each orbit.
 
+**Sweeps.** In the Sweep panel pick a parameter, a range and a number of
+flights, then *Run sweep*. Every flight appears in its own colour, in 3D and
+faintly in the graphs; the legend lists each one's outcome and orbit, and
+clicking a row selects it. The swept parameter's slider is locked; *Single
+flight* goes back. In single-flight mode, the last few flights stay behind as
+grey ghosts so you can see what a slider change did (*Clear ghosts* removes
+them).
+
+**Scenarios.** *File ▸ Examples* has ready-made scenarios (equatorial and
+polar launches, east vs west, kick-angle and propellant sweeps, a pure
+gravity turn...). *Save Scenario* writes the current setup to a JSON file
+you can share or edit by hand; `orbitsim file.json` opens one directly. The
+examples live in [scenarios/](scenarios/).
+
 `orbitsim --screenshot FILE` saves an image of the window and quits.
 ```
 
@@ -53,6 +67,8 @@ west each orbit.
 ```sh
 build/dev/src/cli/orbitsim-cli                        # default rocket from Cape Canaveral
 build/dev/src/cli/orbitsim-cli --latitude 0 --azimuth 270  # launch west from the equator
+build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9   # a sweep, as a table
+build/dev/src/cli/orbitsim-cli --scenario scenarios/vandenberg-polar.json
 build/dev/src/cli/orbitsim-cli --help                 # all options
 build/dev/src/cli/orbitsim-cli --csv flight.csv       # every sample, for plotting
 ```
@@ -89,6 +105,7 @@ it isn't by default, since a distribution's Qt can't be bundled reliably; see
 src/core/      the physics, in plain C++ (no Qt)
 src/cli/       orbitsim-cli: runs the physics without a GUI
 src/app/       the Qt desktop app (Widgets, plus QML for the 3D view and plots)
+scenarios/     example scenario files
 tools/         helper scripts (rebuilding the Earth texture)
 tests/         physics tests (Catch2)
 docs/          design decisions and physics notes

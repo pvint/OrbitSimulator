@@ -24,11 +24,12 @@ TEST_CASE("Every parameter writes and reads back the same display value", "[para
 
 TEST_CASE("Setting one parameter leaves the others alone", "[parameters]") {
     for (const ParameterInfo& changed : missionParameters()) {
+        if (changed.derived) continue; // derived ones change others on purpose
         CAPTURE(changed.key);
         Mission m = defaultMission();
         changed.set(m, changed.min);
         for (const ParameterInfo& other : missionParameters()) {
-            if (other.key == changed.key) continue;
+            if (other.key == changed.key || other.derived) continue;
             CAPTURE(other.key);
             REQUIRE(other.get(m) == other.get(defaultMission()));
         }
@@ -57,4 +58,14 @@ TEST_CASE("Keys are unique and can be looked up", "[parameters]") {
     Mission m = defaultMission();
     findParameter("kick-angle")->set(m, 25.0);
     REQUIRE_THAT(m.guidance.kickAngle, WithinAbs(0.436332313, 1e-9));
+}
+
+TEST_CASE("Burn time is derived: setting it sets the propellant", "[parameters]") {
+    const ParameterInfo* p = findParameter("burn-time");
+    REQUIRE(p != nullptr);
+    REQUIRE(p->derived);
+    Mission m = defaultMission();
+    p->set(m, 100.0);
+    REQUIRE_THAT(burnTime(m.rocket), WithinAbs(100.0, 1e-9));
+    REQUIRE_THAT(m.rocket.propellantMass, WithinAbs(100.0 * massFlowRate(m.rocket), 1e-6));
 }

@@ -162,6 +162,34 @@ mapping is a rotation, not a mirror image, so east stays east; a test
 checks this. The custom mesh puts texture coordinates exactly on
 latitude/longitude; the built-in sphere's mapping is undocumented.
 
+### 15. Scenario files: JSON, versioned, in display units (2026-11-17, M4)
+
+**Decision:** scenarios are JSON with `"format": "orbitsim-scenario"` and an
+integer `"version"`. Mission values use the parameter table's keys and
+display units (t, kN, °, km); missing keys take defaults; unknown keys are
+warnings. Parsing lives in the core (nlohmann/json, header-only, MIT), so the
+CLI and app share it. Saving writes every parameter.
+
+**Why:** people should be able to read and hand-edit scenarios, so display
+units and readable keys. Defaults for missing keys make small, focused
+example files possible. Writing every parameter keeps saved files meaningful
+if defaults change. The version number lets older files keep working.
+Demo mode (M6) will use the same files, each with an extra caption and
+camera section.
+
+**Considered:** TOML (nice to edit, but JSON has better tooling everywhere);
+Qt's QJsonDocument (would pull Qt into the core and the CLI).
+
+### 16. Sweeps run in parallel on their own thread pool (2026-11-17, M4)
+
+**Decision:** a request (mission + optional sweep) runs on a worker thread;
+a sweep's flights are mapped over a dedicated QThreadPool. Results arrive as
+one `RunSet` with a colour per flight.
+
+**Why:** a dedicated pool avoids a classic deadlock: a task in the global pool
+blocking on more work for the same pool. One `RunSet` per request keeps
+"latest wins" simple, and every panel gets a consistent snapshot.
+
 ---
 
 ## Open questions

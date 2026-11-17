@@ -1,0 +1,12 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 1,
+  "name": "Polar orbit from Vandenberg",
+  "description": "California, launching a little west of south (azimuth 191°). Due south would give about 88°, because the Earth's eastward spin tilts the orbit. Aiming west of south overcomes that and reaches 97°, a slightly retrograde orbit like the sun-synchronous ones used by Earth-observation satellites. Going against the Earth's spin costs extra delta-v.",
+  "mission": {
+    "latitude": 34.7,
+    "longitude": -120.6,
+    "azimuth": 191,
+    "isp": 360
+  }
+}

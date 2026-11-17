@@ -3,6 +3,7 @@
 
 #include <QCheckBox>
 #include <QLineSeries>
+#include <QMetaObject>
 #include <QPointF>
 #include <QQmlError>
 #include <QQuickItem>
@@ -47,6 +48,23 @@ QString labelFormatFor(double tick) {
     return QStringLiteral("%.2f");
 }
 
+/// Make sure the graph has at least `count` faint overlay series.
+void ensureOverlays(QObject* view, QLineSeries* selected, std::vector<QLineSeries*>& overlays,
+                    std::size_t count) {
+    if (overlays.size() >= count) return;
+    while (overlays.size() < count) {
+        auto* series = new QLineSeries(view);
+        series->setWidth(1.0);
+        series->setOpacity(0.45);
+        QMetaObject::invokeMethod(view, "addSeries", Q_ARG(QObject*, series));
+        overlays.push_back(series);
+    }
+    // Series are drawn in the order they were added: move the selected
+    // flight's series back to the end so it stays on top.
+    QMetaObject::invokeMethod(view, "removeSeries", Q_ARG(QObject*, selected));
+    QMetaObject::invokeMethod(view, "addSeries", Q_ARG(QObject*, selected));
+}
+
 } // namespace
 
 PlotPanel::PlotPanel(QWidget* parent)
@@ -88,7 +106,9 @@ void PlotPanel::connectGraphs() {
             graph ? qobject_cast<QValueAxis*>(graph->property("xAxis").value<QObject*>()) : nullptr;
         g.yAxis =
             graph ? qobject_cast<QValueAxis*>(graph->property("yAxis").value<QObject*>()) : nullptr;
-        if (!g.series || !g.xAxis || !g.yAxis) {
+        g.view = graph ? graph->property("view").value<QObject*>() : nullptr;
+        if (g.series) g.defaultColor = g.series->color();
+        if (!g.series || !g.xAxis || !g.yAxis || !g.view) {
             qWarning() << "Plots.qml: graph" << names[i] << "is missing its series or axes";
             return;
         }
@@ -96,16 +116,20 @@ void PlotPanel::connectGraphs() {
     m_graphsFound = true;
 }
 
-void PlotPanel::showResult(std::shared_ptr<const orbit::SimResult> result) {
-    m_result = std::move(result);
+void PlotPanel::showRunSet(std::shared_ptr<const RunSet> runs, int selected) {
+    if (!runs || runs->runs.empty()) return;
+    m_runs = std::move(runs);
+    m_selected = std::clamp(selected, 0, static_cast<int>(m_runs->runs.size()) - 1);
     refresh();
 }
 
 void PlotPanel::refresh() {
-    if (!m_graphsFound || !m_result || m_result->samples.empty()) return;
-    const orbit::SimResult& r = *m_result;
+    if (!m_graphsFound || !m_runs) return;
+    const FlightRun& selected = m_runs->runs[static_cast<std::size_t>(m_selected)];
+    const orbit::SimResult& r = *selected.result;
+    if (r.samples.empty()) return;
 
-    // Time range: the whole flight, or up to the last engine event plus a margin.
+    // Time range: the selected flight, or up to its last engine event plus a margin.
     double tMax = r.duration;
     if (m_poweredOnly->isChecked() && !r.events.empty()) {
         tMax = std::min(r.duration, r.events.back().sample.t * 1.05);
@@ -117,17 +141,38 @@ void PlotPanel::refresh() {
     const double timeScale = minutes ? 1.0 / 60.0 : 1.0;
     const NiceAxis xNice = niceAxis(tMax * timeScale);
 
+    const std::size_t overlayCount = m_runs->isSweep() ? m_runs->runs.size() - 1 : 0;
+
     for (Graph& g : m_graphs) {
-        QList<QPointF> points;
-        points.reserve(static_cast<qsizetype>(r.samples.size()));
         double yMax = 0.0;
-        for (const orbit::Sample& s : r.samples) {
-            if (s.t > tMax) break;
-            const double y = g.value(s);
-            points.append({s.t * timeScale, y});
-            yMax = std::max(yMax, y);
+        const auto pointsFor = [&](const orbit::SimResult& result) {
+            QList<QPointF> points;
+            points.reserve(static_cast<qsizetype>(result.samples.size()));
+            for (const orbit::Sample& s : result.samples) {
+                if (s.t > tMax) break;
+                const double y = g.value(s);
+                points.append({s.t * timeScale, y});
+                yMax = std::max(yMax, y);
+            }
+            return points;
+        };
+
+        g.series->replace(pointsFor(r));
+        g.series->setColor(m_runs->isSweep() ? selected.color : g.defaultColor);
+
+        ensureOverlays(g.view, g.series, g.overlays, overlayCount);
+        std::size_t used = 0;
+        for (std::size_t i = 0; i < m_runs->runs.size() && m_runs->isSweep(); ++i) {
+            if (std::cmp_equal(i, m_selected)) continue;
+            QLineSeries* overlay = g.overlays[used++];
+            overlay->replace(pointsFor(*m_runs->runs[i].result));
+            overlay->setColor(m_runs->runs[i].color);
+            overlay->setVisible(true);
         }
-        g.series->replace(points);
+        for (std::size_t i = used; i < g.overlays.size(); ++i) {
+            g.overlays[i]->clear();
+            g.overlays[i]->setVisible(false);
+        }
 
         g.xAxis->setRange(0.0, tMax * timeScale);
         g.xAxis->setTickInterval(xNice.tick);

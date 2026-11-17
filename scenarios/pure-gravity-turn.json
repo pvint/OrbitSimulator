@@ -1,0 +1,10 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 1,
+  "name": "Pure gravity turn (no circularization)",
+  "description": "The engine burns until the propellant runs out, with no second burn. Reaching orbit this way is a knife edge: the turn has to level off just as orbital speed is reached. Below about 30° the rocket falls back; at 30-32° it scrapes into a low, very elliptical orbit; above that it turns over into the ground.",
+  "mission": {
+    "auto-circularize": false
+  },
+  "sweep": { "parameter": "kick-angle", "from": 20, "to": 40, "steps": 11 }
+}

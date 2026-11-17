@@ -28,10 +28,16 @@ int main(int argc, char* argv[]) {
                                                   "(default 3000)."),
                                    QStringLiteral("ms"), QStringLiteral("3000"));
     parser.addOptions({screenshot, delay});
+    parser.addPositionalArgument(QStringLiteral("scenario"),
+                                 QStringLiteral("A scenario file to open (optional)."),
+                                 QStringLiteral("[scenario]"));
     parser.process(app);
 
     MainWindow window;
     window.show();
+    if (!parser.positionalArguments().isEmpty()) {
+        window.openScenarioFile(parser.positionalArguments().constFirst());
+    }
 
     if (parser.isSet(screenshot)) {
         const QString path = parser.value(screenshot);

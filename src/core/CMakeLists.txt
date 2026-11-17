@@ -1,9 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # orbit_core: the physics library.
 #
-# Rule: nothing in here may depend on Qt. Plain C++20 and the standard library
-# only, so the physics can be tested, run from the command line, and reused
-# by any front end.
+# Rule: nothing in here may depend on Qt. Plain C++20, the standard library,
+# and nlohmann/json (header-only, for scenario files) only, so the physics can
+# be tested, run from the command line, and reused by any front end.
+
+# JSON for scenario files: the installed nlohmann_json if there is one,
+# otherwise a pinned download. Used only inside scenario.cpp.
+include(FetchContent)
+FetchContent_Declare(nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    FIND_PACKAGE_ARGS 3.11)
+FetchContent_MakeAvailable(nlohmann_json)
 
 configure_file(version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/orbit/core/version.hpp" @ONLY)
 
@@ -14,7 +22,9 @@ add_library(orbit_core STATIC
     src/mission_parameters.cpp
     src/orbit.cpp
     src/rocket.cpp
+    src/scenario.cpp
     src/simulation.cpp
+    src/sweep.cpp
     src/vec3.cpp
 )
 add_library(orbit::core ALIAS orbit_core)
@@ -24,4 +34,5 @@ target_include_directories(orbit_core PUBLIC
     "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 target_compile_features(orbit_core PUBLIC cxx_std_20)
+target_link_libraries(orbit_core PRIVATE nlohmann_json::nlohmann_json)
 orbit_set_warnings(orbit_core)

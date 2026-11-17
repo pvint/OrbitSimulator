@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Command-line front end to the physics core: fly one mission and print the
-// outcome, or write the trajectory as CSV.
+// Command-line front end to the physics core: fly one mission (or a sweep)
+// and print the outcome, or write the trajectory as CSV.
 //
-//   orbitsim-cli                          default mission
-//   orbitsim-cli --kick-angle 30 --latitude 0   change parameters (see --help)
-//   orbitsim-cli --csv flight.csv         also write every sample
+//   orbitsim-cli                                  default mission
+//   orbitsim-cli --kick-angle 30 --latitude 0     change parameters (see --help)
+//   orbitsim-cli --scenario scenarios/kourou-equatorial.json
+//   orbitsim-cli --sweep kick-angle:5:45:9        a table, one row per flight
+//   orbitsim-cli --csv flight.csv                 also write every sample
 
 #include "orbit/core/angles.hpp"
 #include "orbit/core/mission_parameters.hpp"
+#include "orbit/core/scenario.hpp"
 #include "orbit/core/simulation.hpp"
+#include "orbit/core/sweep.hpp"
 #include "orbit/core/version.hpp"
 
 #include <algorithm>
@@ -17,6 +21,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <sstream>
 #include <string>
@@ -41,8 +46,15 @@ void printUsage() {
         std::cout << "  --" << padded(p.key, 17) << padded(p.unit, 4) << p.help << '\n';
     }
     std::cout << "  --no-circularize       burn until the propellant runs out\n"
+                 "\nScenarios and sweeps:\n"
+                 "  --scenario FILE        start from a scenario file (put it first; later\n"
+                 "                         options change it)\n"
+                 "  --sweep KEY:FROM:TO:STEPS  fly STEPS flights with parameter KEY from FROM\n"
+                 "                         to TO, e.g. --sweep kick-angle:5:45:9\n"
+                 "  --no-sweep             ignore the scenario's sweep\n"
+                 "  --save-scenario FILE   save the mission (and sweep) as a scenario file\n"
                  "\nOutput options:\n"
-                 "  --csv FILE             write every sample (SI units) to FILE\n"
+                 "  --csv FILE             write every sample (SI units) to FILE (single flight)\n"
                  "  --version              print the version and exit\n"
                  "  --help                 show this help\n";
 }
@@ -53,6 +65,27 @@ bool parseNumber(std::string_view text, double& out) {
     const char* end = begin + text.size();
     const auto [ptr, ec] = std::from_chars(begin, end, out);
     return ec == std::errc{} && ptr == end;
+}
+
+/// Parses "kick-angle:5:45:9".
+std::optional<orbit::SweepSpec> parseSweep(std::string_view text) {
+    std::vector<std::string_view> parts;
+    for (std::size_t start = 0;;) {
+        const std::size_t colon = text.find(':', start);
+        parts.push_back(text.substr(start, colon - start));
+        if (colon == std::string_view::npos) break;
+        start = colon + 1;
+    }
+    orbit::SweepSpec spec;
+    double steps = 0.0;
+    if (parts.size() != 4 || orbit::findParameter(parts[0]) == nullptr ||
+        !parseNumber(parts[1], spec.from) || !parseNumber(parts[2], spec.to) ||
+        !parseNumber(parts[3], steps) || steps < 1 || steps != std::floor(steps)) {
+        return std::nullopt;
+    }
+    spec.parameter = std::string(parts[0]);
+    spec.steps = static_cast<int>(steps);
+    return spec;
 }
 
 std::string km(double metres) {
@@ -115,12 +148,32 @@ bool writeCsv(const orbit::SimResult& result, const std::string& path) {
     return static_cast<bool>(out);
 }
 
+void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec) {
+    const orbit::ParameterInfo& p = *orbit::findParameter(spec.parameter);
+    const auto values = orbit::sweepValues(spec);
+    const auto missions = orbit::sweepMissions(base, spec);
+    std::cout << "Sweep of " << p.label << " (" << p.unit << ")\n\n"
+              << std::right << std::setw(10) << "value" << "  " << std::left << std::setw(11)
+              << "outcome" << std::right << std::setw(13) << "periapsis" << std::setw(13)
+              << "apoapsis" << std::setw(9) << "incl." << std::setw(11) << "dv used" << '\n';
+    for (std::size_t i = 0; i < missions.size(); ++i) {
+        const orbit::SimResult r = orbit::simulate(missions[i]);
+        std::cout << std::fixed << std::setprecision(2) << std::setw(10) << values[i] << "  "
+                  << std::left << std::setw(11) << orbit::toString(r.outcome) << std::right
+                  << std::setw(13) << km(r.orbit.periapsisAltitude) << std::setw(13)
+                  << km(r.orbit.apoapsisAltitude) << std::setprecision(1) << std::setw(9)
+                  << orbit::radToDeg(r.orbit.inclination) << std::setprecision(0) << std::setw(7)
+                  << r.deltaVUsed << " m/s\n";
+    }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
     const std::span args(argv + 1, static_cast<std::size_t>(argc - 1));
-    orbit::Mission mission = orbit::defaultMission();
+    orbit::Scenario scenario;
     std::string csvPath;
+    std::string savePath;
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
@@ -133,12 +186,18 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (arg == "--no-circularize") {
-            mission.autoCircularize = false;
+            scenario.mission.autoCircularize = false;
             continue;
         }
+        if (arg == "--no-sweep") {
+            scenario.sweep.reset();
+            continue;
+        }
+        const bool takesText =
+            arg == "--csv" || arg == "--scenario" || arg == "--sweep" || arg == "--save-scenario";
         const orbit::ParameterInfo* param =
             arg.starts_with("--") ? orbit::findParameter(arg.substr(2)) : nullptr;
-        if (arg != "--csv" && param == nullptr) {
+        if (!takesText && param == nullptr) {
             std::cerr << "Unknown option: " << arg << "\n\n";
             printUsage();
             return 1;
@@ -148,19 +207,57 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         const std::string_view value = args[++i];
+
         if (arg == "--csv") {
             csvPath = value;
-            continue;
+        } else if (arg == "--save-scenario") {
+            savePath = value;
+        } else if (arg == "--scenario") {
+            try {
+                const orbit::LoadedScenario loaded = orbit::loadScenarioFile(std::string(value));
+                for (const auto& warning : loaded.warnings) {
+                    std::cerr << "warning: " << warning << '\n';
+                }
+                scenario = loaded.scenario;
+                std::cout << "Scenario: " << scenario.name << "\n\n";
+            } catch (const orbit::ScenarioError& e) {
+                std::cerr << value << ": " << e.what() << '\n';
+                return 1;
+            }
+        } else if (arg == "--sweep") {
+            scenario.sweep = parseSweep(value);
+            if (!scenario.sweep) {
+                std::cerr << "--sweep needs KEY:FROM:TO:STEPS, e.g. kick-angle:5:45:9\n";
+                return 1;
+            }
+        } else {
+            double number = 0.0;
+            if (!parseNumber(value, number)) {
+                std::cerr << "Not a number for " << arg << ": " << value << '\n';
+                return 1;
+            }
+            param->set(scenario.mission, number);
         }
-        double number = 0.0;
-        if (!parseNumber(value, number)) {
-            std::cerr << "Not a number for " << arg << ": " << value << '\n';
-            return 1;
-        }
-        param->set(mission, number);
     }
 
-    const orbit::SimResult result = orbit::simulate(mission);
+    if (!savePath.empty()) {
+        if (scenario.name.empty()) scenario.name = "Saved from orbitsim-cli";
+        try {
+            orbit::saveScenarioFile(scenario, savePath);
+            std::cout << "Saved " << savePath << "\n\n";
+        } catch (const orbit::ScenarioError& e) {
+            std::cerr << e.what() << '\n';
+            return 1;
+        }
+    }
+
+    if (scenario.sweep) {
+        if (!csvPath.empty()) std::cerr << "note: --csv is ignored for sweeps\n";
+        printSweep(scenario.mission, *scenario.sweep);
+        return 0;
+    }
+
+    const orbit::SimResult result = orbit::simulate(scenario.mission);
     printResult(result);
 
     if (!csvPath.empty()) {

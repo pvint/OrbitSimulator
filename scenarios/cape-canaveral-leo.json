@@ -1,0 +1,11 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 1,
+  "name": "Low orbit from Cape Canaveral",
+  "description": "The default rocket launched due east from Florida. It reaches a 200 km circular orbit inclined 28.5°, the same as the launch latitude.",
+  "mission": {
+    "latitude": 28.5,
+    "longitude": -80.6,
+    "azimuth": 90
+  }
+}

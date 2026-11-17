@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace {
 
@@ -32,8 +33,23 @@ const QColor kBurnColor(0xff, 0xb3, 0x47);
 const QColor kCoastColor(0x38, 0xbd, 0xf8);
 const QColor kGroundTrackColor(0xfa, 0xcc, 0x15);
 
+const QColor kGhostColor(0x94, 0xa3, 0xb8);
+
 /// The ground track floats this far above the surface so it isn't hidden by it.
 constexpr double kGroundTrackLift = 3000.0; // m
+
+/// How many recent flights stay visible as ghosts, and how often a new ghost
+/// may be added while a slider is dragged. Without the limit, dragging would
+/// fill the history with near-identical paths within a second.
+constexpr std::size_t kMaxGhosts = 8;
+constexpr qint64 kMinGhostIntervalMs = 150;
+
+QList<QVector3D> trajectoryPoints(const orbit::SimResult& result) {
+    QList<QVector3D> points;
+    points.reserve(static_cast<qsizetype>(result.samples.size()));
+    for (const orbit::Sample& s : result.samples) points.append(scene::fromPhysics(s.state.r));
+    return points;
+}
 
 QString formatMissionTime(double seconds) {
     const auto total = static_cast<long long>(std::floor(seconds));
@@ -105,7 +121,13 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
     row->addWidget(m_timeSlider, 1);
     row->addWidget(m_timeLabel);
     row->addWidget(m_speed);
+    auto* clear = new QToolButton(bar);
+    clear->setText(tr("Clear ghosts"));
+    clear->setToolTip(tr("Remove the faded paths of earlier flights"));
+    connect(clear, &QToolButton::clicked, this, &GlobeView::clearGhosts);
+
     row->addWidget(m_follow);
+    row->addWidget(clear);
     row->addWidget(reset);
     layout->addWidget(bar);
 }
@@ -124,55 +146,121 @@ void GlobeView::connectScene() {
     if (!m_trajectory || !m_groundTrack) {
         qWarning() << "GlobeScene.qml: trajectory or ground track geometry not found";
     }
+
+    const int count = m_scene->property("extraPathCount").toInt();
+    for (int i = 0; i < count; ++i) {
+        QVariant model;
+        QMetaObject::invokeMethod(m_scene, "extraPath", Q_RETURN_ARG(QVariant, model),
+                                  Q_ARG(QVariant, i));
+        auto* object = model.value<QObject*>();
+        auto* line =
+            object ? qobject_cast<PolylineGeometry*>(object->property("line").value<QObject*>())
+                   : nullptr;
+        if (!line) break;
+        m_extraPaths.push_back({object, line});
+    }
 }
 
-void GlobeView::showResult(std::shared_ptr<const orbit::SimResult> result) {
+void GlobeView::showRunSet(std::shared_ptr<const RunSet> runs, int selected) {
+    if (!runs || runs->runs.empty()) return;
     const bool first = !m_result;
-    m_result = std::move(result);
-    updateLines();
+
+    // Ghosts: when one single flight replaces another, keep the old one.
+    if (runs->isSweep()) {
+        m_ghosts.clear();
+    } else if (m_result && m_runs && !m_runs->isSweep() &&
+               (!m_sinceLastGhost.isValid() || m_sinceLastGhost.elapsed() >= kMinGhostIntervalMs)) {
+        m_ghosts.push_front(m_result);
+        if (m_ghosts.size() > kMaxGhosts) m_ghosts.pop_back();
+        m_sinceLastGhost.start();
+    }
+
+    m_runs = std::move(runs);
+    m_selected = std::clamp(selected, 0, static_cast<int>(m_runs->runs.size()) - 1);
+    m_result = m_runs->runs[static_cast<std::size_t>(m_selected)].result;
+
+    updateSelectedLines();
+    updateExtraPaths();
     // Keep the playback time while the user tweaks parameters, clamped to
     // the new flight.
     setPlaybackTime(std::min(m_time, m_result->duration));
     if (first) resetView();
 }
 
-/// Build the trajectory (inertial frame) and ground track (Earth-fixed frame)
-/// from the samples.
-void GlobeView::updateLines() {
+void GlobeView::clearGhosts() {
+    m_ghosts.clear();
+    updateExtraPaths();
+}
+
+/// The selected flight: trajectory (inertial frame) and ground track
+/// (Earth-fixed frame).
+void GlobeView::updateSelectedLines() {
     if (!m_trajectory || !m_groundTrack || !m_result) return;
     const auto& samples = m_result->samples;
     const double theta0 = m_result->mission.earthRotationAngleAtLaunch;
 
-    QList<QVector3D> path;
+    // Single flights: burns orange, coasting blue. In a sweep the selected
+    // flight keeps its sweep colour (lighter where the engine burns) and is
+    // drawn thicker than the others.
+    const bool sweep = m_runs->isSweep();
+    const QColor runColor = m_runs->runs[static_cast<std::size_t>(m_selected)].color;
+    const QColor burnColor = sweep ? runColor.lighter(150) : kBurnColor;
+    const QColor coastColor = sweep ? runColor : kCoastColor;
+    m_scene->setProperty("trajectoryWidth", sweep ? 3.0 : 2.0);
+
+    const QList<QVector3D> path = trajectoryPoints(*m_result);
     QList<QColor> pathColors;
     QList<QVector3D> track;
-    QList<QColor> trackColors;
-    path.reserve(static_cast<qsizetype>(samples.size()));
-    pathColors.reserve(path.capacity());
-    track.reserve(path.capacity());
-    trackColors.reserve(path.capacity());
-
+    pathColors.reserve(path.size());
+    track.reserve(path.size());
     for (std::size_t i = 0; i < samples.size(); ++i) {
         const orbit::Sample& s = samples[i];
-        path.append(scene::fromPhysics(s.state.r));
         // A segment's colour is set by its first point, so colour each point
         // by the stretch leading up to it.
         const bool burning = i > 0 ? samples[i - 1].burning : s.burning;
-        pathColors.append(burning ? kBurnColor : kCoastColor);
+        pathColors.append(burning ? burnColor : coastColor);
 
         const orbit::Vec3 ecef =
             orbit::eciToEcef(s.state.r, orbit::earthRotationAngle(s.t, theta0));
         track.append(
             scene::fromPhysics((orbit::kRadiusEarth + kGroundTrackLift) * orbit::normalized(ecef)));
-        trackColors.append(kGroundTrackColor);
     }
     m_trajectory->setPoints(path, pathColors);
-    m_groundTrack->setPoints(track, trackColors);
+    m_groundTrack->setPoints(track, QList<QColor>(track.size(), kGroundTrackColor));
 
     const orbit::LaunchSite& site = m_result->mission.site;
     m_scene->setProperty("launchSitePosition",
                          scene::fromPhysics(orbit::positionFromLatLon(site.latitude, site.longitude,
                                                                       orbit::kRadiusEarth)));
+}
+
+/// The other flights of a sweep, or the ghosts of recent single flights.
+void GlobeView::updateExtraPaths() {
+    std::size_t used = 0;
+    const auto show = [&](const orbit::SimResult& result, const QColor& color, double opacity) {
+        if (used >= m_extraPaths.size()) return;
+        const ExtraPath& path = m_extraPaths[used++];
+        const QList<QVector3D> points = trajectoryPoints(result);
+        path.line->setPoints(points, QList<QColor>(points.size(), color));
+        path.model->setProperty("lineOpacity", opacity);
+        path.model->setProperty("visible", true);
+    };
+
+    if (m_runs && m_runs->isSweep()) {
+        for (std::size_t i = 0; i < m_runs->runs.size(); ++i) {
+            if (std::cmp_equal(i, m_selected)) continue;
+            show(*m_runs->runs[i].result, m_runs->runs[i].color, 0.6);
+        }
+    } else {
+        for (std::size_t i = 0; i < m_ghosts.size(); ++i) {
+            // Newest ghost faintly visible, older ones fading out.
+            const double age = static_cast<double>(i) / static_cast<double>(kMaxGhosts);
+            show(*m_ghosts[i], kGhostColor, 0.5 * (1.0 - age));
+        }
+    }
+    for (std::size_t i = used; i < m_extraPaths.size(); ++i) {
+        m_extraPaths[i].model->setProperty("visible", false);
+    }
 }
 
 void GlobeView::setPlaybackTime(double t) {
