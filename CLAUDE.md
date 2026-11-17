@@ -46,7 +46,7 @@ src/cli/       orbitsim-cli
 src/app/       Qt Widgets app: main window, docks, panels. QML scenes in qml/
 tests/         Catch2 tests for the core
 cmake/         CompilerWarnings.cmake (orbit_set_warnings), Packaging.cmake (CPack)
-docs/          decisions.md (why things are the way they are), physics notes
+docs/          decisions.md (why things are the way they are), physics.md (the physics, explained)
 prototype/web/ the original JavaScript prototype, kept for reference
 ```
 
@@ -84,15 +84,23 @@ Each milestone ends with something that runs.
 | # | Milestone | Status |
 |---|---|---|
 | M0 | Skeleton: CMake + presets, core lib, CLI, tests, Qt window with an embedded Quick 3D view, packaging, tooling | done |
-| M1 | 3D physics core: port the prototype to 3D state vectors. Launch site lat/lon + azimuth (exact), rotating Earth, inclination. Dormand–Prince 5(4) adaptive integrator with event location. Orbital elements (a, e, i, Ω, ω, ν). Pitch program + auto-circularize. Port and extend the prototype's tests. CLI runs a scenario and prints stats / CSV | next |
-| M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | |
+| M1 | 3D physics core: port the prototype to 3D state vectors. Launch site lat/lon + azimuth (exact), rotating Earth, inclination. Dormand–Prince 5(4) adaptive integrator with event location. Orbital elements (a, e, i, Ω, ω, ν). Pitch program + auto-circularize. Port and extend the prototype's tests. CLI runs a scenario and prints stats / CSV | done |
+| M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | next |
 | M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow) | |
 | M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned) | |
 | M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, simple burn sequence (trans-lunar injection), Moon in the 3D view | |
 | Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
 | Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |
 
-### Lessons from the prototype (keep in mind for M1)
+### Core API in brief (M1)
+
+`simulate(Mission, SimOptions) → SimResult` in `simulation.hpp` is the entry
+point. `Mission` = `Rocket` + `LaunchSite` + `AscentGuidance` + auto-circularize
+settings; `defaultMission()` gives the tuned defaults. Results hold
+evenly spaced `Sample`s (dense output), `FlightEvent`s, the final orbit's
+`OrbitalElements`, outcome and summary numbers. `docs/physics.md` explains it all.
+
+### Lessons from the prototype (still apply)
 
 - A pure gravity turn with one burn to depletion almost never reaches a clean
   orbit: it's a knife edge. Auto-circularize (cut off at the target apoapsis,
