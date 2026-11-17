@@ -190,17 +190,69 @@ one `RunSet` with a colour per flight.
 blocking on more work for the same pool. One `RunSet` per request keeps
 "latest wins" simple, and every panel gets a consistent snapshot.
 
+### 17. Flight programs: a mission is a list of steps (2026-11-17, M5)
+
+**Decision:** the hard-coded ascent → coast → circularize sequence became a
+data-driven list of steps (`FlightProgram`): burn or coast, a steering mode,
+an end condition, and an optional timeout. Flight plans build programs from
+mission settings; `simulateProgram()` runs any program.
+
+**Why:** going to the Moon needed more steps (parking orbit, injection,
+capture), and the user wants scripting for complex paths. Scripts will build
+or steer programs, rather than reaching into the integrator. Behaviour of the
+existing plans was kept identical (the tests guard it).
+
+### 18. Sun and Moon from low-precision analytic series (2026-11-17, M5)
+
+**Decision:** the Astronomical Almanac low-precision formulas (via Vallado)
+for the Sun (≈ 0.01°) and Moon (≈ 0.3°), with the IERS Earth rotation
+angle. UTC is treated as uniform time (±1 min).
+
+**Why:** they're short, readable, dependency-free and accurate enough to fly
+to the Moon in this model. JPL's numerical ephemerides (DE440) would need
+large data files and a reader. If the simulator grows into a solar-system
+model, the planets can come from JPL's published *approximate* Keplerian
+elements, still without data files.
+
+### 19. Reference frames and "up" (2026-11-17, M5)
+
+**Decision:** the simulation frame stays **Earth-centred and equatorial**:
+z along Earth's spin axis, x towards the vernal equinox. The 3D view has an
+orientation gizmo showing these axes and **ecliptic north**.
+
+**Background (the user asked):** the solar system's natural "up" is the
+north pole of the ecliptic, the plane of Earth's orbit. (The invariable
+plane, the average of all planets' orbits, is within about 1.6° of it.) It is
+tilted 23.4° from Earth's spin axis, which causes the seasons. The galaxy's
+plane is tilted about 60° to the ecliptic, so the Milky Way's "up" is a very
+different direction, and irrelevant for spaceflight within the solar system.
+
+**Later:** for a solar-system model, the natural frame is heliocentric and
+ecliptic (J2000), and the scene's "up" should become ecliptic north. Earth-
+and Moon-centred views would remain as rotated frames for local work.
+
+### 20. Sunlight direction is set as an explicit rotation (2026-11-17, M5)
+
+**Decision:** the Sun's light gets its orientation from a quaternion
+computed in C++ (turning the light's −z onto the sunlight's direction), not
+from QML's `lookAt()`.
+
+**Why:** with `lookAt()` the light never turned (checked with screenshots);
+the explicit rotation is unambiguous. Lighting is verified against the
+subsolar point (21.3°N 21.9°W at Apollo 11's launch).
+
 ---
 
 ## Open questions
 
 - **Scripting for complex paths.** The user wants scripting eventually.
-  Plan: in M5 the hard-coded flight sequence becomes a data-driven *flight
-  program* (steps such as "burn prograde until apoapsis = X", "coast until
-  …"). Scripts then build or steer flight programs rather than reaching
-  into the integrator. Candidate languages: Lua (small, embeddable, common in
+  Flight programs (decision 17) are the target: scripts will build or steer
+  them rather than reaching into the integrator. Candidate languages: Lua (small, embeddable, common in
   simulators) or Qt's QJSEngine (JavaScript, no new dependency). Either way
   the scripting layer lives outside `src/core`, which stays Qt-free.
 
+- **Moon texture.** The Moon is plain grey; NASA's CGI Moon Kit (LRO
+  imagery, public domain) would make it look real. Needs the user's go-ahead
+  to download.
 - **App icon and identifier.** The macOS bundle id is a placeholder
   (`io.github.orbitsim`).

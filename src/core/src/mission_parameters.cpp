@@ -58,7 +58,7 @@ constexpr std::array kParameters{
                   0.0, 23.95, 0.05, [](const Mission& m) { return launchHourOfDay(m); },
                   [](Mission& m, double v) { setLaunchHourOfDay(m, v); }, false, false},
     ParameterInfo{"azimuth", "Direction (azimuth)", "°", "Launch site",
-                  "Clockwise from north: 90° = east, 270° = west", 0.0, 360.0, 1.0,
+                  "Clockwise from north: 90° = east, 270° = west", 0.0, 360.0, 0.1,
                   [](const Mission& m) { return radToDeg(m.guidance.azimuth); },
                   [](Mission& m, double v) { m.guidance.azimuth = degToRad(v); }},
 

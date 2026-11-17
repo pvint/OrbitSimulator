@@ -6,7 +6,8 @@
 //
 // The trajectory is drawn in the inertial frame, so it stays put while the
 // Earth turns underneath it. The ground track and launch site belong to the
-// Earth node and turn with it.
+// Earth node and turn with it. The Moon moves along its orbit, and the
+// sunlight comes from the Sun's real direction at the playback time.
 
 import QtQuick
 import QtQuick3D
@@ -18,11 +19,15 @@ Item {
     property real earthRotation: 0             // degrees about the north pole
     property vector3d rocketPosition: Qt.vector3d(0, 0, 0)
     property vector3d launchSitePosition: Qt.vector3d(0, 0, 0) // Earth-fixed
-    property bool followRocket: false
+    property vector3d moonPosition: Qt.vector3d(384400, 0, 0)
+    property quaternion sunlightRotation: Qt.quaternion(1, 0, 0, 0)
+    /// What the camera circles: 0 = the Earth, 1 = the rocket, 2 = the Moon.
+    property int followTarget: 0
 
     // For C++ to fill in.
     property alias trajectory: trajectoryGeometry
     property alias groundTrack: groundTrackGeometry
+    property alias moonOrbit: moonOrbitGeometry
     property real trajectoryWidth: 2
 
     /// Extra trajectories: the other flights of a sweep, or fading "ghosts"
@@ -34,20 +39,25 @@ Item {
     // The camera orbits a target point: yaw turns it round the north-south
     // axis, pitch raises or lowers it, distance is how far away it is (km).
     readonly property real earthRadius: 6371
+    readonly property real moonRadius: 1737.4
     property real yaw: 0
     property real pitch: -25
     property real distance: 4 * earthRadius
-    readonly property vector3d target: followRocket ? rocketPosition : Qt.vector3d(0, 0, 0)
-    readonly property real minDistance: followRocket ? 20 : earthRadius + 50
+    readonly property vector3d target: followTarget === 1 ? rocketPosition
+                                     : followTarget === 2 ? moonPosition
+                                     : Qt.vector3d(0, 0, 0)
+    readonly property real minDistance: followTarget === 1 ? 20
+                                      : followTarget === 2 ? moonRadius + 50
+                                      : earthRadius + 50
     readonly property real maxDistance: 2.0e6
 
-    /// Look at a point (scene coordinates) on or above the Earth from a
-    /// distance of a few Earth radii.
-    function lookAt(p) {
+    /// Look from direction `p` (scene coordinates) at the current target,
+    /// from `fromDistance` km away.
+    function lookAt(p, fromDistance) {
         const len = Math.max(p.length(), 1e-6)
         yaw = Math.atan2(p.x, p.z) * 180 / Math.PI
         pitch = -Math.asin(p.y / len) * 180 / Math.PI
-        distance = 3.2 * earthRadius
+        distance = Math.max(minDistance, fromDistance)
     }
 
     // Keeps markers the same size on screen, whatever the zoom.
@@ -64,12 +74,13 @@ Item {
             antialiasingQuality: SceneEnvironment.High
         }
 
-        // Sunlight. Until the simulation knows the date, the Sun sits in a
-        // fixed direction that lights the default launch site at liftoff.
+        // Sunlight, from the Sun's direction. A directional light shines down
+        // its own −z axis; C++ supplies the rotation that turns −z onto the
+        // direction the sunlight travels (from the Sun towards the Earth).
         DirectionalLight {
-            eulerRotation: Qt.vector3d(-20, -20, 0)
-            brightness: 1.5
-            ambientColor: Qt.rgba(0.06, 0.07, 0.09, 1.0) // so the night side isn't pitch black
+            rotation: root.sunlightRotation
+            brightness: 1.6
+            ambientColor: Qt.rgba(0.05, 0.06, 0.08, 1.0) // so the night side isn't pitch black
         }
 
         Node {
@@ -129,6 +140,27 @@ Item {
             }
         }
 
+        // --- The Moon and its orbit ------------------------------------------
+        Model {
+            geometry: GlobeGeometry {}
+            position: root.moonPosition
+            scale: Qt.vector3d(root.moonRadius, root.moonRadius, root.moonRadius)
+            materials: PrincipledMaterial {
+                baseColor: "#a4a4a4"
+                roughness: 1.0
+                metalness: 0.0
+                specularAmount: 0.05
+            }
+        }
+        Model {
+            geometry: PolylineGeometry { id: moonOrbitGeometry }
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                vertexColorsEnabled: true
+                opacity: 0.35
+            }
+        }
+
         // --- In the inertial frame -----------------------------------------
         Repeater3D {
             id: extraPaths
@@ -184,6 +216,76 @@ Item {
             const factor = Math.pow(1.0015, -wheel.angleDelta.y)
             root.distance = Math.max(root.minDistance,
                                      Math.min(root.maxDistance, root.distance * factor))
+        }
+    }
+
+    // --- Orientation gizmo ------------------------------------------------
+    // A small second view whose camera turns exactly like the main one, so its
+    // arrows show which way the frame's axes point:
+    //   X  towards the vernal equinox (♈), the direction of the Sun at the
+    //      March equinox: astronomy's zero of longitude in the sky
+    //   Z  celestial north: the Earth's spin axis
+    //   Y  completes the right-handed set
+    // and, dimmer, ecliptic north: the "up" of the solar system (the pole of
+    // the Earth's orbit), tilted 23.4° from celestial north. That tilt is
+    // what causes the seasons.
+    View3D {
+        id: gizmo
+        width: 120
+        height: 120
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.margins: 6
+        camera: gizmoCamera
+        environment: SceneEnvironment {
+            backgroundMode: SceneEnvironment.Transparent
+            antialiasingMode: SceneEnvironment.MSAA
+            antialiasingQuality: SceneEnvironment.High
+        }
+        Node {
+            eulerRotation.y: root.yaw
+            Node {
+                eulerRotation.x: root.pitch
+                PerspectiveCamera {
+                    id: gizmoCamera
+                    z: 330
+                    fieldOfView: 45
+                    clipNear: 1
+                    clipFar: 1000
+                }
+            }
+        }
+        // Scene axes are physics (x, z, −y): physics X is scene +x, physics
+        // Y is scene −z, physics Z (north) is scene +y.
+        AxisArrow { color: "#ef4444"; eulerRotation.z: -90 }  // X
+        AxisArrow { color: "#22c55e"; eulerRotation.x: -90 }  // Y
+        AxisArrow { color: "#3b82f6" }                        // Z
+        AxisArrow { color: "#a08b2c"; eulerRotation.x: 23.44; scale: Qt.vector3d(0.8, 0.8, 0.8) }
+
+        // Labels at the arrow tips, placed by projecting each tip into the view.
+        Repeater {
+            model: [
+                { text: "X ♈", tip: Qt.vector3d(112, 0, 0), color: "#ef4444" },
+                { text: "Y", tip: Qt.vector3d(0, 0, -112), color: "#22c55e" },
+                { text: "Z N", tip: Qt.vector3d(0, 112, 0), color: "#3b82f6" },
+                { text: "ecl", tip: Qt.vector3d(0, 92 * Math.cos(23.44 * Math.PI / 180),
+                                               92 * Math.sin(23.44 * Math.PI / 180)),
+                  color: "#c9a93a" }
+            ]
+            delegate: Text {
+                required property var modelData
+                // Mentioning yaw and pitch makes the binding update as the camera turns.
+                readonly property vector3d screen: {
+                    root.yaw; root.pitch
+                    return gizmo.mapFrom3DScene(modelData.tip)
+                }
+                x: screen.x - width / 2
+                y: screen.y - height / 2
+                text: modelData.text
+                color: modelData.color
+                font.pixelSize: 11
+                font.bold: true
+            }
         }
     }
 

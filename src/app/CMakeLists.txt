@@ -51,6 +51,7 @@ qt_add_qml_module(orbitsim
     URI OrbitSim
     VERSION 1.0
     QML_FILES
+        qml/AxisArrow.qml
         qml/GlobeScene.qml
         qml/Plots.qml
         qml/TimeGraph.qml

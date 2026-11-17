@@ -4,11 +4,12 @@ A desktop app for building intuition about orbital mechanics. Launch a rocket
 from anywhere on a rotating Earth, see where it goes, and sweep a parameter
 to compare a whole family of trajectories side by side.
 
-**Status:** early development. The desktop app shows flights on a textured
-3D Earth with playback, live parameter sliders, results and graphs, parameter
+**Status:** early development, but it flies to the Moon. The desktop app shows
+flights on a textured 3D Earth (lit by the real Sun for the launch date), with
+the Moon, playback, live parameter sliders, results and graphs, parameter
 sweeps that compare a whole family of flights, and scenario files with
 built-in examples. `orbitsim-cli` flies missions and sweeps from the command
-line. Next: the Moon. See the roadmap in [CLAUDE.md](CLAUDE.md). The
+line. Next: a guided demo mode. See the roadmap in [CLAUDE.md](CLAUDE.md). The
 original 2D browser prototype, which already works, is in
 [prototype/web](prototype/web/README.md).
 
@@ -53,6 +54,18 @@ flight* goes back. In single-flight mode, the last few flights stay behind as
 grey ghosts so you can see what a slider change did (*Clear ghosts* removes
 them).
 
+**To the Moon.** Choose a lunar *flight plan* (flyby or orbit), set a launch
+date and time, and press *Aim at the Moon* (or *Best launch time*). The
+rocket waits in a parking orbit until the Moon is in the right place, burns
+towards it, and either flies past, brakes into orbit round it, or hits it.
+The Flight panel's Moon section shows the closest approach and the lunar
+orbit. Try the lunar examples, especially the *lead angle sweep* and the
+*launch window*.
+
+The small arrows in the top-left corner of the 3D view show the axes: X
+towards the vernal equinox, Z towards celestial north (Earth's axis), and
+the dimmer arrow ecliptic north, the "up" of the solar system.
+
 **Scenarios.** *File ▸ Examples* has ready-made scenarios (equatorial and
 polar launches, east vs west, kick-angle and propellant sweeps, a pure
 gravity turn...). *Save Scenario* writes the current setup to a JSON file
@@ -69,6 +82,7 @@ build/dev/src/cli/orbitsim-cli                        # default rocket from Cape
 build/dev/src/cli/orbitsim-cli --latitude 0 --azimuth 270  # launch west from the equator
 build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9   # a sweep, as a table
 build/dev/src/cli/orbitsim-cli --scenario scenarios/vandenberg-polar.json
+build/dev/src/cli/orbitsim-cli --plan lunar-orbit --isp 450 --lead-angle-adjust 2 --aim-moon
 build/dev/src/cli/orbitsim-cli --help                 # all options
 build/dev/src/cli/orbitsim-cli --csv flight.csv       # every sample, for plotting
 ```

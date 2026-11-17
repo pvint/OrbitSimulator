@@ -4,15 +4,17 @@
 #include "orbit/core/angles.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/earth.hpp"
+#include "orbit/core/ephemeris.hpp"
 #include "polyline_geometry.hpp"
 #include "scene_coordinates.hpp"
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLocale>
 #include <QMetaObject>
 #include <QQmlError>
+#include <QQuaternion>
 #include <QQuickItem>
 #include <QQuickWidget>
 #include <QSlider>
@@ -21,12 +23,16 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <utility>
 
 namespace {
 
 constexpr int kSliderSteps = 2000;
+
+/// Playback speeds offered: simulated seconds per real second.
+constexpr std::array kSpeeds{1, 10, 60, 300, 1000, 5000, 20000, 100000};
 
 // Line colours: burns warm, coasting cool, the ground track yellow.
 const QColor kBurnColor(0xff, 0xb3, 0x47);
@@ -100,16 +106,21 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
 
     m_speed = new QComboBox(bar);
     m_speed->setToolTip(tr("Playback speed: simulated seconds per real second"));
-    for (const int factor : {1, 10, 60, 300, 1000, 5000}) {
-        m_speed->addItem(QStringLiteral("%1×").arg(factor), factor);
+    for (const int factor : kSpeeds) {
+        m_speed->addItem(QStringLiteral("%1×").arg(QLocale().toString(factor)), factor);
     }
     m_speed->setCurrentIndex(2); // 60×: a low orbit takes about 1.5 minutes
 
-    m_follow = new QCheckBox(tr("Follow rocket"), bar);
-    connect(m_follow, &QCheckBox::toggled, this, [this](bool on) {
+    // What the camera circles. Switching also picks a sensible distance.
+    m_centre = new QComboBox(bar);
+    m_centre->setToolTip(tr("What the camera circles around"));
+    m_centre->addItems({tr("Centre: Earth"), tr("Centre: Rocket"), tr("Centre: Moon")});
+    connect(m_centre, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (!m_scene) return;
-        m_scene->setProperty("followRocket", on);
-        m_scene->setProperty("distance", on ? 2000.0 : 4.0 * orbit::kRadiusEarth / 1000.0);
+        m_scene->setProperty("followTarget", index);
+        const double earthView = std::max(4.0 * orbit::kRadiusEarth, 1.4 * farthestDistance());
+        const std::array<double, 3> distances{earthView, 2.0e6, 1.2e7}; // m
+        m_scene->setProperty("distance", distances.at(static_cast<std::size_t>(index)) / 1000.0);
     });
 
     auto* reset = new QToolButton(bar);
@@ -126,7 +137,7 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
     clear->setToolTip(tr("Remove the faded paths of earlier flights"));
     connect(clear, &QToolButton::clicked, this, &GlobeView::clearGhosts);
 
-    row->addWidget(m_follow);
+    row->addWidget(m_centre);
     row->addWidget(clear);
     row->addWidget(reset);
     layout->addWidget(bar);
@@ -143,8 +154,9 @@ void GlobeView::connectScene() {
         qobject_cast<PolylineGeometry*>(m_scene->property("trajectory").value<QObject*>());
     m_groundTrack =
         qobject_cast<PolylineGeometry*>(m_scene->property("groundTrack").value<QObject*>());
-    if (!m_trajectory || !m_groundTrack) {
-        qWarning() << "GlobeScene.qml: trajectory or ground track geometry not found";
+    m_moonOrbit = qobject_cast<PolylineGeometry*>(m_scene->property("moonOrbit").value<QObject*>());
+    if (!m_trajectory || !m_groundTrack || !m_moonOrbit) {
+        qWarning() << "GlobeScene.qml: a line geometry was not found";
     }
 
     const int count = m_scene->property("extraPathCount").toInt();
@@ -184,7 +196,36 @@ void GlobeView::showRunSet(std::shared_ptr<const RunSet> runs, int selected) {
     // Keep the playback time while the user tweaks parameters, clamped to
     // the new flight.
     setPlaybackTime(std::min(m_time, m_result->duration));
-    if (first) resetView();
+    if (first || m_resetPending) {
+        resetView();
+        m_resetPending = false;
+    }
+}
+
+void GlobeView::resetViewOnNextResult() { m_resetPending = true; }
+
+/// Furthest the selected flight gets from the Earth's centre (m).
+double GlobeView::farthestDistance() const {
+    double farthest = 0.0;
+    if (m_result) {
+        for (const orbit::Sample& s : m_result->samples) {
+            farthest = std::max(farthest, orbit::norm(s.state.r));
+        }
+    }
+    return farthest;
+}
+
+/// The Moon's path over about a month around the launch, so its orbit is
+/// visible behind any flight.
+void GlobeView::updateMoonOrbit() {
+    if (!m_moonOrbit || !m_result || m_result->mission.launchEpoch == m_moonOrbitEpoch) return;
+    m_moonOrbitEpoch = m_result->mission.launchEpoch;
+    QList<QVector3D> points;
+    const QColor grey(0xb0, 0xb8, 0xc8);
+    for (int hour = -24 * 3; hour <= 24 * 28; hour += 2) {
+        points.append(scene::fromPhysics(orbit::moonPosition(m_moonOrbitEpoch + hour * 3600.0)));
+    }
+    m_moonOrbit->setPoints(points, QList<QColor>(points.size(), grey));
 }
 
 void GlobeView::clearGhosts() {
@@ -196,6 +237,7 @@ void GlobeView::clearGhosts() {
 /// (Earth-fixed frame).
 void GlobeView::updateSelectedLines() {
     if (!m_trajectory || !m_groundTrack || !m_result) return;
+    updateMoonOrbit();
     const auto& samples = m_result->samples;
     const double theta0 = orbit::earthRotationAngleAt(m_result->mission.launchEpoch);
 
@@ -272,6 +314,13 @@ void GlobeView::setPlaybackTime(double t) {
         m_time, orbit::earthRotationAngleAt(m_result->mission.launchEpoch));
     m_scene->setProperty("rocketPosition", scene::fromPhysics(state.r));
     m_scene->setProperty("earthRotation", orbit::radToDeg(theta));
+    const double epoch = m_result->mission.launchEpoch + m_time;
+    m_scene->setProperty("moonPosition", scene::fromPhysics(orbit::moonPosition(epoch)));
+    // Turn the light's −z axis onto the sunlight's direction of travel.
+    const QVector3D towardsSun =
+        scene::fromPhysics(orbit::normalized(orbit::sunPosition(epoch))).normalized();
+    m_scene->setProperty("sunlightRotation",
+                         QQuaternion::rotationTo(QVector3D(0.0F, 0.0F, -1.0F), -towardsSun));
 
     m_timeLabel->setText(formatMissionTime(m_time));
     if (!m_timeSlider->isSliderDown() && m_result->duration > 0.0) {
@@ -302,15 +351,46 @@ void GlobeView::onTick() {
     if (m_result && m_time >= m_result->duration) togglePlaying(); // stop at the end
 }
 
+/// A good starting view of the selected flight, and a playback speed that
+/// shows all of it in about a minute and a half.
 void GlobeView::resetView() {
     if (!m_scene || !m_result) return;
-    // The launch site, where it is at the current playback time.
-    const orbit::LaunchSite& site = m_result->mission.site;
-    const double theta = orbit::earthRotationAngle(
-        m_time, orbit::earthRotationAngleAt(m_result->mission.launchEpoch));
-    const orbit::Vec3 siteEci = orbit::rotateZ(
-        orbit::positionFromLatLon(site.latitude, site.longitude, orbit::kRadiusEarth), theta);
-    m_follow->setChecked(false);
-    QMetaObject::invokeMethod(m_scene, "lookAt",
-                              Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(siteEci))));
+    m_centre->setCurrentIndex(0); // circle the Earth
+
+    const double farthest = farthestDistance();
+    if (farthest > 5.0e7) {
+        // A long flight (to the Moon): look down on the plane it flies in,
+        // from far enough away to see all of it. The plane comes from the
+        // first sample well clear of the Earth.
+        orbit::Vec3 normal{0.0, 0.0, 1.0};
+        for (const orbit::Sample& s : m_result->samples) {
+            if (s.altitude() > 2.0e7) {
+                normal = orbit::normalized(orbit::cross(s.state.r, s.state.v));
+                break;
+            }
+        }
+        QMetaObject::invokeMethod(m_scene, "lookAt",
+                                  Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(normal))),
+                                  Q_ARG(QVariant, 2.4 * farthest / 1000.0));
+    } else {
+        // Look at the launch site, where it is at the current playback time.
+        const orbit::LaunchSite& site = m_result->mission.site;
+        const double theta = orbit::earthRotationAngle(
+            m_time, orbit::earthRotationAngleAt(m_result->mission.launchEpoch));
+        const orbit::Vec3 siteEci = orbit::rotateZ(
+            orbit::positionFromLatLon(site.latitude, site.longitude, orbit::kRadiusEarth), theta);
+        QMetaObject::invokeMethod(m_scene, "lookAt",
+                                  Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(siteEci))),
+                                  Q_ARG(QVariant, 3.2 * orbit::kRadiusEarth / 1000.0));
+    }
+
+    // Slowest speed that plays the whole flight within about 90 seconds.
+    std::size_t index = kSpeeds.size() - 1;
+    for (std::size_t i = 0; i < kSpeeds.size(); ++i) {
+        if (m_result->duration / kSpeeds.at(i) <= 90.0) {
+            index = i;
+            break;
+        }
+    }
+    m_speed->setCurrentIndex(static_cast<int>(index));
 }

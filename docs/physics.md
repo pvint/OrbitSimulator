@@ -28,13 +28,44 @@ At any point we also use the **local frame**: east, north and up. "Up" points
 away from Earth's centre; east is `z × up` (undefined at the poles, where we
 pick a fixed direction).
 
+## Time, and where the Sun and Moon are (`astro_time.hpp`, `ephemeris.hpp`)
+
+Every mission has a **launch time**. Times are counted in seconds since
+**J2000.0** (2000-01-01 12:00), the standard astronomical epoch, and
+converted to and from calendar dates through the **Julian date** (a
+continuous day count; Meeus, *Astronomical Algorithms*, ch. 7).
+
+The **Earth rotation angle** says how far the Earth has turned relative to
+the stars at a given moment (IERS definition):
+
+    θ = 2π · (0.7790572732640 + 1.00273781191135448 · days since J2000)
+
+That one number places every launch site in inertial space. It turns
+slightly more than once per (solar) day: one turn per *sidereal* day of
+23 h 56 min 4 s, because the Earth also moves along its orbit.
+
+The **Sun and Moon** come from the Astronomical Almanac's low-precision
+series (via Vallado): mean longitudes plus the largest periodic terms, then
+rotated from the ecliptic into the equatorial frame by the **obliquity**
+(23.44°, the tilt of Earth's axis). Accuracy: about 0.01° for the Sun and
+0.3° (≈ 2000 km) for the Moon. The tests check them against the 2024
+equinox, solstice, perihelion and aphelion, and the January 2024 new and
+full moons.
+
 ## Forces (`simulation.cpp`)
 
 | Force | Formula | Notes |
 |---|---|---|
-| Gravity | `a = −μ r / |r|³` | Point-mass Earth, μ = 3.986×10¹⁴ m³/s² |
-| Thrust | `a = F/m` along the guidance direction | Only while the engine runs |
+| Earth | `a = −μ r / |r|³` | Point mass, μ = 3.986×10¹⁴ m³/s² |
+| Moon, Sun | `a = μ_b ((r_b − r)/|r_b − r|³ − r_b/|r_b|³)` | See below |
+| Thrust | `a = F/m` along the steering direction | Only while the engine runs |
 | Mass flow | `dm/dt = −F / (Isp·g0)` | g0 = 9.80665 m/s² |
+
+The **third-body** formula has two terms. The first is the body's pull on the
+rocket. The second subtracts its pull on the Earth: our frame is centred on
+the Earth, which itself falls towards the Moon and Sun, and only the
+*difference* moves the rocket relative to the Earth. (It's also what raises
+tides.)
 
 No drag and no staging yet.
 
@@ -86,9 +117,59 @@ orbital speed is reached. (The prototype tried 40,000 combinations; see
    horizontally", and if the rocket starts to sink, Δv tilts up to correct
    it. The burn ends when Δv reaches zero.
 
+## Flight programs (`flight_program.hpp`)
+
+A flight is a list of **steps**, each burning or coasting, with a steering
+mode (pitch program, prograde, retrograde, circularize, retrograde relative to
+the Moon) and an end condition (apoapsis reached, apoapsis high enough,
+orbit circular, Moon in position, closest approach to the Moon, captured by
+the Moon, N revolutions, a duration). The mission's **flight plan** builds
+the list:
+
+| Plan | Steps |
+|---|---|
+| Orbit | Ascent → Coast to apoapsis → Circularization → Coast (1 revolution) |
+| Burn until empty | Ascent (until the propellant runs out) → Coast |
+| Lunar flyby | as Orbit up to the parking orbit → wait for the Moon → Trans-lunar injection → Coast to the Moon → Coast |
+| Lunar orbit | as Lunar flyby, then Lunar orbit insertion (brake) → Coast round the Moon |
+
+Running out of propellant ends any burn and skips later burns. A step whose
+condition already holds is skipped, and a step can time out (a transfer that
+misses the Moon never reaches "closest approach").
+
+## Going to the Moon (`flight_program.cpp`, `lunar_targeting.hpp`)
+
+**Trans-lunar injection (TLI)** is a prograde burn in the parking orbit that
+raises the apoapsis a little beyond the Moon. The rocket then travels a
+transfer ellipse for about three and a half days.
+
+**When to burn.** Kepler's equation gives how far round the ellipse the
+rocket travels before reaching the Moon's distance (ν, about 170°) and how
+long that takes. The burn starts when the point where the Moon *will be* at
+that time is ν ahead of the rocket. The classic **lead angle** (how far
+ahead the Moon is at the moment of the burn) works out at about 110–130°.
+
+**Which way to launch.** The burn doesn't change the orbit's plane, so the
+Moon must be in that plane when the rocket arrives. The plane is fixed when
+the rocket leaves the pad, by the launch site's position at that moment
+and the launch direction. *Aim at the Moon* picks the azimuth whose plane
+contains the Moon's arrival position, refined with quick ascent simulations
+because Earth's rotation tilts the real plane slightly. For Apollo 11's
+launch time it gives 72.5°; Apollo flew 72.0°. Because the Earth turns,
+the plane swings round during the day: only at certain times can the rocket
+fly east (the cheapest direction) and still reach the Moon. That is a
+**launch window** (*Best launch time*).
+
+**Near the Moon.** Within about 66,000 km of it (the **sphere of
+influence**, `a·(m_moon/m_earth)^(2/5)`), the Moon's gravity dominates the
+shape of the path. **Lunar orbit insertion** brakes against the velocity
+*relative to the Moon* until the craft is bound to it. A flyby on the right
+side can instead take energy from the Moon's motion: a **gravity assist**,
+which can fling the rocket out of the Earth's grip altogether.
+
 ## Orbits (`orbit.hpp`)
 
-While coasting, two things stay constant:
+While coasting under the Earth's gravity alone, two things stay constant:
 
 - **specific energy** `ε = v²/2 − μ/r`
 - **specific angular momentum** `h = r × v`, a vector perpendicular to the
@@ -144,3 +225,5 @@ changes, burnout), because that would spoil the error estimate.
 | Suborbital | Reached space, but the orbit dips underground |
 | Orbit | The whole orbit stays above the surface |
 | Escape | ε ≥ 0: never comes back |
+| Lunar impact | Hit the Moon |
+| Lunar orbit | Ended bound to the Moon, with its whole orbit above the surface |

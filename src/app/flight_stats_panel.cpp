@@ -28,8 +28,9 @@ FlightStatsPanel::FlightStatsPanel(QWidget* parent) : QWidget(parent) {
                                  "the surface all the way round. Escape: never comes back."));
     m_outcome->setObjectName(QStringLiteral("outcome"));
     m_periapsis =
-        addRow(tr("Periapsis"), tr("Lowest point of the orbit after the last engine shutdown"));
-    m_apoapsis = addRow(tr("Apoapsis"), tr("Highest point of the orbit"));
+        addRow(tr("Periapsis"),
+               tr("Lowest point of the orbit round the Earth (after the last engine shutdown)"));
+    m_apoapsis = addRow(tr("Apoapsis"), tr("Highest point of the orbit round the Earth"));
     m_inclination = addRow(tr("Inclination"),
                            tr("Tilt of the orbit against the equator. 0° = eastward along the "
                               "equator, 90° = over the poles, over 90° = westward (retrograde)."));
@@ -42,7 +43,27 @@ FlightStatsPanel::FlightStatsPanel(QWidget* parent) : QWidget(parent) {
     m_duration = addRow(tr("Simulated time"), {});
     layout->addWidget(orbitGroup);
 
-    auto* eventsGroup = new QGroupBox(tr("Engine events"), this);
+    // Only shown for flights that head for the Moon.
+    m_moonGroup = new QGroupBox(tr("Moon"), this);
+    auto* moonForm = new QFormLayout(m_moonGroup);
+    const auto addMoonRow = [&](const QString& name, const QString& tooltip) {
+        auto* value = new QLabel(m_moonGroup);
+        value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        value->setToolTip(tooltip);
+        moonForm->addRow(name, value);
+        return value;
+    };
+    m_moonClosest =
+        addMoonRow(tr("Closest approach"), tr("Lowest height above the Moon's surface"));
+    m_moonClosest->setObjectName(QStringLiteral("moonClosest"));
+    m_moonClosestTime = addMoonRow(tr("When"), tr("Time after liftoff"));
+    m_moonOrbit = addMoonRow(tr("Orbit round the Moon"),
+                             tr("Periapsis × apoapsis above the Moon's surface, at the end"));
+    m_moonPeriod = addMoonRow(tr("Period"), tr("Time for one orbit of the Moon"));
+    layout->addWidget(m_moonGroup);
+
+    auto* eventsGroup = new QGroupBox(tr("Events"), this);
     auto* eventsLayout = new QVBoxLayout(eventsGroup);
     m_events = new QLabel(eventsGroup);
     m_events->setTextFormat(Qt::RichText);
@@ -69,6 +90,24 @@ void FlightStatsPanel::showResult(const orbit::SimResult& result) {
     m_deltaV->setText(display::speed(result.deltaVUsed));
     m_propellantLeft->setText(display::mass(result.propellantLeft));
     m_duration->setText(display::duration(result.duration));
+
+    const bool lunarPlan = result.mission.plan == orbit::FlightPlan::LunarFlyby ||
+                           result.mission.plan == orbit::FlightPlan::LunarOrbit;
+    const orbit::LunarSummary& moon = result.lunar;
+    m_moonGroup->setVisible(lunarPlan || moon.enteredSphereOfInfluence);
+    m_moonClosest->setText(moon.closestApproachAltitude <= 0.0
+                               ? tr("impact")
+                               : display::altitude(moon.closestApproachAltitude));
+    m_moonClosestTime->setText(QStringLiteral("T+") + display::duration(moon.closestApproachTime));
+    if (moon.finalOrbit && moon.finalOrbit->bound) {
+        m_moonOrbit->setText(display::altitude(moon.finalOrbit->periapsisAltitude) +
+                             QStringLiteral(" × ") +
+                             display::altitude(moon.finalOrbit->apoapsisAltitude));
+        m_moonPeriod->setText(display::duration(moon.finalOrbit->period));
+    } else {
+        m_moonOrbit->setText(QStringLiteral("—"));
+        m_moonPeriod->setText(QStringLiteral("—"));
+    }
 
     if (result.events.empty()) {
         m_events->setText(tr("<i>None: the engine never shut down in flight.</i>"));

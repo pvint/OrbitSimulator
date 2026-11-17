@@ -14,7 +14,6 @@
 
 class PolylineGeometry;
 class QBoxLayout;
-class QCheckBox;
 class QComboBox;
 class QLabel;
 class QQuickItem;
@@ -42,6 +41,10 @@ public:
     void showRunSet(std::shared_ptr<const RunSet> runs, int selected);
     void clearGhosts();
 
+    /// Start from a fresh view (and playback speed) when the next result
+    /// arrives, e.g. after opening a scenario.
+    void resetViewOnNextResult();
+
 private:
     /// One model from the scene's pool of extra paths.
     struct ExtraPath {
@@ -53,6 +56,8 @@ private:
     void connectScene();
     void updateSelectedLines();
     void updateExtraPaths();
+    void updateMoonOrbit();
+    double farthestDistance() const;
     void setPlaybackTime(double t);
     void togglePlaying();
     void onTick();
@@ -62,13 +67,15 @@ private:
     QQuickItem* m_scene = nullptr;
     PolylineGeometry* m_trajectory = nullptr;
     PolylineGeometry* m_groundTrack = nullptr;
+    PolylineGeometry* m_moonOrbit = nullptr;
+    double m_moonOrbitEpoch = -1e30; ///< launch epoch the Moon's path was drawn for
     std::vector<ExtraPath> m_extraPaths;
 
     QToolButton* m_playButton = nullptr;
     QSlider* m_timeSlider = nullptr;
     QLabel* m_timeLabel = nullptr;
     QComboBox* m_speed = nullptr;
-    QCheckBox* m_follow = nullptr;
+    QComboBox* m_centre = nullptr;
 
     std::shared_ptr<const RunSet> m_runs;
     int m_selected = 0;
@@ -79,6 +86,7 @@ private:
     QElapsedTimer m_sinceLastGhost;
 
     double m_time = 0.0; ///< playback time, s after liftoff
+    bool m_resetPending = false;
     QTimer m_timer;
     QElapsedTimer m_clock;
 };
