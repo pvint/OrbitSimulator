@@ -53,7 +53,7 @@ its replacement, Qt Graphs, is Qt Quick-only, hence the embedding.
 QApplication exists. In Qt 6.11 it crashes, and it isn't needed for
 `QQuickWidget`.
 
-### 5. Integrator: Dormand–Prince 5(4) with event location (planned, M1)
+### 5. Integrator: Dormand–Prince 5(4) with event location (2026-11-17, M1)
 
 **Decision:** an adaptive Runge–Kutta integrator with error control, plus
 dense output to pin down events (engine cutoff, apoapsis, impact, entering the
@@ -98,6 +98,17 @@ full text, and every source file starts with an
 
 **Why:** the user's choice: anyone may use, change and share it, but
 modified versions must stay free. Qt's LGPL is compatible.
+
+### 10. The kick tilts within a launch plane fixed at liftoff (2026-11-17, M1)
+
+**Decision:** "downrange" is the horizontal direction in the plane through
+Earth's centre, the launch site and the launch direction, fixed in inertial
+space at liftoff. It is not recomputed from the local compass each instant.
+
+**Why:** the local-compass version breaks at the poles: "north" flips as
+soon as the rocket moves, the thrust direction oscillates and the
+integrator stalls (found when testing a launch from 90°N). The fixed plane is
+defined everywhere and is closer to what real ascent guidance does.
 
 ---
 

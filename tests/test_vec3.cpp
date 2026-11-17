@@ -43,3 +43,21 @@ TEST_CASE("Vec3 length and normalisation", "[vec3]") {
     // The zero vector has no direction; normalized() returns zero rather than NaN.
     REQUIRE(orbit::normalized(Vec3{}) == Vec3{});
 }
+
+TEST_CASE("Vec3 rotations", "[vec3]") {
+    constexpr double quarterTurn = 1.5707963267948966; // π/2
+    const auto near = [](const Vec3& a, const Vec3& b) { return orbit::norm(a - b) < 1e-12; };
+
+    // Counter-clockwise about +z takes x to y; about +x takes y to z.
+    REQUIRE(near(orbit::rotateZ(Vec3{1, 0, 0}, quarterTurn), Vec3{0, 1, 0}));
+    REQUIRE(near(orbit::rotateX(Vec3{0, 1, 0}, quarterTurn), Vec3{0, 0, 1}));
+
+    // rotateAxis agrees with the special cases, and keeps lengths.
+    const Vec3 v{0.3, -1.2, 2.5};
+    REQUIRE(near(orbit::rotateAxis(v, Vec3{0, 0, 1}, 0.7), orbit::rotateZ(v, 0.7)));
+    REQUIRE(near(orbit::rotateAxis(v, Vec3{1, 0, 0}, -2.1), orbit::rotateX(v, -2.1)));
+    const Vec3 axis = orbit::normalized(Vec3{1, 1, 1});
+    REQUIRE_THAT(orbit::norm(orbit::rotateAxis(v, axis, 1.234)), WithinAbs(orbit::norm(v), 1e-12));
+    // A third of a turn about (1,1,1) cycles the axes: x → y.
+    REQUIRE(near(orbit::rotateAxis(Vec3{1, 0, 0}, axis, 2.0943951023931957), Vec3{0, 1, 0}));
+}

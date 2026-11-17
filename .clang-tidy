@@ -7,10 +7,13 @@
 #                                          code than Vec3{.x = 1, .y = 2, .z = 3}
 #   readability-math-missing-parentheses   a*b + c*d is ordinary maths
 #   ...-magic-numbers                      physics is full of meaningful numbers
+#   readability-trailing-comma,            noise in numeric code (constant
+#   ...-avoid-unchecked-container-access   indices into fixed-size arrays)
 Checks: >
   bugprone-*,
   -bugprone-easily-swappable-parameters,
   performance-*,
+  -performance-enum-size,
   modernize-*,
   -modernize-use-trailing-return-type,
   -modernize-use-nodiscard,
@@ -21,11 +24,16 @@ Checks: >
   -readability-function-cognitive-complexity,
   -readability-uppercase-literal-suffix,
   -readability-math-missing-parentheses,
+  -readability-trailing-comma,
   cppcoreguidelines-*,
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-owning-memory,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-pro-type-vararg,
-  -cppcoreguidelines-avoid-do-while
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access
 HeaderFilterRegex: 'src/.*'
 WarningsAsErrors: ''
+CheckOptions:
+  # Allow one-line "if (x) return y;" without braces; anything longer needs them.
+  readability-braces-around-statements.ShortStatementLines: 1

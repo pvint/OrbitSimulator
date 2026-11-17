@@ -62,6 +62,28 @@ inline Vec3 normalized(const Vec3& a) {
     return n > 0.0 ? a / n : Vec3{};
 }
 
+/// Rotates a about the z axis by `angle` radians (counter-clockwise seen from +z).
+inline Vec3 rotateZ(const Vec3& a, double angle) {
+    const double c = std::cos(angle);
+    const double s = std::sin(angle);
+    return {c * a.x - s * a.y, s * a.x + c * a.y, a.z};
+}
+
+/// Rotates a about the x axis by `angle` radians (counter-clockwise seen from +x).
+inline Vec3 rotateX(const Vec3& a, double angle) {
+    const double c = std::cos(angle);
+    const double s = std::sin(angle);
+    return {a.x, c * a.y - s * a.z, s * a.y + c * a.z};
+}
+
+/// Rotates a about the unit vector `axis` by `angle` radians, counter-clockwise
+/// when looking down the axis (Rodrigues' rotation formula).
+inline Vec3 rotateAxis(const Vec3& a, const Vec3& axis, double angle) {
+    const double c = std::cos(angle);
+    const double s = std::sin(angle);
+    return c * a + s * cross(axis, a) + (dot(axis, a) * (1.0 - c)) * axis;
+}
+
 /// Prints as "(x, y, z)". Used by test failure messages and the CLI.
 std::ostream& operator<<(std::ostream& os, const Vec3& v);
 
