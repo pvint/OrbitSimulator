@@ -10,6 +10,7 @@
 // sunlight comes from the Sun's real direction at the playback time.
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick3D
 
 Item {
@@ -20,9 +21,22 @@ Item {
     property vector3d rocketPosition: Qt.vector3d(0, 0, 0)
     property vector3d launchSitePosition: Qt.vector3d(0, 0, 0) // Earth-fixed
     property vector3d moonPosition: Qt.vector3d(384400, 0, 0)
+    /// Turns the Moon so its near side faces the Earth (tidal locking).
+    property quaternion moonRotation: Qt.quaternion(1, 0, 0, 0)
+    /// The Moon's colour map, or "" to draw it plain grey.
+    property string moonTexture: ""
     property quaternion sunlightRotation: Qt.quaternion(1, 0, 0, 0)
     /// What the camera circles: 0 = the Earth, 1 = the rocket, 2 = the Moon.
     property int followTarget: 0
+
+    // Demo tour caption (from C++), and what its buttons ask for.
+    property bool captionVisible: false
+    property string captionTitle
+    property string captionText
+    property string captionStep // e.g. "3 / 11"
+    signal demoPrevious()
+    signal demoNext()
+    signal demoEnd()
 
     // For C++ to fill in.
     property alias trajectory: trajectoryGeometry
@@ -43,9 +57,12 @@ Item {
     property real yaw: 0
     property real pitch: -25
     property real distance: 4 * earthRadius
-    readonly property vector3d target: followTarget === 1 ? rocketPosition
-                                     : followTarget === 2 ? moonPosition
-                                     : Qt.vector3d(0, 0, 0)
+    /// Panning slides the view by this much (scene units) from the centre.
+    property vector3d panOffset: Qt.vector3d(0, 0, 0)
+    readonly property vector3d centrePoint: followTarget === 1 ? rocketPosition
+                                          : followTarget === 2 ? moonPosition
+                                          : Qt.vector3d(0, 0, 0)
+    readonly property vector3d target: centrePoint.plus(panOffset)
     readonly property real minDistance: followTarget === 1 ? 20
                                       : followTarget === 2 ? moonRadius + 50
                                       : earthRadius + 50
@@ -54,6 +71,7 @@ Item {
     /// Look from direction `p` (scene coordinates) at the current target,
     /// from `fromDistance` km away.
     function lookAt(p, fromDistance) {
+        panOffset = Qt.vector3d(0, 0, 0)
         const len = Math.max(p.length(), 1e-6)
         yaw = Math.atan2(p.x, p.z) * 180 / Math.PI
         pitch = -Math.asin(p.y / len) * 180 / Math.PI
@@ -144,12 +162,20 @@ Item {
         Model {
             geometry: GlobeGeometry {}
             position: root.moonPosition
+            rotation: root.moonRotation
             scale: Qt.vector3d(root.moonRadius, root.moonRadius, root.moonRadius)
             materials: PrincipledMaterial {
-                baseColor: "#a4a4a4"
+                baseColor: root.moonTexture === "" ? "#a4a4a4" : "#ffffff"
+                baseColorMap: root.moonTexture === "" ? null : moonColour
                 roughness: 1.0
                 metalness: 0.0
                 specularAmount: 0.05
+            }
+            Texture {
+                id: moonColour
+                source: root.moonTexture
+                generateMipmaps: true
+                mipFilter: Texture.Linear
             }
         }
         Model {
@@ -201,14 +227,32 @@ Item {
     }
 
     // --- Mouse: drag to turn, wheel to zoom ---------------------------------
+    // Left drag turns the camera round the centre; right or middle drag (or
+    // Shift + left drag) slides the view; the wheel zooms.
     MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
         property point last
-        onPressed: mouse => last = Qt.point(mouse.x, mouse.y)
-        onPositionChanged: mouse => {
-            root.yaw -= (mouse.x - last.x) * 0.3
-            root.pitch = Math.max(-89, Math.min(89, root.pitch - (mouse.y - last.y) * 0.3))
+        property bool panning: false
+        onPressed: mouse => {
             last = Qt.point(mouse.x, mouse.y)
+            panning = mouse.button !== Qt.LeftButton || (mouse.modifiers & Qt.ShiftModifier)
+        }
+        onPositionChanged: mouse => {
+            const dx = mouse.x - last.x
+            const dy = mouse.y - last.y
+            last = Qt.point(mouse.x, mouse.y)
+            if (panning) {
+                // Scene units per pixel at the distance of the centre, so the
+                // point under the mouse follows it at any zoom.
+                const perPixel = 2 * root.distance * Math.tan(camera.fieldOfView * Math.PI / 360)
+                                 / view.height
+                root.panOffset = root.panOffset.minus(camera.right.times(dx * perPixel))
+                                                .plus(camera.up.times(dy * perPixel))
+            } else {
+                root.yaw -= dx * 0.3
+                root.pitch = Math.max(-89, Math.min(89, root.pitch - dy * 0.3))
+            }
         }
         // Each wheel notch zooms by the same factor, so it feels the same from
         // low orbit out to the Moon.
@@ -289,12 +333,62 @@ Item {
         }
     }
 
+    // --- Demo tour caption --------------------------------------------------
+    Rectangle {
+        visible: root.captionVisible
+        anchors.top: parent.top
+        anchors.topMargin: 10
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(parent.width - 300, 680)
+        height: captionColumn.implicitHeight + 24
+        radius: 8
+        color: "#e60f1628"
+        border.color: "#334a6e"
+
+        Column {
+            id: captionColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 12
+            spacing: 8
+
+            Text {
+                text: root.captionTitle
+                color: "#f1f5f9"
+                font.pixelSize: 17
+                font.bold: true
+            }
+            Text {
+                width: parent.width
+                text: root.captionText
+                color: "#d6deeb"
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+                lineHeight: 1.15
+            }
+            Row {
+                spacing: 8
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.captionStep
+                    color: "#8592ad"
+                    font.pixelSize: 12
+                    rightPadding: 6
+                }
+                Button { text: qsTr("◀ Previous"); onClicked: root.demoPrevious() }
+                Button { text: qsTr("Next ▶"); onClicked: root.demoNext() }
+                Button { text: qsTr("End tour"); onClicked: root.demoEnd() }
+            }
+        }
+    }
+
     Text {
         anchors.left: parent.left
         anchors.bottom: parent.bottom
         anchors.margins: 8
         color: "#8592ad"
         font.pixelSize: 11
-        text: qsTr("Drag to turn · wheel to zoom · Earth imagery: NASA Earth Observatory (Blue Marble)")
+        text: qsTr("Drag to turn · right-drag to pan · wheel to zoom · Earth imagery: NASA Earth Observatory (Blue Marble)")
     }
 }

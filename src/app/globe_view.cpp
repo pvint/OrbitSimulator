@@ -9,6 +9,7 @@
 #include "scene_coordinates.hpp"
 
 #include <QComboBox>
+#include <QFile>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
@@ -25,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <utility>
 
 namespace {
@@ -49,6 +51,22 @@ constexpr double kGroundTrackLift = 3000.0; // m
 /// fill the history with near-identical paths within a second.
 constexpr std::size_t kMaxGhosts = 8;
 constexpr qint64 kMinGhostIntervalMs = 150;
+
+/// The Moon keeps one face towards the Earth. Its texture's longitude 0 is
+/// the centre of that near side, and its spin axis is within 1.5° of the
+/// ecliptic pole. So: local +x (longitude 0, see GlobeGeometry) towards the
+/// Earth, local +y (north) towards ecliptic north, and local +z = x × y
+/// completes the frame. (The small wobble called libration is left out.)
+QQuaternion moonOrientation(double epoch) {
+    const orbit::Vec3 toEarth = -orbit::normalized(orbit::moonPosition(epoch));
+    constexpr double obliquity = 23.43928 * std::numbers::pi / 180.0;
+    const orbit::Vec3 eclipticNorth{0.0, -std::sin(obliquity), std::cos(obliquity)};
+    const orbit::Vec3 north =
+        orbit::normalized(eclipticNorth - orbit::dot(eclipticNorth, toEarth) * toEarth);
+    const QVector3D x = scene::fromPhysics(toEarth).normalized();
+    const QVector3D y = scene::fromPhysics(north).normalized();
+    return QQuaternion::fromAxes(x, y, QVector3D::crossProduct(x, y));
+}
 
 QList<QVector3D> trajectoryPoints(const orbit::SimResult& result) {
     QList<QVector3D> points;
@@ -118,6 +136,7 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
     connect(m_centre, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (!m_scene) return;
         m_scene->setProperty("followTarget", index);
+        m_scene->setProperty("panOffset", QVector3D());
         const double earthView = std::max(4.0 * orbit::kRadiusEarth, 1.4 * farthestDistance());
         const std::array<double, 3> distances{earthView, 2.0e6, 1.2e7}; // m
         m_scene->setProperty("distance", distances.at(static_cast<std::size_t>(index)) / 1000.0);
@@ -155,6 +174,14 @@ void GlobeView::connectScene() {
     m_groundTrack =
         qobject_cast<PolylineGeometry*>(m_scene->property("groundTrack").value<QObject*>());
     m_moonOrbit = qobject_cast<PolylineGeometry*>(m_scene->property("moonOrbit").value<QObject*>());
+    // The demo caption's buttons (QML signals, so connected by name).
+    connect(m_scene, SIGNAL(demoPrevious()), this, SIGNAL(demoPreviousRequested()));
+    connect(m_scene, SIGNAL(demoNext()), this, SIGNAL(demoNextRequested()));
+    connect(m_scene, SIGNAL(demoEnd()), this, SIGNAL(demoEndRequested()));
+    // The Moon's colour map is optional (see src/app/CMakeLists.txt).
+    if (QFile::exists(QStringLiteral(":/textures/moon.jpg"))) {
+        m_scene->setProperty("moonTexture", QStringLiteral("qrc:/textures/moon.jpg"));
+    }
     if (!m_trajectory || !m_groundTrack || !m_moonOrbit) {
         qWarning() << "GlobeScene.qml: a line geometry was not found";
     }
@@ -200,9 +227,83 @@ void GlobeView::showRunSet(std::shared_ptr<const RunSet> runs, int selected) {
         resetView();
         m_resetPending = false;
     }
+    if (m_pendingDemoStep) {
+        applyDemoStep(*m_pendingDemoStep);
+        m_pendingDemoStep.reset();
+    }
 }
 
 void GlobeView::resetViewOnNextResult() { m_resetPending = true; }
+
+void GlobeView::applyDemoStepOnNextResult(const orbit::DemoStep& step) { m_pendingDemoStep = step; }
+
+void GlobeView::showCaption(const QString& title, const QString& text, int step, int count) {
+    if (!m_scene) return;
+    m_scene->setProperty("captionTitle", title);
+    m_scene->setProperty("captionText", text);
+    m_scene->setProperty("captionStep", QStringLiteral("%1 / %2").arg(step).arg(count));
+    m_scene->setProperty("captionVisible", true);
+}
+
+void GlobeView::hideCaption() {
+    if (m_scene) m_scene->setProperty("captionVisible", false);
+}
+
+/// Camera and playback for a demo step (after resetView() has fitted the
+/// flight, which the "auto" view keeps).
+void GlobeView::applyDemoStep(const orbit::DemoStep& step) {
+    if (!m_scene || !m_result) return;
+    using orbit::DemoView;
+    const auto lookFrom = [this](const orbit::Vec3& direction, double distanceKm) {
+        QMetaObject::invokeMethod(
+            m_scene, "lookAt", Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(direction))),
+            Q_ARG(QVariant, distanceKm));
+    };
+    const double epoch = m_result->mission.launchEpoch + step.startTime;
+
+    m_centre->setCurrentIndex(static_cast<int>(step.centre));
+    switch (step.view) {
+    case DemoView::Auto:
+        if (step.distance > 0.0) m_scene->setProperty("distance", step.distance);
+        break;
+    case DemoView::LaunchSite: {
+        const orbit::LaunchSite& site = m_result->mission.site;
+        const orbit::Vec3 pad =
+            orbit::rotateZ(orbit::positionFromLatLon(site.latitude, site.longitude, 1.0),
+                           orbit::earthRotationAngleAt(epoch));
+        lookFrom(pad, step.distance > 0.0 ? step.distance : 3.2 * orbit::kRadiusEarth / 1000.0);
+        break;
+    }
+    case DemoView::North:
+        lookFrom({0.0, 0.0, 1.0},
+                 step.distance > 0.0 ? step.distance : 4.0 * orbit::kRadiusEarth / 1000.0);
+        break;
+    case DemoView::Moon:
+        // From the Earth's side of the Moon.
+        lookFrom(-orbit::moonPosition(epoch), step.distance > 0.0 ? step.distance : 30000.0);
+        break;
+    }
+    // The centre may have set its own distance; the step's wins.
+    if (step.distance > 0.0) m_scene->setProperty("distance", step.distance);
+
+    if (step.speed > 0.0) {
+        // The listed speed nearest to the one asked for.
+        std::size_t best = 0;
+        for (std::size_t i = 1; i < kSpeeds.size(); ++i) {
+            if (std::abs(std::log(kSpeeds.at(i) / step.speed)) <
+                std::abs(std::log(kSpeeds.at(best) / step.speed))) {
+                best = i;
+            }
+        }
+        m_speed->setCurrentIndex(static_cast<int>(best));
+    }
+    setPlaybackTime(step.startTime);
+    play();
+}
+
+void GlobeView::play() {
+    if (!m_timer.isActive()) togglePlaying();
+}
 
 /// Furthest the selected flight gets from the Earth's centre (m).
 double GlobeView::farthestDistance() const {
@@ -316,6 +417,8 @@ void GlobeView::setPlaybackTime(double t) {
     m_scene->setProperty("earthRotation", orbit::radToDeg(theta));
     const double epoch = m_result->mission.launchEpoch + m_time;
     m_scene->setProperty("moonPosition", scene::fromPhysics(orbit::moonPosition(epoch)));
+    m_scene->setProperty("moonRotation", moonOrientation(epoch));
+
     // Turn the light's −z axis onto the sunlight's direction of travel.
     const QVector3D towardsSun =
         scene::fromPhysics(orbit::normalized(orbit::sunPosition(epoch))).normalized();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "main_window.hpp"
 
+#include "demo_controller.hpp"
 #include "display_format.hpp"
 #include "flight_stats_panel.hpp"
 #include "globe_view.hpp"
@@ -35,7 +36,8 @@ QString fileFilter() { return MainWindow::tr("Orbit Simulator scenarios (*.json)
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent), m_simulation(new SimulationController(this)),
-      m_globe(new GlobeView(this)), m_mission(orbit::defaultMission()) {
+      m_globe(new GlobeView(this)), m_demo(new DemoController(*this, *m_globe)),
+      m_mission(orbit::defaultMission()) {
     setCentralWidget(m_globe);
     createMenus();
     createDocks();
@@ -63,6 +65,8 @@ void MainWindow::createMenus() {
     m_viewMenu = menuBar()->addMenu(tr("&View"));
 
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
+    helpMenu->addAction(tr("&Demo Tour"), QKeySequence(Qt::Key_F2), this, [this] { startDemo(); });
+    helpMenu->addSeparator();
     helpMenu->addAction(tr("&About"), this, &MainWindow::showAbout);
 }
 
@@ -187,7 +191,10 @@ void MainWindow::showSelection() {
 
 // --- Scenario files ---------------------------------------------------------
 
+void MainWindow::startDemo(int firstStep) { m_demo->start(firstStep); }
+
 void MainWindow::newScenario() {
+    m_demo->stop();
     m_scenarioName.clear();
     m_scenarioDescription.clear();
     m_scenarioPath.clear();
@@ -200,6 +207,7 @@ void MainWindow::newScenario() {
 }
 
 void MainWindow::openScenario() {
+    m_demo->stop();
     const QSettings settings;
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Open Scenario"), settings.value(QStringLiteral("scenario/lastDir")).toString(),
@@ -218,11 +226,10 @@ bool MainWindow::openScenarioFile(const QString& path) {
         return false;
     }
     // Built-in examples can't be saved back to; Save asks for a new file.
-    loadScenarioText(file.readAll(), path.startsWith(QLatin1Char(':')) ? QString() : path);
-    return true;
+    return openScenarioText(file.readAll(), path.startsWith(QLatin1Char(':')) ? QString() : path);
 }
 
-void MainWindow::loadScenarioText(const QByteArray& text, const QString& path) {
+bool MainWindow::openScenarioText(const QByteArray& text, const QString& path) {
     orbit::LoadedScenario loaded;
     try {
         loaded = orbit::scenarioFromJson(
@@ -230,7 +237,7 @@ void MainWindow::loadScenarioText(const QByteArray& text, const QString& path) {
     } catch (const orbit::ScenarioError& e) {
         QMessageBox::warning(this, tr("Open Scenario"),
                              tr("This file can't be used as a scenario:\n%1").arg(e.what()));
-        return;
+        return false;
     }
     if (!loaded.warnings.empty()) {
         QStringList lines;
@@ -259,6 +266,7 @@ void MainWindow::loadScenarioText(const QByteArray& text, const QString& path) {
     } else {
         stopSweep();
     }
+    return true;
 }
 
 void MainWindow::saveScenario() {
@@ -323,7 +331,10 @@ void MainWindow::populateExamplesMenu(QMenu* menu) {
             continue; // a broken example is caught by the tests, not shown here
         }
         // Examples aren't files you can save back to, so the path stays empty.
-        menu->addAction(name, this, [this, text] { loadScenarioText(text, QString()); });
+        menu->addAction(name, this, [this, text] {
+            m_demo->stop();
+            openScenarioText(text, QString());
+        });
     }
 }
 

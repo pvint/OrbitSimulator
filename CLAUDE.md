@@ -36,6 +36,7 @@ cmake --workflow --preset dev # all three in one go
 build/dev/src/app/orbitsim            # GUI
 build/dev/src/app/orbitsim --screenshot out.png   # render the window to a file and quit
 build/dev/src/app/orbitsim scenarios/kick-angle-sweep.json   # open a scenario
+build/dev/src/app/orbitsim --demo-step 8 --screenshot out.png  # check a demo step
 build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
 build/dev/src/cli/orbitsim-cli        # CLI
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
@@ -53,6 +54,8 @@ src/app/       Qt app. orbitsim_ui (static lib): panels + SimulationController, 
 tools/         make_earth_texture.sh: rebuilds the Earth texture from NASA's original
 scenarios/     example scenario files (built into the app's File ▸ Examples; each is
                loaded and flown by a test)
+demos/         tour.json: the guided demo tour (Help ▸ Demo Tour); a test checks every
+               step's scenario exists and loads
 tests/         Catch2 tests for the core; tests/app: Qt Test GUI tests of orbitsim_ui
 cmake/         CompilerWarnings.cmake (orbit_set_warnings), Packaging.cmake (CPack)
 docs/          decisions.md (why things are the way they are), physics.md (the physics, explained)
@@ -81,6 +84,8 @@ prototype/web/ the original JavaScript prototype, kept for reference
   `scenarioFromJson()`; never break existing files. New example scenarios go
   in `scenarios/` with a name and description, and must load without warnings
   (a test checks).
+- Demo tours (`demos/`, `orbit/core/demo.hpp`) refer to scenarios by file
+  name. Captions are for a curious newcomer: plain words, what to look at.
 - Saved window layout is versioned (`kLayoutVersion` in main_window.cpp): bump
   it when panels are added or removed.
 - 3D scene: 1 unit = 1 km, axes (x, z, −y) of the physics frame; always convert
@@ -116,8 +121,9 @@ Each milestone ends with something that runs.
 | M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow), playback | done |
 | M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | done |
 | M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | done |
-| M6 (next) | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | |
+| M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | done |
 | Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
+| Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |
 | Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |

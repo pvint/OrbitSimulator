@@ -241,6 +241,18 @@ from QML's `lookAt()`.
 the explicit rotation is unambiguous. Lighting is verified against the
 subsolar point (21.3°N 21.9°W at Apollo 11's launch).
 
+### 21. Demo tours are data, built from scenarios (2026-11-17, M6)
+
+**Decision:** a tour is a versioned JSON file (`orbitsim-demo`) listing steps.
+Each step names an example scenario and adds a title, a caption, a camera
+setup (view, centre, distance), a playback speed and start time, and how
+long to stay. The app runs it with a small controller and a caption overlay
+in the 3D view.
+
+**Why:** the tour reuses the scenario files, so improving an example improves
+the tour, and adding a step needs no code. A test keeps tours and scenarios
+in step.
+
 ---
 
 ## Open questions
@@ -251,6 +263,10 @@ subsolar point (21.3°N 21.9°W at Apollo 11's launch).
   simulators) or Qt's QJSEngine (JavaScript, no new dependency). Either way
   the scripting layer lives outside `src/core`, which stays Qt-free.
 
+- **Natural bodies as the "vehicle"** (asteroids, comets, ...). The core can
+  already start from any state (`SimOptions::initialState`) and coast with no
+  engine. Open: how the user specifies one: orbital elements, position and
+  velocity, or an imported real object, and how to place it in the UI.
 - **Moon texture.** The Moon is plain grey; NASA's CGI Moon Kit (LRO
   imagery, public domain) would make it look real. Needs the user's go-ahead
   to download.

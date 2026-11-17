@@ -6,6 +6,8 @@
 #include <QCommandLineParser>
 #include <QTimer>
 
+#include <algorithm>
+
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Orbit Simulator"));
@@ -27,7 +29,12 @@ int main(int argc, char* argv[]) {
                                    QStringLiteral("Milliseconds to wait before the screenshot "
                                                   "(default 3000)."),
                                    QStringLiteral("ms"), QStringLiteral("3000"));
-    parser.addOptions({screenshot, delay});
+    const QCommandLineOption demo(QStringLiteral("demo"),
+                                  QStringLiteral("Start the guided demo tour."));
+    const QCommandLineOption demoStep(
+        QStringLiteral("demo-step"), QStringLiteral("Start the demo tour at step <n> (1 = first)."),
+        QStringLiteral("n"));
+    parser.addOptions({screenshot, delay, demo, demoStep});
     parser.addPositionalArgument(QStringLiteral("scenario"),
                                  QStringLiteral("A scenario file to open (optional)."),
                                  QStringLiteral("[scenario]"));
@@ -37,6 +44,11 @@ int main(int argc, char* argv[]) {
     window.show();
     if (!parser.positionalArguments().isEmpty()) {
         window.openScenarioFile(parser.positionalArguments().constFirst());
+    }
+    if (parser.isSet(demoStep)) {
+        window.startDemo(std::max(0, parser.value(demoStep).toInt() - 1));
+    } else if (parser.isSet(demo)) {
+        window.startDemo();
     }
 
     if (parser.isSet(screenshot)) {
