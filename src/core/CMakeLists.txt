@@ -11,6 +11,7 @@ add_library(orbit_core STATIC
     src/earth.cpp
     src/guidance.cpp
     src/integrator.cpp
+    src/mission_parameters.cpp
     src/orbit.cpp
     src/rocket.cpp
     src/simulation.cpp

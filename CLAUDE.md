@@ -43,8 +43,9 @@ cmake --build build/release --target package   # archive in build/release/
 ```
 src/core/      physics library (namespace orbit). Public headers in include/orbit/core/
 src/cli/       orbitsim-cli
-src/app/       Qt Widgets app: main window, docks, panels. QML scenes in qml/
-tests/         Catch2 tests for the core
+src/app/       Qt app. orbitsim_ui (static lib): panels + SimulationController, no QML.
+               orbitsim (exe): main window, PlotPanel, QML scenes in qml/
+tests/         Catch2 tests for the core; tests/app: Qt Test GUI tests of orbitsim_ui
 cmake/         CompilerWarnings.cmake (orbit_set_warnings), Packaging.cmake (CPack)
 docs/          decisions.md (why things are the way they are), physics.md (the physics, explained)
 prototype/web/ the original JavaScript prototype, kept for reference
@@ -58,6 +59,12 @@ prototype/web/ the original JavaScript prototype, kept for reference
   `"orbit/core/<name>.hpp"`.
 - Include order (clang-format enforces it): our own headers, then Qt, then std.
 - Every new target calls `orbit_set_warnings(<target>)`.
+- Mission parameters are defined once, in `orbit/core/mission_parameters.hpp`.
+  The GUI sliders and CLI options are generated from it; add new numeric
+  parameters there, not in the UI.
+- Widgets that tests need to find get an `objectName` (e.g. `spin-kick-angle`).
+  New panel behaviour gets a Qt Test in `tests/app/test_ui.cpp` (runs offscreen).
+- Simulations never run on the GUI thread: go through `SimulationController`.
 - Git: one branch per milestone (`m1-physics`, ...), small focused commits,
   merged to `main` when the milestone runs. Commit messages: a short summary
   line, then why.
@@ -85,13 +92,21 @@ Each milestone ends with something that runs.
 |---|---|---|
 | M0 | Skeleton: CMake + presets, core lib, CLI, tests, Qt window with an embedded Quick 3D view, packaging, tooling | done |
 | M1 | 3D physics core: port the prototype to 3D state vectors. Launch site lat/lon + azimuth (exact), rotating Earth, inclination. Dormand–Prince 5(4) adaptive integrator with event location. Orbital elements (a, e, i, Ω, ω, ν). Pitch program + auto-circularize. Port and extend the prototype's tests. CLI runs a scenario and prints stats / CSV | done |
-| M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | next |
-| M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow) | |
+| M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | done |
+| M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow) | next |
 | M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | |
-| M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, simple burn sequence (trans-lunar injection), Moon in the 3D view | |
+| M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | |
 | M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | |
 | Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
+| Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |
+
+### App structure in brief (M2)
+
+`ParameterPanel` emits `missionChanged` → `SimulationController::setMission`
+runs `simulate()` on a worker thread (latest wins) → `resultReady` feeds
+`FlightStatsPanel` and `PlotPanel`. `PlotPanel` pushes data into Qt Graphs
+series it finds through properties on `qml/Plots.qml`.
 
 ### Core API in brief (M1)
 

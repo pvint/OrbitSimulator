@@ -15,6 +15,7 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(orbit_core_tests
     test_earth.cpp
     test_integrator.cpp
+    test_mission_parameters.cpp
     test_orbit.cpp
     test_simulation.cpp
     test_vec3.cpp
@@ -25,3 +26,8 @@ orbit_set_warnings(orbit_core_tests)
 # Register each TEST_CASE as its own CTest test.
 include(Catch)
 catch_discover_tests(orbit_core_tests)
+
+# GUI-level tests of the app's panels (Qt Test).
+if(ORBIT_BUILD_APP)
+    add_subdirectory(app)
+endif()
