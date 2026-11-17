@@ -1,4 +1,8 @@
-# Orbit Simulator
+# Orbit Simulator: web prototype
+
+> **This is the original 2D browser prototype**, kept for reference. It works
+> and is self-contained. Run the commands below from this folder
+> (`prototype/web/`). The full desktop app lives at the top of the repository.
 
 A 2D rocket launch simulator for building intuition about orbital mechanics.
 A rocket lifts off from a spinning Earth, follows a simple pitch program, and
