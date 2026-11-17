@@ -31,8 +31,10 @@ Vec3 positionFromLatLon(double latitude, double longitude, double radius) {
 
 double earthRotationAngle(double t, double angleAtStart) { return angleAtStart + kOmegaEarth * t; }
 
+Vec3 eciToEcef(const Vec3& rEci, double rotationAngle) { return rotateZ(rEci, -rotationAngle); }
+
 GeoPoint groundPoint(const Vec3& rEci, double rotationAngle) {
-    const Vec3 rEcef = rotateZ(rEci, -rotationAngle);
+    const Vec3 rEcef = eciToEcef(rEci, rotationAngle);
     const double r = norm(rEcef);
     return {std::asin(rEcef.z / r), std::atan2(rEcef.y, rEcef.x), r - kRadiusEarth};
 }

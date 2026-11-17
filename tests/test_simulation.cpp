@@ -219,3 +219,20 @@ TEST_CASE("Running out of propellant while circularizing falls short of orbit", 
     REQUIRE(r.outcome == Outcome::Suborbital);
     REQUIRE(r.orbit.periapsisAltitude < 0.0);
 }
+
+TEST_CASE("stateAt interpolates between samples and clamps at the ends", "[simulation]") {
+    const SimResult r = simulate(defaultMission());
+    const Sample& first = r.samples.front();
+    const Sample& last = r.samples.back();
+
+    REQUIRE(norm(stateAt(r, -10.0).r - first.state.r) == 0.0);
+    REQUIRE(norm(stateAt(r, last.t + 100.0).r - last.state.r) == 0.0);
+
+    // On a sample it returns that sample; between two it lies between them.
+    const Sample& a = r.samples[100];
+    const Sample& b = r.samples[101];
+    REQUIRE(norm(stateAt(r, a.t).r - a.state.r) < 1e-6);
+    const State mid = stateAt(r, (a.t + b.t) / 2.0);
+    REQUIRE(norm(mid.r - 0.5 * (a.state.r + b.state.r)) < 1e-6);
+    REQUIRE_THAT(mid.m, WithinAbs(0.5 * (a.state.m + b.state.m), 1e-9));
+}
