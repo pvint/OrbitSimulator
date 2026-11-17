@@ -8,6 +8,12 @@
 configure_file(version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/orbit/core/version.hpp" @ONLY)
 
 add_library(orbit_core STATIC
+    src/earth.cpp
+    src/guidance.cpp
+    src/integrator.cpp
+    src/orbit.cpp
+    src/rocket.cpp
+    src/simulation.cpp
     src/vec3.cpp
 )
 add_library(orbit::core ALIAS orbit_core)

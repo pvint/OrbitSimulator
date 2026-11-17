@@ -13,6 +13,10 @@ FetchContent_Declare(Catch2
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(orbit_core_tests
+    test_earth.cpp
+    test_integrator.cpp
+    test_orbit.cpp
+    test_simulation.cpp
     test_vec3.cpp
 )
 target_link_libraries(orbit_core_tests PRIVATE orbit::core Catch2::Catch2WithMain)
