@@ -26,6 +26,10 @@ struct ParameterInfo {
     double step;
     double (*get)(const Mission&); ///< value in display units
     void (*set)(Mission&, double); ///< from a value in display units
+    /// Computed from other parameters; setting it changes them instead
+    /// (burn time sets the propellant). Derived parameters can be swept and
+    /// typed on the command line, but get no slider of their own.
+    bool derived = false;
 };
 
 /// All mission parameters, in display order, grouped by `group`.

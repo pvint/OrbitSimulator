@@ -1,0 +1,8 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 1,
+  "name": "Kick angle sweep",
+  "description": "How far the rocket tilts after liftoff. Too little and it climbs steeply, wasting propellant fighting gravity; too much and it turns over into the ground.",
+  "mission": {},
+  "sweep": { "parameter": "kick-angle", "from": 5, "to": 45, "steps": 9 }
+}

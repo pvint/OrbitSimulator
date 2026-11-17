@@ -2,6 +2,7 @@
 #include "orbit/core/mission_parameters.hpp"
 
 #include "orbit/core/angles.hpp"
+#include "orbit/core/rocket.hpp"
 
 #include <array>
 
@@ -25,6 +26,13 @@ constexpr std::array kParameters{
                   "Engine efficiency: exhaust velocity = Isp · g0", 150.0, 500.0, 1.0,
                   [](const Mission& m) { return m.rocket.isp; },
                   [](Mission& m, double v) { m.rocket.isp = v; }},
+
+    ParameterInfo{
+        "burn-time", "Burn time", "s", "Rocket",
+        "Sets the propellant so the engine can run this long at full thrust", 10.0, 1000.0, 1.0,
+        [](const Mission& m) { return burnTime(m.rocket); },
+        [](Mission& m, double v) { m.rocket.propellantMass = propellantForBurnTime(m.rocket, v); },
+        true},
 
     ParameterInfo{"latitude", "Latitude", "°", "Launch site", "North positive", -90.0, 90.0, 0.5,
                   [](const Mission& m) { return radToDeg(m.site.latitude); },
