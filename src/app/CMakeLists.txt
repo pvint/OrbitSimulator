@@ -19,8 +19,12 @@ qt_add_library(orbitsim_ui STATIC
     flight_stats_panel.hpp
     parameter_panel.cpp
     parameter_panel.hpp
+    run_set.cpp
+    run_set.hpp
     simulation_controller.cpp
     simulation_controller.hpp
+    sweep_panel.cpp
+    sweep_panel.hpp
 )
 target_include_directories(orbitsim_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(orbitsim_ui PUBLIC orbit::core Qt6::Widgets Qt6::Concurrent)
@@ -50,6 +54,15 @@ qt_add_qml_module(orbitsim
         qml/GlobeScene.qml
         qml/Plots.qml
         qml/TimeGraph.qml
+)
+
+# The example scenarios from scenarios/, compiled in for File ▸ Examples
+# (qrc:/scenarios/...).
+file(GLOB example_scenarios CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/scenarios/*.json")
+qt_add_resources(orbitsim "example_scenarios"
+    PREFIX "/scenarios"
+    BASE "${PROJECT_SOURCE_DIR}/scenarios"
+    FILES ${example_scenarios}
 )
 
 # Earth texture, compiled into the executable (qrc:/textures/...). BIG_RESOURCES

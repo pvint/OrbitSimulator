@@ -6,38 +6,48 @@
 #include "parameter_panel.hpp"
 #include "scene_coordinates.hpp"
 #include "simulation_controller.hpp"
+#include "sweep_panel.hpp"
 
 #include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QLabel>
+#include <QPushButton>
 #include <QSignalSpy>
 #include <QSlider>
+#include <QSpinBox>
+#include <QTableWidget>
 #include <QTest>
 
 #include <memory>
 
-Q_DECLARE_METATYPE(std::shared_ptr<const orbit::SimResult>)
+Q_DECLARE_METATYPE(std::shared_ptr<const RunSet>)
+Q_DECLARE_METATYPE(orbit::SweepSpec)
 
 class UiTests : public QObject {
     Q_OBJECT
 
 private slots:
-    void initTestCase() { qRegisterMetaType<std::shared_ptr<const orbit::SimResult>>(); }
+    void initTestCase() { qRegisterMetaType<std::shared_ptr<const RunSet>>(); }
+
+    static std::shared_ptr<const RunSet> runsAt(const QSignalSpy& spy, qsizetype i) {
+        return spy.at(i).at(0).value<std::shared_ptr<const RunSet>>();
+    }
 
     void controllerSimulatesTheDefaultMission() {
         SimulationController controller;
         QSignalSpy spy(&controller, &SimulationController::resultReady);
-        controller.setMission(orbit::defaultMission());
+        controller.run(orbit::defaultMission());
 
         QVERIFY(spy.wait(5000));
-        const auto result = spy.at(0).at(0).value<std::shared_ptr<const orbit::SimResult>>();
-        QVERIFY(result);
+        const auto runs = runsAt(spy, 0);
+        QVERIFY(runs && !runs->isSweep());
+        QCOMPARE(runs->runs.size(), std::size_t{1});
         // QVERIFY, not QCOMPARE: Qt Test would pick up orbit::toString(Outcome) by ADL.
-        QVERIFY(result->outcome == orbit::Outcome::Orbit);
+        QVERIFY(runs->runs.front().result->outcome == orbit::Outcome::Orbit);
         QVERIFY(spy.at(0).at(1).toDouble() >= 0.0);
     }
 
-    // Changing the mission while a run is going skips the missions in between:
+    // Changing the mission while a run is going skips the requests in between:
     // the running one finishes, then only the newest one runs.
     void controllerLatestWins() {
         SimulationController controller;
@@ -46,16 +56,42 @@ private slots:
         orbit::Mission m = orbit::defaultMission();
         for (int kick = 10; kick <= 30; kick += 5) {
             m.guidance.kickAngle = orbit::degToRad(kick);
-            controller.setMission(m);
+            controller.run(m);
         }
         QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 5000);
         QTest::qWait(200); // and nothing more arrives
         QCOMPARE(spy.count(), 2);
 
-        const auto first = spy.at(0).at(0).value<std::shared_ptr<const orbit::SimResult>>();
-        const auto last = spy.at(1).at(0).value<std::shared_ptr<const orbit::SimResult>>();
-        QCOMPARE(orbit::radToDeg(first->mission.guidance.kickAngle), 10.0);
-        QCOMPARE(orbit::radToDeg(last->mission.guidance.kickAngle), 30.0);
+        const auto& first = *runsAt(spy, 0)->runs.front().result;
+        const auto& last = *runsAt(spy, 1)->runs.front().result;
+        QCOMPARE(orbit::radToDeg(first.mission.guidance.kickAngle), 10.0);
+        QCOMPARE(orbit::radToDeg(last.mission.guidance.kickAngle), 30.0);
+    }
+
+    void controllerRunsSweepsInOrderWithColours() {
+        SimulationController controller;
+        QSignalSpy spy(&controller, &SimulationController::resultReady);
+        controller.run(orbit::defaultMission(), orbit::SweepSpec{"kick-angle", 10.0, 40.0, 7});
+
+        QVERIFY(spy.wait(10000));
+        const auto runs = runsAt(spy, 0);
+        QVERIFY(runs->isSweep());
+        QCOMPARE(runs->runs.size(), std::size_t{7});
+        for (std::size_t i = 0; i < runs->runs.size(); ++i) {
+            const FlightRun& run = runs->runs[i];
+            QCOMPARE(run.value, 10.0 + 5.0 * static_cast<double>(i));
+            QCOMPARE(orbit::radToDeg(run.result->mission.guidance.kickAngle), run.value);
+        }
+        // The two ends of the sweep get clearly different colours.
+        QVERIFY(runs->runs.front().color != runs->runs.back().color);
+    }
+
+    void controllerReportsAnInvalidSweepAsEmpty() {
+        SimulationController controller;
+        QSignalSpy spy(&controller, &SimulationController::resultReady);
+        controller.run(orbit::defaultMission(), orbit::SweepSpec{"no-such-thing", 0.0, 1.0, 3});
+        QVERIFY(spy.wait(5000));
+        QVERIFY(runsAt(spy, 0)->runs.empty());
     }
 
     void spinBoxEditsTheMission() {
@@ -115,6 +151,54 @@ private slots:
         QCOMPARE(x, QVector3D(1, 0, 0));
         QCOMPARE(z, QVector3D(0, 1, 0));            // north pole is up
         QCOMPARE(QVector3D::crossProduct(x, y), z); // right-handed in, right-handed out
+    }
+
+    void sweptParameterIsLocked() {
+        ParameterPanel panel;
+        auto* kick = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-kick-angle"));
+        auto* propellant = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-propellant"));
+        panel.setLockedParameter("kick-angle");
+        QVERIFY(!kick->isEnabled());
+        panel.setLockedParameter("burn-time"); // burn time sets the propellant
+        QVERIFY(kick->isEnabled());
+        QVERIFY(!propellant->isEnabled());
+        panel.setLockedParameter({});
+        QVERIFY(propellant->isEnabled());
+        // Derived parameters get no slider of their own.
+        QVERIFY(!panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-burn-time")));
+    }
+
+    void sweepPanelRequestsTheSweepItShows() {
+        SweepPanel panel;
+        QSignalSpy spy(&panel, &SweepPanel::sweepRequested);
+        panel.setSpec({"latitude", 0.0, 60.0, 7});
+        panel.findChild<QPushButton*>(QStringLiteral("runSweep"))->click();
+
+        QCOMPARE(spy.count(), 1);
+        const auto spec = spy.at(0).at(0).value<orbit::SweepSpec>();
+        QCOMPARE(QString::fromStdString(spec.parameter), QStringLiteral("latitude"));
+        QCOMPARE(spec.from, 0.0);
+        QCOMPARE(spec.to, 60.0);
+        QCOMPARE(spec.steps, 7);
+    }
+
+    void sweepLegendListsFlightsAndReportsClicks() {
+        SimulationController controller;
+        QSignalSpy results(&controller, &SimulationController::resultReady);
+        controller.run(orbit::defaultMission(), orbit::SweepSpec{"kick-angle", 10.0, 30.0, 5});
+        QVERIFY(results.wait(10000));
+
+        SweepPanel panel;
+        QSignalSpy selected(&panel, &SweepPanel::runSelected);
+        panel.showRunSet(*runsAt(results, 0), 2);
+        auto* legend = panel.findChild<QTableWidget*>(QStringLiteral("sweepLegend"));
+        QCOMPARE(legend->rowCount(), 5);
+        QCOMPARE(legend->currentRow(), 2);
+        QCOMPARE(selected.count(), 0); // showing results is not a user click
+
+        legend->setCurrentCell(4, 1);
+        QCOMPARE(selected.count(), 1);
+        QCOMPARE(selected.at(0).at(0).toInt(), 4);
     }
 
     void statsPanelShowsTheOutcome() {

@@ -2,12 +2,15 @@
 #pragma once
 
 #include "orbit/core/simulation.hpp"
+#include "run_set.hpp"
 
 #include <QElapsedTimer>
 #include <QTimer>
 #include <QWidget>
 
+#include <deque>
 #include <memory>
+#include <vector>
 
 class PolylineGeometry;
 class QBoxLayout;
@@ -22,6 +25,11 @@ class QToolButton;
 /// The 3D view (qml/GlobeScene.qml) plus a playback bar underneath:
 /// play/pause, a time slider, playback speed, and "follow rocket".
 ///
+/// It shows the selected flight in full (trajectory, ground track, playback),
+/// and alongside it either the other flights of a sweep in their sweep
+/// colours, or, for single flights, fading "ghosts" of the last few flights,
+/// so you can see how a change moved the path.
+///
 /// During playback the rocket moves along its path and the Earth turns at
 /// its real rate (times the playback speed), so you can watch the ground
 /// track drift west orbit after orbit.
@@ -31,12 +39,20 @@ class GlobeView : public QWidget {
 public:
     explicit GlobeView(QWidget* parent = nullptr);
 
-    void showResult(std::shared_ptr<const orbit::SimResult> result);
+    void showRunSet(std::shared_ptr<const RunSet> runs, int selected);
+    void clearGhosts();
 
 private:
+    /// One model from the scene's pool of extra paths.
+    struct ExtraPath {
+        QObject* model = nullptr;
+        PolylineGeometry* line = nullptr;
+    };
+
     void buildPlaybackBar(QBoxLayout* layout);
     void connectScene();
-    void updateLines();
+    void updateSelectedLines();
+    void updateExtraPaths();
     void setPlaybackTime(double t);
     void togglePlaying();
     void onTick();
@@ -46,6 +62,7 @@ private:
     QQuickItem* m_scene = nullptr;
     PolylineGeometry* m_trajectory = nullptr;
     PolylineGeometry* m_groundTrack = nullptr;
+    std::vector<ExtraPath> m_extraPaths;
 
     QToolButton* m_playButton = nullptr;
     QSlider* m_timeSlider = nullptr;
@@ -53,7 +70,14 @@ private:
     QComboBox* m_speed = nullptr;
     QCheckBox* m_follow = nullptr;
 
-    std::shared_ptr<const orbit::SimResult> m_result;
+    std::shared_ptr<const RunSet> m_runs;
+    int m_selected = 0;
+    std::shared_ptr<const orbit::SimResult> m_result; ///< the selected flight
+
+    /// Recent single flights, newest first.
+    std::deque<std::shared_ptr<const orbit::SimResult>> m_ghosts;
+    QElapsedTimer m_sinceLastGhost;
+
     double m_time = 0.0; ///< playback time, s after liftoff
     QTimer m_timer;
     QElapsedTimer m_clock;

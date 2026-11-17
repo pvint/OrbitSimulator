@@ -2,19 +2,26 @@
 #pragma once
 
 #include "orbit/core/simulation.hpp"
+#include "orbit/core/sweep.hpp"
+#include "run_set.hpp"
 
 #include <QFutureWatcher>
 #include <QObject>
+#include <QThreadPool>
 
 #include <memory>
+#include <optional>
 
-/// Runs simulations on a worker thread, so the window never freezes, and
+/// Runs simulations on worker threads, so the window never freezes, and
 /// reports each result back on the GUI thread.
 ///
-/// "Latest wins": at most one simulation runs at a time. If the mission
-/// changes while one is running (a slider being dragged), the newest mission
-/// is remembered and run as soon as the current run finishes. Missions in
-/// between are skipped, since nobody will look at them.
+/// A request is a mission, optionally with a sweep. A sweep's flights run in
+/// parallel on all CPU cores.
+///
+/// "Latest wins": at most one request is computed at a time. If a new request
+/// arrives while one is running (a slider being dragged), it is remembered
+/// and run as soon as the current one finishes. Requests in between are
+/// skipped, since nobody will look at them.
 class SimulationController : public QObject {
     Q_OBJECT
 
@@ -27,24 +34,30 @@ public:
     SimulationController(SimulationController&&) = delete;
     SimulationController& operator=(SimulationController&&) = delete;
 
-    /// Simulate this mission (now, or once the current run is done).
-    void setMission(const orbit::Mission& mission);
-    const orbit::Mission& mission() const { return m_mission; }
+    /// Simulate this mission, or the sweep over it (now, or once the current
+    /// request is done).
+    void run(const orbit::Mission& mission, const std::optional<orbit::SweepSpec>& sweep = {});
 
 signals:
-    /// A finished simulation and how long it took to compute.
-    void resultReady(std::shared_ptr<const orbit::SimResult> result, double milliseconds);
+    /// A finished request and how long it took to compute.
+    void resultReady(std::shared_ptr<const RunSet> runs, double milliseconds);
 
 private:
-    struct Run {
-        std::shared_ptr<const orbit::SimResult> result;
+    struct Request {
+        orbit::Mission mission;
+        std::optional<orbit::SweepSpec> sweep;
+    };
+    struct Output {
+        std::shared_ptr<const RunSet> runs;
         double milliseconds = 0.0;
     };
 
-    void startRun();
-    void onRunFinished();
+    void start(const Request& request);
+    void onFinished();
 
-    orbit::Mission m_mission;
-    bool m_pending = false; ///< the mission changed while a run was going
-    QFutureWatcher<Run> m_watcher;
+    std::optional<Request> m_pending; ///< arrived while a request was running
+    QFutureWatcher<Output> m_watcher;
+    /// Sweep flights run here, not in the global pool that runs the request
+    /// itself, so a request never waits for threads it is occupying.
+    QThreadPool m_sweepPool;
 };

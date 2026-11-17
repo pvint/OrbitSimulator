@@ -23,6 +23,12 @@ Item {
     // For C++ to fill in.
     property alias trajectory: trajectoryGeometry
     property alias groundTrack: groundTrackGeometry
+    property real trajectoryWidth: 2
+
+    /// Extra trajectories: the other flights of a sweep, or fading "ghosts"
+    /// of recent flights. A fixed pool; C++ shows as many as it needs.
+    readonly property int extraPathCount: 64
+    function extraPath(index) { return extraPaths.objectAt(index) }
 
     // --- camera --------------------------------------------------------
     // The camera orbits a target point: yaw turns it round the north-south
@@ -124,12 +130,30 @@ Item {
         }
 
         // --- In the inertial frame -----------------------------------------
+        Repeater3D {
+            id: extraPaths
+            model: root.extraPathCount
+            delegate: Model {
+                id: pathModel
+                property alias line: lineGeometry
+                property real lineOpacity: 1.0
+                visible: false
+                geometry: PolylineGeometry { id: lineGeometry }
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
+                    vertexColorsEnabled: true
+                    opacity: pathModel.lineOpacity
+                    lineWidth: 1.5
+                }
+            }
+        }
+
         Model {
             geometry: PolylineGeometry { id: trajectoryGeometry }
             materials: PrincipledMaterial {
                 lighting: PrincipledMaterial.NoLighting
                 vertexColorsEnabled: true
-                lineWidth: 2
+                lineWidth: root.trajectoryWidth
             }
         }
 

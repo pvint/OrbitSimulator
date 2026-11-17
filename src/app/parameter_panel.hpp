@@ -6,6 +6,8 @@
 
 #include <QWidget>
 
+#include <string>
+#include <string_view>
 #include <vector>
 
 class QBoxLayout;
@@ -29,6 +31,10 @@ public:
     /// Show this mission in the widgets. Does not emit missionChanged.
     void setMission(const orbit::Mission& mission);
 
+    /// Grey out the controls of the parameter being swept (or unlock all with
+    /// an empty key). Sweeping burn time locks the propellant, which it sets.
+    void setLockedParameter(std::string_view key);
+
 signals:
     /// The user changed something.
     void missionChanged(const orbit::Mission& mission);
@@ -49,6 +55,7 @@ private:
 
     orbit::Mission m_mission;
     std::vector<Row> m_rows;
+    std::string m_lockedKey;
     QCheckBox* m_autoCircularize = nullptr;
 
     QLabel* m_burnTime = nullptr;

@@ -12,6 +12,7 @@ Item {
     property string timeUnit: "s"
     property color lineColor: "#38bdf8"
     property alias series: line
+    property alias view: graphsView
     property alias xAxis: xAxis
     property alias yAxis: yAxis
 
@@ -34,6 +35,7 @@ Item {
     }
 
     GraphsView {
+        id: graphsView
         anchors.top: heading.bottom
         anchors.left: parent.left
         anchors.right: parent.right
