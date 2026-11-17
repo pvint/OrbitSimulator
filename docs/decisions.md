@@ -253,6 +253,19 @@ in the 3D view.
 the tour, and adding a step needs no code. A test keeps tours and scenarios
 in step.
 
+### 22. Moon texture: CGI Moon Kit colour map, 8192 × 4096 (2026-11-17)
+
+**Decision:** the Moon uses NASA SVS's CGI Moon Kit colour map
+(`lroc_color_16bit_srgb_8k.tif`, from Lunar Reconnaissance Orbiter WAC
+imagery; public domain), converted to an 8-bit 8192 × 4096 JPEG (7 MB) by
+`tools/make_moon_texture.sh`. The Moon is turned so its near side faces the
+Earth and its north is near ecliptic north (libration ignored).
+
+**How it got here:** svs.gsfc.nasa.gov's certificate chains to Let's
+Encrypt's new "ISRG Root YR", which this system doesn't trust yet. Rather
+than disable certificate checks, the user downloaded the file in a browser.
+The texture stays optional in the build (grey Moon without it).
+
 ---
 
 ## Open questions
@@ -267,8 +280,5 @@ in step.
   already start from any state (`SimOptions::initialState`) and coast with no
   engine. Open: how the user specifies one: orbital elements, position and
   velocity, or an imported real object, and how to place it in the UI.
-- **Moon texture.** The Moon is plain grey; NASA's CGI Moon Kit (LRO
-  imagery, public domain) would make it look real. Needs the user's go-ahead
-  to download.
 - **App icon and identifier.** The macOS bundle id is a placeholder
   (`io.github.orbitsim`).

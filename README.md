@@ -139,8 +139,9 @@ prototype/web/ the original 2D browser prototype
 
 Earth imagery: *Blue Marble: Next Generation*, NASA Earth Observatory
 (Reto Stöckli), public domain. See `tools/make_earth_texture.sh` for exactly
-which file and how it was processed. The Moon can use NASA's *CGI Moon Kit*
-(LRO imagery, public domain): see `tools/make_moon_texture.sh`.
+which file and how it was processed. Moon imagery: *CGI Moon Kit*,
+NASA Scientific Visualization Studio, from Lunar Reconnaissance Orbiter data,
+public domain; see `tools/make_moon_texture.sh`.
 
 ## Licence
 

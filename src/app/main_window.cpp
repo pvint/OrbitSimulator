@@ -383,6 +383,8 @@ void MainWindow::showAbout() {
            "<p>Free software under the GNU General Public License, "
            "version 3 or later.</p>"
            "<p>Earth imagery: Blue Marble Next Generation, "
-           "NASA Earth Observatory (Reto Stöckli).</p>")
+           "NASA Earth Observatory (Reto Stöckli).<br>"
+           "Moon imagery: CGI Moon Kit, NASA Scientific Visualization Studio, "
+           "from Lunar Reconnaissance Orbiter data.</p>")
             .arg(QApplication::applicationName(), QApplication::applicationVersion()));
 }
