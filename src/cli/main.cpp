@@ -215,8 +215,9 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--scenario") {
             try {
                 const orbit::LoadedScenario loaded = orbit::loadScenarioFile(std::string(value));
-                for (const auto& warning : loaded.warnings)
+                for (const auto& warning : loaded.warnings) {
                     std::cerr << "warning: " << warning << '\n';
+                }
                 scenario = loaded.scenario;
                 std::cout << "Scenario: " << scenario.name << "\n\n";
             } catch (const orbit::ScenarioError& e) {

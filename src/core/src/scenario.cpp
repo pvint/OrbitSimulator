@@ -61,8 +61,9 @@ Mission readMission(const json& object, std::vector<std::string>& warnings) {
         }
     }
     if (const auto it = object.find(std::string(kAutoCircularizeKey)); it != object.end()) {
-        if (!it->is_boolean())
+        if (!it->is_boolean()) {
             throw ScenarioError("mission.auto-circularize must be true or false");
+        }
         mission.autoCircularize = it->get<bool>();
     }
 
@@ -106,7 +107,7 @@ LoadedScenario scenarioFromJson(std::string_view text) {
     if (!doc.is_object()) throw ScenarioError("a scenario must be a JSON object");
 
     if (doc.value("format", std::string{}) != kScenarioFormatName) {
-        throw ScenarioError("not an Orbit Simulator scenario (\"format\" should be \"" +
+        throw ScenarioError(R"(not an Orbit Simulator scenario ("format" should be ")" +
                             std::string(kScenarioFormatName) + "\")");
     }
     const auto version = doc.find("version");
