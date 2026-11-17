@@ -1,0 +1,82 @@
+{
+  "format": "orbitsim-demo",
+  "version": 1,
+  "name": "A tour of Orbit Simulator",
+  "steps": [
+    {
+      "title": "A first orbit",
+      "caption": "A single-stage rocket lifts off from Cape Canaveral at Apollo 11's launch time. It climbs straight up, tilts over, and lets gravity bend its path round (orange: engine burning). When the top of its path reaches 200 km it shuts down, coasts up (blue), and fires again to make the orbit circular. The yellow line is its track over the ground.",
+      "scenario": "cape-canaveral-leo.json",
+      "view": "launch-site",
+      "speed": 60,
+      "seconds": 30
+    },
+    {
+      "title": "Why rockets tilt over",
+      "caption": "Nine launches, each tilting a different amount after liftoff. Tilt too little and the rocket climbs steeply, spending its propellant holding itself up against gravity. Tilt too much and it turns over into the ground. In between, it reaches orbit. The Sweep tab lists every flight; click one to look at it.",
+      "scenario": "kick-angle-sweep.json",
+      "view": "launch-site",
+      "seconds": 25
+    },
+    {
+      "title": "A knife edge",
+      "caption": "The same rocket, but burning until its tank is empty, with no second burn. Now orbit is only reached in a thin band of tilt angles, and only just: the turn has to level off at the very moment orbital speed is reached. This is why real rockets coast up and burn again.",
+      "scenario": "pure-gravity-turn.json",
+      "seconds": 25
+    },
+    {
+      "title": "Latitude sets the tilt of the orbit",
+      "caption": "Launching due east from different latitudes. Each orbit is tilted (inclined) to the equator by exactly the launch latitude, and launches nearer the equator get more help from the Earth's 465 m/s spin. That is why many spaceports are as close to the equator as their country allows.",
+      "scenario": "latitude-sweep.json",
+      "view": "launch-site",
+      "seconds": 25
+    },
+    {
+      "title": "East versus west",
+      "caption": "From the equator, launch directions from due east (blue) round to due west (red). Going east, the rocket keeps the ground's eastward speed; going west it first has to cancel it, costing about 930 m/s more. Westward orbits run backwards (retrograde).",
+      "scenario": "westward-equator.json",
+      "seconds": 25
+    },
+    {
+      "title": "A polar orbit",
+      "caption": "Seen from above the north pole: a launch south from California into a polar orbit. The orbit stays fixed in space while the Earth turns beneath it, so each pass crosses the ground further west. Over a day, a polar satellite sees the whole planet.",
+      "scenario": "vandenberg-polar.json",
+      "view": "north",
+      "seconds": 25
+    },
+    {
+      "title": "To the Moon",
+      "caption": "Launched at Apollo 11's time, on the direction that puts the orbit's plane through the Moon: 72.5°, close to Apollo's 72.0°. After a parking orbit, the trans-lunar injection burn stretches the orbit out to the Moon. Three and a half days later the rocket meets it. We're looking down on the plane of the journey.",
+      "scenario": "apollo-11-lunar-orbit.json",
+      "seconds": 40
+    },
+    {
+      "title": "Arriving at the Moon",
+      "caption": "Close up, centred on the Moon. The rocket swings in, fires its engine against its speed relative to the Moon, and is captured into an orbit about 530 by 10,000 km above the surface: an orbit lasting about 15 hours.",
+      "scenario": "apollo-11-lunar-orbit.json",
+      "centre": "moon",
+      "distance": 30000,
+      "start-hours": 78,
+      "speed": 2000,
+      "seconds": 30
+    },
+    {
+      "title": "Timing is everything",
+      "caption": "The same trip, starting the injection burn a fraction of a degree earlier or later. Aimed at the centre, the rocket hits the Moon; a few thousand kilometres either side, it brakes into orbit. A degree of timing moves the arrival point by about 2500 km.",
+      "scenario": "lunar-lead-angle-sweep.json",
+      "seconds": 30
+    },
+    {
+      "title": "Launch windows",
+      "caption": "Launching due east at different times of day. The orbit's plane is fixed when the rocket leaves the pad, and the turning Earth swings that plane round: only around 03:15 UTC does it pass through the Moon. That is a launch window.",
+      "scenario": "lunar-launch-window.json",
+      "seconds": 30
+    },
+    {
+      "title": "A gravity assist",
+      "caption": "Passing close behind the Moon, the rocket is swung round and gains energy from the Moon's motion, enough to leave the Earth for good. Space probes use the same trick on the planets. That's the tour: every scenario is under File ▸ Examples, ready to change.",
+      "scenario": "lunar-gravity-assist.json",
+      "seconds": 30
+    }
+  ]
+}

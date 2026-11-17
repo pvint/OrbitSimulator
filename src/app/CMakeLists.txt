@@ -31,6 +31,8 @@ target_link_libraries(orbitsim_ui PUBLIC orbit::core Qt6::Widgets Qt6::Concurren
 orbit_set_warnings(orbitsim_ui)
 
 qt_add_executable(orbitsim
+    demo_controller.cpp
+    demo_controller.hpp
     globe_geometry.cpp
     globe_geometry.hpp
     globe_view.cpp
@@ -64,6 +66,13 @@ qt_add_resources(orbitsim "example_scenarios"
     PREFIX "/scenarios"
     BASE "${PROJECT_SOURCE_DIR}/scenarios"
     FILES ${example_scenarios}
+)
+
+# The demo tour (Help ▸ Demo Tour), qrc:/demos/tour.json.
+qt_add_resources(orbitsim "demos"
+    PREFIX "/demos"
+    BASE "${PROJECT_SOURCE_DIR}/demos"
+    FILES "${PROJECT_SOURCE_DIR}/demos/tour.json"
 )
 
 # Earth texture, compiled into the executable (qrc:/textures/...). BIG_RESOURCES

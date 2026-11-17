@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 
+class DemoController;
 class FlightStatsPanel;
 class QDockWidget;
 class GlobeView;
@@ -36,6 +37,14 @@ public:
     /// examples). Shows a message and returns false if it can't be read.
     bool openScenarioFile(const QString& path);
 
+    /// Open a scenario from its JSON text. `path` is where it can be saved
+    /// back to (empty for built-in examples). Returns false, after telling
+    /// the user why, if it isn't a usable scenario.
+    bool openScenarioText(const QByteArray& text, const QString& path);
+
+    /// Start the guided demo tour, optionally at a later step (0-based).
+    void startDemo(int firstStep = 0);
+
 protected:
     void closeEvent(QCloseEvent* event) override;
 
@@ -58,7 +67,6 @@ private:
     void saveScenario();
     void saveScenarioAs();
     bool writeScenario(const QString& path);
-    void loadScenarioText(const QByteArray& text, const QString& path);
     void populateExamplesMenu(QMenu* menu);
     void updateTitle();
 
@@ -71,6 +79,7 @@ private:
     QDockWidget* m_flightDock = nullptr;
     QDockWidget* m_sweepDock = nullptr;
     QMenu* m_viewMenu = nullptr;
+    DemoController* m_demo = nullptr;
 
     orbit::Mission m_mission;
     std::optional<orbit::SweepSpec> m_sweep;

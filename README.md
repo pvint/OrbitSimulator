@@ -4,7 +4,8 @@ A desktop app for building intuition about orbital mechanics. Launch a rocket
 from anywhere on a rotating Earth, see where it goes, and sweep a parameter
 to compare a whole family of trajectories side by side.
 
-**Status:** early development, but it flies to the Moon. The desktop app shows
+**Status:** early development, but it flies to the Moon. New here? Start
+the guided tour: *Help ▸ Demo Tour* (F2), or `orbitsim --demo`. The desktop app shows
 flights on a textured 3D Earth (lit by the real Sun for the launch date), with
 the Moon, playback, live parameter sliders, results and graphs, parameter
 sweeps that compare a whole family of flights, and scenario files with
@@ -39,7 +40,8 @@ build/dev/src/app/orbitsim        # start the app
 Drag any slider and the flight re-simulates at once. The panels are docks:
 move, stack or hide them (View menu), and the layout is remembered.
 
-In the 3D view, drag to turn the camera and use the mouse wheel to zoom. The
+In the 3D view, drag to turn the camera, right-drag (or Shift + drag) to pan,
+and use the mouse wheel to zoom. The
 playback bar underneath plays the flight (Space), scrubs through it, sets the
 speed and can follow the rocket. Burns are drawn orange, coasting blue, and
 the ground track (the path over the ground) yellow. The orbit stays fixed in
@@ -71,6 +73,12 @@ polar launches, east vs west, kick-angle and propellant sweeps, a pure
 gravity turn...). *Save Scenario* writes the current setup to a JSON file
 you can share or edit by hand; `orbitsim file.json` opens one directly. The
 examples live in [scenarios/](scenarios/).
+
+**Demo tour.** *Help ▸ Demo Tour* walks through eleven scenarios with
+captions: a first orbit, why rockets tilt over, latitude and launch
+direction, polar orbits, and a trip to the Moon with launch windows and a
+gravity assist. It moves on by itself; use the caption's buttons to go back,
+skip ahead or end it. `orbitsim --demo-step N` starts at step N.
 
 `orbitsim --screenshot FILE` saves an image of the window and quits.
 ```
@@ -120,6 +128,7 @@ src/core/      the physics, in plain C++ (no Qt)
 src/cli/       orbitsim-cli: runs the physics without a GUI
 src/app/       the Qt desktop app (Widgets, plus QML for the 3D view and plots)
 scenarios/     example scenario files
+demos/         the guided demo tour
 tools/         helper scripts (rebuilding the Earth texture)
 tests/         physics tests (Catch2)
 docs/          design decisions and physics notes
@@ -130,7 +139,8 @@ prototype/web/ the original 2D browser prototype
 
 Earth imagery: *Blue Marble: Next Generation*, NASA Earth Observatory
 (Reto Stöckli), public domain. See `tools/make_earth_texture.sh` for exactly
-which file and how it was processed.
+which file and how it was processed. The Moon can use NASA's *CGI Moon Kit*
+(LRO imagery, public domain): see `tools/make_moon_texture.sh`.
 
 ## Licence
 

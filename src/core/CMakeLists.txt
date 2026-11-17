@@ -17,6 +17,7 @@ configure_file(version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/orbit/core/
 
 add_library(orbit_core STATIC
     src/astro_time.cpp
+    src/demo.cpp
     src/ephemeris.cpp
     src/flight_program.cpp
     src/earth.cpp

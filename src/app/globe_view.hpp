@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "orbit/core/demo.hpp"
 #include "orbit/core/simulation.hpp"
 #include "run_set.hpp"
 
@@ -10,6 +11,7 @@
 
 #include <deque>
 #include <memory>
+#include <optional>
 #include <vector>
 
 class PolylineGeometry;
@@ -45,6 +47,18 @@ public:
     /// arrives, e.g. after opening a scenario.
     void resetViewOnNextResult();
 
+    /// Demo tour: when the next result arrives, set up the camera and
+    /// playback as the step asks, and start playing.
+    void applyDemoStepOnNextResult(const orbit::DemoStep& step);
+    void showCaption(const QString& title, const QString& text, int step, int count);
+    void hideCaption();
+
+signals:
+    // The demo caption's buttons.
+    void demoPreviousRequested();
+    void demoNextRequested();
+    void demoEndRequested();
+
 private:
     /// One model from the scene's pool of extra paths.
     struct ExtraPath {
@@ -62,6 +76,8 @@ private:
     void togglePlaying();
     void onTick();
     void resetView();
+    void applyDemoStep(const orbit::DemoStep& step);
+    void play();
 
     QQuickWidget* m_view = nullptr;
     QQuickItem* m_scene = nullptr;
@@ -87,6 +103,7 @@ private:
 
     double m_time = 0.0; ///< playback time, s after liftoff
     bool m_resetPending = false;
+    std::optional<orbit::DemoStep> m_pendingDemoStep;
     QTimer m_timer;
     QElapsedTimer m_clock;
 };
