@@ -11,7 +11,11 @@
 #include <vector>
 
 class QBoxLayout;
-class QCheckBox;
+class QComboBox;
+class QGridLayout;
+class QGroupBox;
+class QPushButton;
+class QDateEdit;
 class QDoubleSpinBox;
 class QLabel;
 class QSlider;
@@ -49,6 +53,7 @@ private:
     };
 
     void buildDerivedSection(QBoxLayout* layout);
+    void buildLunarButtons(QGridLayout* grid);
     void onValueEdited(const Row& row, double value);
     void refreshWidgets();
     void refreshDerived();
@@ -56,7 +61,11 @@ private:
     orbit::Mission m_mission;
     std::vector<Row> m_rows;
     std::string m_lockedKey;
-    QCheckBox* m_autoCircularize = nullptr;
+    QComboBox* m_plan = nullptr;
+    QGroupBox* m_lunarGroup = nullptr;
+    QPushButton* m_aimButton = nullptr;
+    QPushButton* m_bestTimeButton = nullptr;
+    QDateEdit* m_launchDate = nullptr;
 
     QLabel* m_burnTime = nullptr;
     QLabel* m_massFlow = nullptr;

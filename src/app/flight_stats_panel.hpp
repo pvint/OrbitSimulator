@@ -5,6 +5,7 @@
 
 #include <QWidget>
 
+class QGroupBox;
 class QLabel;
 
 /// Read-outs for one flight: outcome, the final orbit, and the engine events.
@@ -28,4 +29,10 @@ private:
     QLabel* m_propellantLeft = nullptr;
     QLabel* m_duration = nullptr;
     QLabel* m_events = nullptr;
+
+    QGroupBox* m_moonGroup = nullptr;
+    QLabel* m_moonClosest = nullptr;
+    QLabel* m_moonClosestTime = nullptr;
+    QLabel* m_moonOrbit = nullptr;
+    QLabel* m_moonPeriod = nullptr;
 };

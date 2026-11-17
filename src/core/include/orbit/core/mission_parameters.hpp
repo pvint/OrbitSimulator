@@ -30,7 +30,15 @@ struct ParameterInfo {
     /// (burn time sets the propellant). Derived parameters can be swept and
     /// typed on the command line, but get no slider of their own.
     bool derived = false;
+    /// Written to scenario files under its key. False for parts of a value
+    /// stored another way (the launch hour is saved within "launch-utc").
+    bool inScenario = true;
 };
+
+/// Seconds since midnight UTC of the launch day, and setting it while
+/// keeping the date.
+double launchHourOfDay(const Mission& mission);
+void setLaunchHourOfDay(Mission& mission, double hours);
 
 /// All mission parameters, in display order, grouped by `group`.
 std::span<const ParameterInfo> missionParameters();

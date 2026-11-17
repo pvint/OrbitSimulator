@@ -17,6 +17,5 @@ QString angle(double radians);         ///< "28.50°"
 
 QString outcomeLabel(orbit::Outcome outcome); ///< "Orbit", "Crashed", ...
 QColor outcomeColor(orbit::Outcome outcome);
-QString eventLabel(orbit::EventType type);
 
 } // namespace display

@@ -115,9 +115,10 @@ Each milestone ends with something that runs.
 | M2 | Qt app: parameter panel, flight stats, Qt Graphs plots, live re-simulation on a worker thread | done |
 | M3 | 3D view: textured rotating Earth, trajectory and ground track, camera controls (orbit / zoom / follow), playback | done |
 | M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | done |
-| M5 (next) | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | |
-| M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | |
+| M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | done |
+| M6 (next) | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | |
 | Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
+| Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |
 
@@ -134,6 +135,17 @@ trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
 `qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
 Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
 series it finds through properties on `qml/Plots.qml`.
+
+### Core API in brief (M5)
+
+`simulate(Mission)` runs `flightProgramFor(mission)` through
+`simulateProgram(mission, program, options)`. A `FlightProgram` is a list of
+`FlightStep`s (burn/coast, `Steering`, `StepEnd`, value, timeout). Gravity
+includes the Moon and Sun (`SimOptions::thirdBodyGravity`). Results add
+`LunarSummary` (SOI, closest approach, final Moon-relative orbit).
+`lunar_targeting.hpp`: `azimuthToMoon`, `bestLaunchHourForMoon`.
+Times are epochs (s since J2000, `astro_time.hpp`); `ephemeris.hpp` gives
+Sun and Moon positions.
 
 ### Core API in brief (M1)
 
@@ -154,3 +166,5 @@ evenly spaced `Sample`s (dense output), `FlightEvent`s, the final orbit's
   over-rotates and crashes. Sweeps show this; it is physics, not a bug.
 - Defaults that worked: dry 4 t, propellant 60 t, thrust 1200 kN, Isp 340 s,
   lat 28.5°, azimuth 90°, pitch start 10 s, kick 25° held 10 s, target 200 km.
+  The default launch time is Apollo 11's (1969-07-16 13:32 UTC); with Isp
+  450 s the same rocket reaches lunar orbit (see scenarios/).

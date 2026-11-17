@@ -5,6 +5,7 @@
 #include "orbit/core/constants.hpp"
 #include "orbit/core/simulation.hpp"
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -37,16 +38,18 @@ TEST_CASE("The default rocket reaches a low, circular orbit", "[simulation]") {
     const SimResult r = simulate(defaultMission());
 
     REQUIRE(r.outcome == Outcome::Orbit);
-    REQUIRE(r.endReason == EndReason::OrbitsComplete);
+    REQUIRE(r.endReason == EndReason::ProgramDone);
     REQUIRE(r.orbit.periapsisAltitude > 190e3);
     REQUIRE(r.orbit.apoapsisAltitude < 210e3);
     REQUIRE(r.orbit.eccentricity < 1e-3);
 
     // Cutoff, coast up, circularize: in that order.
     REQUIRE(r.events.size() == 3);
-    REQUIRE(r.events[0].type == EventType::Cutoff);
-    REQUIRE(r.events[1].type == EventType::CircularizationStart);
-    REQUIRE(r.events[2].type == EventType::CircularizationEnd);
+    REQUIRE(r.events[0].type == EventType::EngineStop);  // ascent: apoapsis at target
+    REQUIRE(r.events[1].type == EventType::EngineStart); // circularization
+    REQUIRE(r.events[2].type == EventType::EngineStop);
+    REQUIRE(r.events[0].description == "Ascent: engine off");
+    REQUIRE(r.events[1].description == "Circularization: engine on");
     REQUIRE(r.events[0].sample.t < r.events[1].sample.t);
     // Circularization starts at apoapsis = the target altitude.
     REQUIRE_THAT(r.events[1].sample.altitude(), WithinAbs(200e3, 1.0));
@@ -72,9 +75,10 @@ TEST_CASE("Simulated burn matches the Tsiolkovsky rocket equation", "[simulation
     Mission m = defaultMission();
     m.site.latitude = degToRad(90.0);
     m.guidance.pitchStartTime = 1e9;
-    m.autoCircularize = false;
+    m.plan = FlightPlan::BurnToDepletion;
     SimOptions noGravity;
     noGravity.mu = 0.0;
+    noGravity.thirdBodyGravity = false;
     const SimResult r = simulate(m, noGravity);
 
     const FlightEvent* burnout = findEvent(r, EventType::Burnout);
@@ -161,8 +165,12 @@ TEST_CASE("Moving the launch site in longitude only turns the orbit", "[simulati
     Mission a = defaultMission();
     Mission b = a;
     b.site.longitude = a.site.longitude + degToRad(100.0);
-    const SimResult ra = simulate(a);
-    const SimResult rb = simulate(b);
+    // Exact only with the Earth alone: the Moon and Sun break the symmetry
+    // (very slightly) because they sit in different directions from each site.
+    SimOptions earthOnly;
+    earthOnly.thirdBodyGravity = false;
+    const SimResult ra = simulate(a, earthOnly);
+    const SimResult rb = simulate(b, earthOnly);
 
     REQUIRE_THAT(rb.orbit.periapsis, WithinAbs(ra.orbit.periapsis, 1.0));
     REQUIRE_THAT(rb.orbit.apoapsis, WithinAbs(ra.orbit.apoapsis, 1.0));
@@ -187,7 +195,7 @@ TEST_CASE("Obvious failures are classified correctly", "[simulation]") {
     SECTION("Straight up with little propellant: a hop into space and back") {
         m.rocket.propellantMass = 10e3;
         m.guidance.kickAngle = 0.0;
-        m.autoCircularize = false;
+        m.plan = FlightPlan::BurnToDepletion;
         const SimResult r = simulate(m);
         REQUIRE(r.outcome == Outcome::Suborbital);
         REQUIRE(r.maxAltitude > kKarmanLine);
@@ -195,7 +203,7 @@ TEST_CASE("Obvious failures are classified correctly", "[simulation]") {
     SECTION("A huge Isp escapes") {
         m.rocket.isp = 1000.0;
         m.guidance.kickAngle = degToRad(5.0);
-        m.autoCircularize = false;
+        m.plan = FlightPlan::BurnToDepletion;
         const SimResult r = simulate(m);
         REQUIRE(r.outcome == Outcome::Escape);
         REQUIRE(r.endReason == EndReason::EscapeDistance);
@@ -211,9 +219,12 @@ TEST_CASE("Running out of propellant while circularizing falls short of orbit", 
     m.rocket.propellantMass = 50e3; // not quite enough (52 t just makes it)
     const SimResult r = simulate(m);
 
-    REQUIRE(findEvent(r, EventType::CircularizationStart) != nullptr);
+    const FlightEvent* start = findEvent(r, EventType::EngineStart);
+    REQUIRE(start != nullptr);
+    REQUIRE(start->description == "Circularization: engine on");
     REQUIRE(findEvent(r, EventType::Burnout) != nullptr);
-    REQUIRE(findEvent(r, EventType::CircularizationEnd) == nullptr);
+    // The circularization never finished: one engine stop (the ascent), not two.
+    REQUIRE(std::ranges::count(r.events, EventType::EngineStop, &FlightEvent::type) == 1);
     REQUIRE(r.propellantLeft == 0.0);
     // The burn raised the periapsis, but not out of the ground.
     REQUIRE(r.outcome == Outcome::Suborbital);

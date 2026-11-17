@@ -13,9 +13,11 @@ FetchContent_Declare(Catch2
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(orbit_core_tests
+    test_astro.cpp
     test_earth.cpp
     test_integrator.cpp
     test_mission_parameters.cpp
+    test_moon.cpp
     test_orbit.cpp
     test_scenario.cpp
     test_simulation.cpp

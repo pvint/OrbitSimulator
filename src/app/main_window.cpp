@@ -249,6 +249,7 @@ void MainWindow::loadScenarioText(const QByteArray& text, const QString& path) {
     m_parameters->setMission(m_mission);
     m_sweepPanel->setMission(m_mission);
     m_globe->clearGhosts();
+    m_globe->resetViewOnNextResult();
     updateTitle();
     if (!m_scenarioDescription.isEmpty()) statusBar()->showMessage(m_scenarioDescription, 20000);
 

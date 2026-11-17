@@ -1,0 +1,13 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 1,
+  "name": "Lunar launch window",
+  "description": "Launching due east on Apollo 11's launch day, at different times of day. The orbit's plane is fixed when the rocket leaves the pad, and the Earth's turning swings that plane round: only around 03:15 UTC does it pass through the Moon. Watch the closest approach in the legend.",
+  "mission": {
+    "launch-utc": "1969-07-16T03:00:00Z",
+    "azimuth": 90,
+    "isp": 450,
+    "plan": "lunar-flyby"
+  },
+  "sweep": { "parameter": "launch-hour", "from": 1.5, "to": 4.5, "steps": 13 }
+}
