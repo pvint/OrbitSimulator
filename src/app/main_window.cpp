@@ -1,24 +1,35 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "main_window.hpp"
 
+#include "display_format.hpp"
+#include "flight_stats_panel.hpp"
+#include "parameter_panel.hpp"
+#include "plot_panel.hpp"
+#include "simulation_controller.hpp"
+
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDockWidget>
-#include <QLabel>
+#include <QLocale>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QQmlError>
 #include <QQuickWidget>
+#include <QScrollArea>
 #include <QSettings>
 #include <QStatusBar>
 
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
+MainWindow::MainWindow(QWidget* parent)
+    : QMainWindow(parent), m_simulation(new SimulationController(this)) {
     setWindowTitle(QApplication::applicationName());
     createSceneView();
     createMenus();
     createDocks();
+    connectSimulation();
     restoreLayout();
-    statusBar()->showMessage(tr("Ready"));
+
+    // First flight: the default mission.
+    m_simulation->setMission(m_parameters->mission());
 }
 
 void MainWindow::createSceneView() {
@@ -51,27 +62,57 @@ void MainWindow::createMenus() {
 }
 
 void MainWindow::createDocks() {
-    // Placeholders until the real panels arrive in M2.
-    const auto addDock = [this](const QString& title, const QString& objectName,
+    // The side panels run the full height of the window; the graphs fit
+    // between them, under the 3D view.
+    setCorner(Qt::BottomLeftCorner, Qt::LeftDockWidgetArea);
+    setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
+
+    const auto addDock = [this](const QString& title, const QString& objectName, QWidget* content,
                                 Qt::DockWidgetArea area) {
         auto* dock = new QDockWidget(title, this);
         dock->setObjectName(objectName); // needed for saveState()/restoreState()
-        auto* placeholder = new QLabel(tr("(coming in M2)"), dock);
-        placeholder->setAlignment(Qt::AlignCenter);
-        placeholder->setMinimumWidth(240);
-        dock->setWidget(placeholder);
+        dock->setWidget(content);
         addDockWidget(area, dock);
         m_viewMenu->addAction(dock->toggleViewAction());
+        return dock;
     };
-    addDock(tr("Parameters"), QStringLiteral("parametersDock"), Qt::LeftDockWidgetArea);
-    addDock(tr("Flight"), QStringLiteral("flightDock"), Qt::RightDockWidgetArea);
+
+    // Parameters can be taller than the window, so they scroll.
+    m_parameters = new ParameterPanel;
+    auto* scroll = new QScrollArea;
+    scroll->setWidget(m_parameters);
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setMinimumWidth(m_parameters->sizeHint().width() + 20);
+    addDock(tr("Parameters"), QStringLiteral("parametersDock"), scroll, Qt::LeftDockWidgetArea);
+
+    m_flightStats = new FlightStatsPanel;
+    addDock(tr("Flight"), QStringLiteral("flightDock"), m_flightStats, Qt::RightDockWidgetArea);
+
+    m_plots = new PlotPanel;
+    addDock(tr("Graphs"), QStringLiteral("graphsDock"), m_plots, Qt::BottomDockWidgetArea);
+}
+
+void MainWindow::connectSimulation() {
+    connect(m_parameters, &ParameterPanel::missionChanged, m_simulation,
+            &SimulationController::setMission);
+
+    connect(m_simulation, &SimulationController::resultReady, this,
+            [this](const std::shared_ptr<const orbit::SimResult>& result, double milliseconds) {
+                m_flightStats->showResult(*result);
+                m_plots->showResult(result);
+                statusBar()->showMessage(tr("%1 · simulated %2 of flight in %3 ms")
+                                             .arg(display::outcomeLabel(result->outcome),
+                                                  display::duration(result->duration),
+                                                  QLocale().toString(milliseconds, 'f', 1)));
+            });
 }
 
 // Window size, position and panel layout persist between runs.
 void MainWindow::restoreLayout() {
     const QSettings settings;
     if (!restoreGeometry(settings.value(QStringLiteral("window/geometry")).toByteArray())) {
-        resize(1400, 850);
+        resize(1500, 900);
     }
     restoreState(settings.value(QStringLiteral("window/state")).toByteArray());
 }
