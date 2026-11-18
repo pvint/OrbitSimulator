@@ -79,7 +79,7 @@
     },
     {
       "title": "Timing is everything",
-      "caption": "The same trip, starting the injection burn a fraction of a degree earlier or later. Aimed at the centre, the rocket hits the Moon; a few thousand kilometres either side, it brakes into orbit. A degree of timing moves the arrival point by about 2500 km.",
+      "caption": "The same trip, starting the injection burn up to a minute earlier or later. Aimed at the centre, the rocket hits the Moon; a few thousand kilometres either side, it brakes into orbit. Ten seconds of timing moves the arrival point by about 2300 km.",
       "scenario": "lunar-lead-angle-sweep.json",
       "seconds": 30
     },

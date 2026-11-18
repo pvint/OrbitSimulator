@@ -62,7 +62,9 @@ date and time, and press *Aim at the Moon* (or *Best launch time*). The
 rocket waits in a parking orbit until the Moon is in the right place, burns
 towards it, and either flies past, brakes into orbit round it, or hits it.
 The Flight panel's Moon section shows the closest approach and the lunar
-orbit. Try the lunar examples, especially the *lead angle sweep* and the
+orbit. *TLI start delay* starts the injection burn seconds earlier or later;
+sweep it to see timing decide everything. Try the lunar examples, especially
+the *lunar timing* sweep and the
 *launch window*.
 
 The small arrows in the top-left corner of the 3D view show the axes: X
