@@ -33,7 +33,8 @@ Vec3 circularizationDeltaV(const Vec3& r, const Vec3& v, const Vec3& fallbackDir
 }
 
 Vec3 thrustDirection(GuidancePhase phase, const Vec3& r, const Vec3& v, const Vec3& relativeVel,
-                     double kickAngle, const Vec3& launchPlaneNormal, double mu) {
+                     double kickAngle, const Vec3& launchPlaneNormal, double mu,
+                     double thrustAcceleration) {
     const Vec3 up = normalized(r);
     const Vec3 downrange = downrangeDirection(r, launchPlaneNormal);
 
@@ -45,8 +46,19 @@ Vec3 thrustDirection(GuidancePhase phase, const Vec3& r, const Vec3& v, const Ve
     case GuidancePhase::GravityTurn:
         // Barely moving relative to the ground: no useful direction yet, keep going up.
         return norm(relativeVel) > 1e-3 ? normalized(relativeVel) : up;
-    case GuidancePhase::Circularize:
-        return normalized(circularizationDeltaV(r, v, downrange, mu));
+    case GuidancePhase::Circularize: {
+        const Vec3 deltaV = circularizationDeltaV(r, v, downrange, mu);
+        if (thrustAcceleration <= 0.0) return normalized(deltaV);
+        // Gravity compensation: over the time the burn still needs, gravity
+        // (less what the sideways speed already holds up) will pull the
+        // rocket down by netGravity × timeToGo. Aim to supply that too.
+        const double radius = norm(r);
+        const Vec3 horizontal = v - dot(v, up) * up;
+        const double netGravity =
+            mu / (radius * radius) - normSquared(horizontal) / radius; // g − v_h²/r
+        const double timeToGo = norm(deltaV) / thrustAcceleration;
+        return normalized(deltaV + netGravity * timeToGo * up);
+    }
     }
     return up; // unreachable; keeps compilers happy
 }

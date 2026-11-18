@@ -33,7 +33,7 @@ TEST_CASE("Sweep missions change only the swept parameter", "[sweep]") {
     const auto missions = sweepMissions(base, {"kick-angle", 10.0, 30.0, 3});
     REQUIRE(missions.size() == 3);
     REQUIRE_THAT(radToDeg(missions[1].guidance.kickAngle), WithinAbs(20.0, 1e-9));
-    REQUIRE(missions[1].rocket.thrust == base.rocket.thrust);
+    REQUIRE(missions[1].rocket.stages[0].thrust == base.rocket.stages[0].thrust);
     REQUIRE(missions[1].site.latitude == base.site.latitude);
 
     REQUIRE_THROWS_AS(sweepMissions(base, {"warp-factor", 1.0, 9.0, 3}), std::invalid_argument);
@@ -70,8 +70,8 @@ TEST_CASE("A minimal scenario fills in defaults, in display units", "[scenario]"
     })");
     const Mission& m = loaded.scenario.mission;
     REQUIRE_THAT(radToDeg(m.guidance.kickAngle), WithinAbs(30.0, 1e-12));
-    REQUIRE_THAT(m.rocket.propellantMass, WithinAbs(50000.0, 1e-9)); // tonnes → kg
-    REQUIRE(m.rocket.thrust == defaultMission().rocket.thrust);
+    REQUIRE_THAT(m.rocket.stages[0].propellantMass, WithinAbs(50000.0, 1e-9)); // tonnes → kg
+    REQUIRE(m.rocket.stages[0].thrust == defaultMission().rocket.stages[0].thrust);
     REQUIRE_FALSE(loaded.scenario.sweep.has_value());
     REQUIRE(loaded.warnings.empty());
 }

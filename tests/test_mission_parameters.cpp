@@ -16,7 +16,9 @@ TEST_CASE("Every parameter writes and reads back the same display value", "[para
     for (const ParameterInfo& p : missionParameters()) {
         CAPTURE(p.key);
         Mission m = defaultMission();
-        const double value = p.min + 0.37 * (p.max - p.min);
+        // A value on the parameter's step grid (the stage count only takes
+        // whole numbers).
+        const double value = p.min + std::round(0.37 * (p.max - p.min) / p.step) * p.step;
         p.set(m, value);
         REQUIRE_THAT(p.get(m), WithinAbs(value, 1e-9 * (1.0 + std::abs(value))));
     }
@@ -66,6 +68,7 @@ TEST_CASE("Burn time is derived: setting it sets the propellant", "[parameters]"
     REQUIRE(p->derived);
     Mission m = defaultMission();
     p->set(m, 100.0);
-    REQUIRE_THAT(burnTime(m.rocket), WithinAbs(100.0, 1e-9));
-    REQUIRE_THAT(m.rocket.propellantMass, WithinAbs(100.0 * massFlowRate(m.rocket), 1e-6));
+    REQUIRE_THAT(burnTime(m.rocket.stages[0]), WithinAbs(100.0, 1e-9));
+    REQUIRE_THAT(m.rocket.stages[0].propellantMass,
+                 WithinAbs(100.0 * massFlowRate(m.rocket.stages[0]), 1e-6));
 }

@@ -22,7 +22,7 @@ namespace {
 /// A mission that only coasts, starting from `start` (relative to the Earth).
 SimResult coastFrom(const State& start, double seconds) {
     Mission m = defaultMission();
-    m.rocket.propellantMass = 0.0;
+    m.rocket.stages[0].propellantMass = 0.0;
     SimOptions options;
     options.initialState = start;
     return simulateProgram(m, {{"Coast", false, Steering::Prograde, StepEnd::Duration, seconds}},
@@ -37,7 +37,7 @@ bool hasEvent(const SimResult& r, EventType type) {
 Mission apolloMission() {
     Mission m = defaultMission(); // already Apollo 11's date and time
     m.plan = FlightPlan::LunarOrbit;
-    m.rocket.isp = 450.0;
+    m.rocket.stages[0].isp = 450.0;
     return m;
 }
 

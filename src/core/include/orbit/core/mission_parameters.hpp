@@ -11,6 +11,7 @@
 #include "orbit/core/simulation.hpp"
 
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace orbit {
@@ -42,6 +43,11 @@ void setLaunchHourOfDay(Mission& mission, double hours);
 
 /// All mission parameters, in display order, grouped by `group`.
 std::span<const ParameterInfo> missionParameters();
+
+/// A name that is unique among the parameters: the label, or, where
+/// several share it (every stage has a "Thrust"), the group and the label:
+/// "Stage 2 thrust". For lists of all parameters, like the sweep's.
+std::string parameterTitle(const ParameterInfo& parameter);
 
 /// The parameter with this key, or nullptr.
 const ParameterInfo* findParameter(std::string_view key);

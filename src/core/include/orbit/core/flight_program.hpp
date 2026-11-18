@@ -11,8 +11,9 @@
 // write programs directly.
 //
 // RULES
-// - Running out of propellant ends any burn; later burn steps are skipped, but
-//   later coasts still happen.
+// - A stage running dry doesn't end a burn: it is dropped and the next one
+//   carries on. Running out in the last stage that can fire ends any burn;
+//   later burn steps are skipped, but later coasts still happen.
 // - If a step's end condition already holds when it starts (the rocket is
 //   already past apoapsis, say), it ends at once.
 // - A step that takes longer than its timeout ends anyway, and the program

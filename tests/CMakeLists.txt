@@ -22,6 +22,7 @@ add_executable(orbit_core_tests
     test_orbit.cpp
     test_scenario.cpp
     test_simulation.cpp
+    test_staging.cpp
     test_vec3.cpp
 )
 target_link_libraries(orbit_core_tests PRIVATE orbit::core Catch2::Catch2WithMain)

@@ -22,10 +22,7 @@ namespace {
 /// A lump with no engine, for dropping through the air or leaving in orbit.
 Mission unpoweredMission(double mass, double dragCoefficient, double frontalArea) {
     Mission m = defaultMission();
-    m.rocket = {.dryMass = mass,
-                .propellantMass = 0.0,
-                .thrust = 0.0,
-                .isp = 300.0,
+    m.rocket = {.stages = {Stage{.dryMass = mass, .isp = 300.0}},
                 .dragCoefficient = dragCoefficient,
                 .diameter = std::sqrt(4.0 * frontalArea / kPi)};
     return m;
