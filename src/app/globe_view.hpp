@@ -72,6 +72,11 @@ private:
     void updateExtraPaths();
     void updateMoonOrbit();
     double farthestDistance() const;
+    double viewDistanceKm() const;
+    double viewFromAboveDistanceKm() const;
+    orbit::Vec3 orbitNormalAt(double t) const;
+    void lookAtOrbit(bool edgeOn, double t, double distanceKm);
+    void lookFromNorth(double distanceKm);
     void setPlaybackTime(double t);
     void togglePlaying();
     void onTick();

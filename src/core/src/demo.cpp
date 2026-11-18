@@ -34,7 +34,11 @@ DemoView parseView(const std::string& name) {
     if (name == "launch-site") return DemoView::LaunchSite;
     if (name == "north") return DemoView::North;
     if (name == "moon") return DemoView::Moon;
-    throw DemoError(R"("view" must be auto, launch-site, north or moon, not ")" + name + '"');
+    if (name == "edge-on") return DemoView::EdgeOn;
+    if (name == "above-orbit") return DemoView::AboveOrbit;
+    throw DemoError(
+        R"("view" must be auto, launch-site, north, moon, edge-on or above-orbit, not ")" + name +
+        '"');
 }
 
 DemoCentre parseCentre(const std::string& name) {

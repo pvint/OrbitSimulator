@@ -44,7 +44,9 @@ move, stack or hide them (View menu), and the layout is remembered.
 In the 3D view, drag to turn the camera, right-drag (or Shift + drag) to pan,
 and use the mouse wheel to zoom. The
 playback bar underneath plays the flight (Space), scrubs through it, sets the
-speed and can follow the rocket. Burns are drawn orange, coasting blue, and
+speed and can follow the rocket. The arrow next to *Reset view* offers other
+views: edge-on to the orbit (its tilt to the equator shows as an angle),
+above the orbit, and above the North Pole. Burns are drawn orange, coasting blue, and
 the ground track (the path over the ground) yellow. The orbit stays fixed in
 space while the Earth turns underneath, which is why the ground track drifts
 west each orbit.

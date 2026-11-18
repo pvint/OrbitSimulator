@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
+#include <QMenu>
 #include <QMetaObject>
 #include <QQmlError>
 #include <QQuaternion>
@@ -145,10 +146,30 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
         m_scene->setProperty("distance", distances.at(static_cast<std::size_t>(index)) / 1000.0);
     });
 
+    // Click for the starting view; the arrow offers the others. Each circles
+    // the Earth.
     auto* reset = new QToolButton(bar);
+    reset->setObjectName(QStringLiteral("resetView"));
     reset->setText(tr("Reset view"));
-    reset->setToolTip(tr("Look at the launch site from a few Earth radii away"));
+    reset->setToolTip(tr("Look at the launch site from a few Earth radii away. The arrow "
+                         "offers other views."));
+    reset->setPopupMode(QToolButton::MenuButtonPopup);
     connect(reset, &QToolButton::clicked, this, &GlobeView::resetView);
+    auto* views = new QMenu(reset);
+    views->addAction(tr("Reset view"), this, &GlobeView::resetView);
+    views->addAction(tr("Edge-on to the orbit"), this, [this] {
+        m_centre->setCurrentIndex(0);
+        lookAtOrbit(true, m_time, 0.0);
+    });
+    views->addAction(tr("Above the orbit"), this, [this] {
+        m_centre->setCurrentIndex(0);
+        lookAtOrbit(false, m_time, 0.0);
+    });
+    views->addAction(tr("Above the North Pole"), this, [this] {
+        m_centre->setCurrentIndex(0);
+        lookFromNorth(viewFromAboveDistanceKm());
+    });
+    reset->setMenu(views);
 
     row->addWidget(m_playButton);
     row->addWidget(m_timeSlider, 1);
@@ -278,12 +299,15 @@ void GlobeView::applyDemoStep(const orbit::DemoStep& step) {
         break;
     }
     case DemoView::North:
-        lookFrom({0.0, 0.0, 1.0},
-                 step.distance > 0.0 ? step.distance : 4.0 * orbit::kRadiusEarth / 1000.0);
+        lookFromNorth(step.distance > 0.0 ? step.distance : 4.0 * orbit::kRadiusEarth / 1000.0);
         break;
     case DemoView::Moon:
         // From the Earth's side of the Moon.
         lookFrom(-orbit::moonPosition(epoch), step.distance > 0.0 ? step.distance : 30000.0);
+        break;
+    case DemoView::EdgeOn:
+    case DemoView::AboveOrbit:
+        lookAtOrbit(step.view == DemoView::EdgeOn, step.startTime, step.distance);
         break;
     }
     // The centre may have set its own distance; the step's wins.
@@ -472,6 +496,67 @@ void GlobeView::onTick() {
     if (m_result && m_time >= m_result->duration) togglePlaying(); // stop at the end
 }
 
+/// How far away to look from to see the whole flight (km): a few Earth
+/// radii, or further for long flights such as to the Moon.
+double GlobeView::viewDistanceKm() const {
+    const double farthest = farthestDistance();
+    return (farthest > 5.0e7 ? 2.4 * farthest : 3.2 * orbit::kRadiusEarth) / 1000.0;
+}
+
+/// The same, but far enough to see a low orbit from above (km). From
+/// closer, the near side of the Earth bulges out past a low orbit and hides
+/// it: the Earth's outline is asin(R/d) across, the orbit only atan(a/d).
+double GlobeView::viewFromAboveDistanceKm() const {
+    return std::max(viewDistanceKm(), 6.0 * orbit::kRadiusEarth / 1000.0);
+}
+
+/// The plane the selected flight is in at time t, as its unit normal (the
+/// direction of r × v). While the rocket is still climbing the plane isn't
+/// settled, so below 150 km this uses the first moment the flight gets
+/// above that (or its highest point, if it never does).
+orbit::Vec3 GlobeView::orbitNormalAt(double t) const {
+    constexpr double kSettledAltitude = 150e3; // m
+    orbit::State state = orbit::stateAt(*m_result, t);
+    if (orbit::norm(state.r) - orbit::kRadiusEarth < kSettledAltitude) {
+        const std::vector<orbit::Sample>& samples = m_result->samples;
+        auto it = std::ranges::find_if(
+            samples, [](const orbit::Sample& s) { return s.altitude() >= kSettledAltitude; });
+        if (it == samples.end()) {
+            it = std::ranges::max_element(samples, {}, &orbit::Sample::altitude);
+        }
+        if (it != samples.end()) state = it->state;
+    }
+    const orbit::Vec3 h = orbit::cross(state.r, state.v);
+    return orbit::norm(h) > 0.0 ? orbit::normalized(h) : orbit::Vec3{0.0, 0.0, 1.0};
+}
+
+/// Look at the selected flight's orbit from above its plane, or edge-on.
+/// Edge-on looks along the line of nodes, where the orbit crosses the
+/// equator: both planes contain that line, so both show as lines and the
+/// angle between them is the inclination. A distance of 0 picks one.
+void GlobeView::lookAtOrbit(bool edgeOn, double t, double distanceKm) {
+    if (!m_scene || !m_result) return;
+    if (distanceKm <= 0.0) distanceKm = edgeOn ? viewDistanceKm() : viewFromAboveDistanceKm();
+    orbit::Vec3 from = orbitNormalAt(t);
+    if (edgeOn) {
+        from = orbit::cross(orbit::Vec3{0.0, 0.0, 1.0}, from);
+        if (orbit::norm(from) < 1e-6) from = {1.0, 0.0, 0.0}; // equatorial: any side will do
+        // From the node on the rocket's side, so it passes in front.
+        if (orbit::dot(from, orbit::stateAt(*m_result, t).r) < 0.0) from = -from;
+    }
+    QMetaObject::invokeMethod(m_scene, "lookAt",
+                              Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(from))),
+                              Q_ARG(QVariant, distanceKm));
+}
+
+void GlobeView::lookFromNorth(double distanceKm) {
+    if (!m_scene) return;
+    QMetaObject::invokeMethod(
+        m_scene, "lookAt",
+        Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(orbit::Vec3{0.0, 0.0, 1.0}))),
+        Q_ARG(QVariant, distanceKm));
+}
+
 /// A good starting view of the selected flight, and a playback speed that
 /// shows all of it in about a minute and a half.
 void GlobeView::resetView() {
@@ -492,7 +577,7 @@ void GlobeView::resetView() {
         }
         QMetaObject::invokeMethod(m_scene, "lookAt",
                                   Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(normal))),
-                                  Q_ARG(QVariant, 2.4 * farthest / 1000.0));
+                                  Q_ARG(QVariant, viewDistanceKm()));
     } else {
         // Look at the launch site, where it is at the current playback time.
         const orbit::LaunchSite& site = m_result->mission.site;
@@ -502,7 +587,7 @@ void GlobeView::resetView() {
             orbit::positionFromLatLon(site.latitude, site.longitude, orbit::kRadiusEarth), theta);
         QMetaObject::invokeMethod(m_scene, "lookAt",
                                   Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(siteEci))),
-                                  Q_ARG(QVariant, 3.2 * orbit::kRadiusEarth / 1000.0));
+                                  Q_ARG(QVariant, viewDistanceKm()));
     }
 
     // Slowest speed that plays the whole flight within about 90 seconds.
