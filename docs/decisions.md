@@ -241,6 +241,13 @@ from QML's `lookAt()`.
 the explicit rotation is unambiguous. Lighting is verified against the
 subsolar point (21.3°N 21.9°W at Apollo 11's launch).
 
+**Night side (later):** a second, dim, cool-blue directional light shines
+from the opposite direction to the Sun (brightness 0.14 against the Sun's
+1.6), plus a very small ambient term. It lights only the night hemisphere,
+so continents and craters stay faintly visible there while the day side
+and the sharpness of the day/night line are unchanged. (Raising the ambient
+alone would have washed out the day side too.)
+
 ### 21. Demo tours are data, built from scenarios (2026-11-17, M6)
 
 **Decision:** a tour is a versioned JSON file (`orbitsim-demo`) listing steps.
