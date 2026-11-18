@@ -5,7 +5,10 @@
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/rocket.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
+#include <cmath>
 
 namespace orbit {
 
@@ -22,29 +25,99 @@ void setLaunchHourOfDay(Mission& mission, double hours) {
 
 namespace {
 
+// Getters and setters for stage K's numbers, in display units (t, kN).
+template <std::size_t K>
+double stageDryMass(const Mission& m) {
+    return m.rocket.stages[K].dryMass / 1000.0;
+}
+template <std::size_t K>
+void setStageDryMass(Mission& m, double v) {
+    m.rocket.stages[K].dryMass = v * 1000.0;
+}
+template <std::size_t K>
+double stagePropellant(const Mission& m) {
+    return m.rocket.stages[K].propellantMass / 1000.0;
+}
+template <std::size_t K>
+void setStagePropellant(Mission& m, double v) {
+    m.rocket.stages[K].propellantMass = v * 1000.0;
+}
+template <std::size_t K>
+double stageThrust(const Mission& m) {
+    return m.rocket.stages[K].thrust / 1000.0;
+}
+template <std::size_t K>
+void setStageThrust(Mission& m, double v) {
+    m.rocket.stages[K].thrust = v * 1000.0;
+}
+template <std::size_t K>
+double stageIsp(const Mission& m) {
+    return m.rocket.stages[K].isp;
+}
+template <std::size_t K>
+void setStageIsp(Mission& m, double v) {
+    m.rocket.stages[K].isp = v;
+}
+
 // Each row: key, label, unit, group, help, min, max, step, get, set.
 // The lambdas convert between display units and the physics' units.
 constexpr std::array kParameters{
-    ParameterInfo{"dry-mass", "Dry mass", "t", "Rocket", "Rocket mass without propellant", 0.5,
-                  50.0, 0.1, [](const Mission& m) { return m.rocket.dryMass / 1000.0; },
-                  [](Mission& m, double v) { m.rocket.dryMass = v * 1000.0; }},
-    ParameterInfo{"propellant", "Propellant", "t", "Rocket", "Propellant mass at liftoff", 0.0,
-                  200.0, 0.5, [](const Mission& m) { return m.rocket.propellantMass / 1000.0; },
-                  [](Mission& m, double v) { m.rocket.propellantMass = v * 1000.0; }},
-    ParameterInfo{"thrust", "Thrust", "kN", "Rocket", "Engine thrust (constant)", 50.0, 5000.0,
-                  10.0, [](const Mission& m) { return m.rocket.thrust / 1000.0; },
-                  [](Mission& m, double v) { m.rocket.thrust = v * 1000.0; }},
-    ParameterInfo{"isp", "Specific impulse", "s", "Rocket",
-                  "Engine efficiency: exhaust velocity = Isp · g0", 150.0, 500.0, 1.0,
-                  [](const Mission& m) { return m.rocket.isp; },
-                  [](Mission& m, double v) { m.rocket.isp = v; }},
+    ParameterInfo{"stages", "Stages", "", "Rocket",
+                  "How many stages are stacked. Each is dropped when its propellant runs out, "
+                  "and the one above fires",
+                  1.0, kMaxStages, 1.0,
+                  [](const Mission& m) { return static_cast<double>(m.rocket.stageCount); },
+                  [](Mission& m, double v) {
+                      m.rocket.stageCount =
+                          std::clamp(static_cast<int>(std::lround(v)), 1, kMaxStages);
+                  }},
+    ParameterInfo{"payload", "Payload", "t", "Rocket",
+                  "Carried on top of the last stage, all the way to the end", 0.0, 50.0, 0.1,
+                  [](const Mission& m) { return m.rocket.payloadMass / 1000.0; },
+                  [](Mission& m, double v) { m.rocket.payloadMass = v * 1000.0; }},
 
-    ParameterInfo{
-        "burn-time", "Burn time", "s", "Rocket",
-        "Sets the propellant so the engine can run this long at full thrust", 10.0, 1000.0, 1.0,
-        [](const Mission& m) { return burnTime(m.rocket); },
-        [](Mission& m, double v) { m.rocket.propellantMass = propellantForBurnTime(m.rocket, v); },
-        true},
+    // Stage 1 keeps the keys from before staging, so older files still mean
+    // the same thing.
+    ParameterInfo{"dry-mass", "Dry mass", "t", "Stage 1",
+                  "Tanks, structure and engine, without propellant", 0.5, 50.0, 0.1,
+                  stageDryMass<0>, setStageDryMass<0>},
+    ParameterInfo{"propellant", "Propellant", "t", "Stage 1", "Propellant mass at liftoff", 0.0,
+                  200.0, 0.5, stagePropellant<0>, setStagePropellant<0>},
+    ParameterInfo{"thrust", "Thrust", "kN", "Stage 1", "Engine thrust (constant)", 50.0, 5000.0,
+                  10.0, stageThrust<0>, setStageThrust<0>},
+    ParameterInfo{"isp", "Specific impulse", "s", "Stage 1",
+                  "Engine efficiency: exhaust velocity = Isp · g0", 150.0, 500.0, 1.0, stageIsp<0>,
+                  setStageIsp<0>},
+    ParameterInfo{"burn-time", "Burn time", "s", "Stage 1",
+                  "Sets the propellant so the engine can run this long at full thrust", 10.0,
+                  1000.0, 1.0, [](const Mission& m) { return burnTime(m.rocket.stages[0]); },
+                  [](Mission& m, double v) {
+                      m.rocket.stages[0].propellantMass =
+                          propellantForBurnTime(m.rocket.stages[0], v);
+                  },
+                  true},
+
+    ParameterInfo{"stage-2-dry-mass", "Dry mass", "t", "Stage 2",
+                  "Tanks, structure and engine, without propellant", 0.1, 20.0, 0.1,
+                  stageDryMass<1>, setStageDryMass<1>},
+    ParameterInfo{"stage-2-propellant", "Propellant", "t", "Stage 2", "Propellant mass when full",
+                  0.0, 100.0, 0.1, stagePropellant<1>, setStagePropellant<1>},
+    ParameterInfo{"stage-2-thrust", "Thrust", "kN", "Stage 2", "Engine thrust (constant)", 5.0,
+                  2000.0, 5.0, stageThrust<1>, setStageThrust<1>},
+    ParameterInfo{"stage-2-isp", "Specific impulse", "s", "Stage 2",
+                  "Engine efficiency: exhaust velocity = Isp · g0", 150.0, 500.0, 1.0, stageIsp<1>,
+                  setStageIsp<1>},
+
+    ParameterInfo{"stage-3-dry-mass", "Dry mass", "t", "Stage 3",
+                  "Tanks, structure and engine, without propellant", 0.1, 20.0, 0.1,
+                  stageDryMass<2>, setStageDryMass<2>},
+    ParameterInfo{"stage-3-propellant", "Propellant", "t", "Stage 3", "Propellant mass when full",
+                  0.0, 100.0, 0.1, stagePropellant<2>, setStagePropellant<2>},
+    ParameterInfo{"stage-3-thrust", "Thrust", "kN", "Stage 3", "Engine thrust (constant)", 5.0,
+                  2000.0, 5.0, stageThrust<2>, setStageThrust<2>},
+    ParameterInfo{"stage-3-isp", "Specific impulse", "s", "Stage 3",
+                  "Engine efficiency: exhaust velocity = Isp · g0", 150.0, 500.0, 1.0, stageIsp<2>,
+                  setStageIsp<2>},
 
     ParameterInfo{"drag-coefficient", "Drag coefficient", "", "Aerodynamics",
                   "Cd below the speed of sound: how streamlined the rocket is. It nearly "
@@ -112,6 +185,16 @@ constexpr std::array kParameters{
 } // namespace
 
 std::span<const ParameterInfo> missionParameters() { return kParameters; }
+
+std::string parameterTitle(const ParameterInfo& parameter) {
+    const auto sameLabel = [&](const ParameterInfo& p) { return p.label == parameter.label; };
+    if (std::ranges::count_if(kParameters, sameLabel) == 1) return std::string(parameter.label);
+    // "Stage 2" + "Thrust" → "Stage 2 thrust"
+    std::string title = std::string(parameter.group) + ' ' + std::string(parameter.label);
+    auto& first = title[parameter.group.size() + 1];
+    first = static_cast<char>(std::tolower(static_cast<unsigned char>(first)));
+    return title;
+}
 
 const ParameterInfo* findParameter(std::string_view key) {
     for (const ParameterInfo& p : kParameters) {

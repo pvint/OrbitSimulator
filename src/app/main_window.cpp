@@ -164,12 +164,11 @@ void MainWindow::onResult(const std::shared_ptr<const RunSet>& runs, double mill
 
     if (sweep) {
         const orbit::ParameterInfo* p = orbit::findParameter(sweep->parameter);
-        statusBar()->showMessage(
-            tr("Sweep of %1: %2 flights in %3 ms")
-                .arg(p ? QString::fromUtf8(p->label.data(), static_cast<qsizetype>(p->label.size()))
-                       : QString::fromStdString(sweep->parameter))
-                .arg(runs->runs.size())
-                .arg(QLocale().toString(milliseconds, 'f', 1)));
+        statusBar()->showMessage(tr("Sweep of %1: %2 flights in %3 ms")
+                                     .arg(p ? QString::fromStdString(orbit::parameterTitle(*p))
+                                            : QString::fromStdString(sweep->parameter))
+                                     .arg(runs->runs.size())
+                                     .arg(QLocale().toString(milliseconds, 'f', 1)));
     } else {
         const orbit::SimResult& r = *runs->runs.front().result;
         statusBar()->showMessage(tr("%1 · simulated %2 of flight in %3 ms")

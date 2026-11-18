@@ -22,12 +22,14 @@
 #include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QVariantList>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <numbers>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -42,6 +44,7 @@ const QColor kCoastColor(0x38, 0xbd, 0xf8);
 const QColor kGroundTrackColor(0xfa, 0xcc, 0x15);
 
 const QColor kGhostColor(0x94, 0xa3, 0xb8);
+const QColor kSpentStageColor(0xcb, 0xd5, 0xe1); // dropped stages, falling back
 
 /// The ground track floats this far above the surface so it isn't hidden by it.
 constexpr double kGroundTrackLift = 3000.0; // m
@@ -68,10 +71,10 @@ QQuaternion moonOrientation(double epoch) {
     return QQuaternion::fromAxes(x, y, QVector3D::crossProduct(x, y));
 }
 
-QList<QVector3D> trajectoryPoints(const orbit::SimResult& result) {
+QList<QVector3D> trajectoryPoints(const std::vector<orbit::Sample>& samples) {
     QList<QVector3D> points;
-    points.reserve(static_cast<qsizetype>(result.samples.size()));
-    for (const orbit::Sample& s : result.samples) points.append(scene::fromPhysics(s.state.r));
+    points.reserve(static_cast<qsizetype>(samples.size()));
+    for (const orbit::Sample& s : samples) points.append(scene::fromPhysics(s.state.r));
     return points;
 }
 
@@ -351,7 +354,7 @@ void GlobeView::updateSelectedLines() {
     const QColor coastColor = sweep ? runColor : kCoastColor;
     m_scene->setProperty("trajectoryWidth", sweep ? 3.0 : 2.0);
 
-    const QList<QVector3D> path = trajectoryPoints(*m_result);
+    const QList<QVector3D> path = trajectoryPoints(m_result->samples);
     QList<QColor> pathColors;
     QList<QVector3D> track;
     pathColors.reserve(path.size());
@@ -377,13 +380,15 @@ void GlobeView::updateSelectedLines() {
                                                                       orbit::kRadiusEarth)));
 }
 
-/// The other flights of a sweep, or the ghosts of recent single flights.
+/// The other flights of a sweep, or the ghosts of recent single flights,
+/// and the selected flight's dropped stages.
 void GlobeView::updateExtraPaths() {
     std::size_t used = 0;
-    const auto show = [&](const orbit::SimResult& result, const QColor& color, double opacity) {
+    const auto show = [&](const std::vector<orbit::Sample>& samples, const QColor& color,
+                          double opacity) {
         if (used >= m_extraPaths.size()) return;
         const ExtraPath& path = m_extraPaths[used++];
-        const QList<QVector3D> points = trajectoryPoints(result);
+        const QList<QVector3D> points = trajectoryPoints(samples);
         path.line->setPoints(points, QList<QColor>(points.size(), color));
         path.model->setProperty("lineOpacity", opacity);
         path.model->setProperty("visible", true);
@@ -392,13 +397,18 @@ void GlobeView::updateExtraPaths() {
     if (m_runs && m_runs->isSweep()) {
         for (std::size_t i = 0; i < m_runs->runs.size(); ++i) {
             if (std::cmp_equal(i, m_selected)) continue;
-            show(*m_runs->runs[i].result, m_runs->runs[i].color, 0.6);
+            show(m_runs->runs[i].result->samples, m_runs->runs[i].color, 0.6);
         }
     } else {
         for (std::size_t i = 0; i < m_ghosts.size(); ++i) {
             // Newest ghost faintly visible, older ones fading out.
             const double age = static_cast<double>(i) / static_cast<double>(kMaxGhosts);
-            show(*m_ghosts[i], kGhostColor, 0.5 * (1.0 - age));
+            show(m_ghosts[i]->samples, kGhostColor, 0.5 * (1.0 - age));
+        }
+    }
+    if (m_result) {
+        for (const orbit::SpentStage& spent : m_result->spentStages) {
+            show(spent.samples, kSpentStageColor, 0.8);
         }
     }
     for (std::size_t i = used; i < m_extraPaths.size(); ++i) {
@@ -414,6 +424,14 @@ void GlobeView::setPlaybackTime(double t) {
     const double theta = orbit::earthRotationAngle(
         m_time, orbit::earthRotationAngleAt(m_result->mission.launchEpoch));
     m_scene->setProperty("rocketPosition", scene::fromPhysics(state.r));
+    // Dropped stages, from separation until they come down.
+    QVariantList stages;
+    for (const orbit::SpentStage& spent : m_result->spentStages) {
+        if (m_time < spent.samples.front().t || m_time > spent.samples.back().t) continue;
+        stages.append(
+            QVariant::fromValue(scene::fromPhysics(orbit::stateAt(spent.samples, m_time).r)));
+    }
+    m_scene->setProperty("stagePositions", stages);
     m_scene->setProperty("earthRotation", orbit::radToDeg(theta));
     const double epoch = m_result->mission.launchEpoch + m_time;
     m_scene->setProperty("moonPosition", scene::fromPhysics(orbit::moonPosition(epoch)));

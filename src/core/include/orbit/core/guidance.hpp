@@ -35,6 +35,18 @@
 // altitude. At apoapsis it means "burn horizontally". If the rocket starts to
 // sink during the burn, Δv tilts upward to correct it. The burn ends when Δv
 // reaches zero.
+//
+// GRAVITY COMPENSATION
+// That correction comes late: the rocket has to sink before Δv tilts up. A
+// weak engine (an upper stage pushing about its own weight) takes minutes to
+// circularize and sinks tens of kilometres meanwhile. So the engine aims at
+//     Δv + (g − v_h²/r) · t_go · up
+// where t_go = |Δv| / (F/m) is roughly how long the burn still needs, and
+// g − v_h²/r is the part of gravity the rocket's sideways speed doesn't yet
+// hold up (none, at circular speed). That is the speed gravity will take
+// away before the burn ends, so the rocket supplies it in advance, tilting
+// its nose up the way real upper stages do. For a short, hard burn t_go is
+// tiny and this changes almost nothing.
 #pragma once
 
 #include "orbit/core/constants.hpp"
@@ -74,7 +86,10 @@ Vec3 circularizationDeltaV(const Vec3& r, const Vec3& v, const Vec3& fallbackDir
 /// @param relativeVel       velocity relative to the rotating ground
 /// @param kickAngle         radians from vertical, used in the KICK phase
 /// @param launchPlaneNormal from launchPlaneNormal()
+/// @param thrustAcceleration F/m (m/s²), for gravity compensation while
+///                          circularizing; 0 leaves it out
 Vec3 thrustDirection(GuidancePhase phase, const Vec3& r, const Vec3& v, const Vec3& relativeVel,
-                     double kickAngle, const Vec3& launchPlaneNormal, double mu = kMuEarth);
+                     double kickAngle, const Vec3& launchPlaneNormal, double mu = kMuEarth,
+                     double thrustAcceleration = 0.0);
 
 } // namespace orbit

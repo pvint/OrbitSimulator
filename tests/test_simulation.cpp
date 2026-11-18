@@ -97,19 +97,20 @@ TEST_CASE("Simulated burn matches the Tsiolkovsky rocket equation", "[simulation
 
     const FlightEvent* burnout = findEvent(r, EventType::Burnout);
     REQUIRE(burnout != nullptr);
-    const double m0 = m.rocket.dryMass + m.rocket.propellantMass;
-    const double expected = m.rocket.isp * kG0 * std::log(m0 / m.rocket.dryMass);
+    const double m0 = m.rocket.stages[0].dryMass + m.rocket.stages[0].propellantMass;
+    const double expected =
+        m.rocket.stages[0].isp * kG0 * std::log(m0 / m.rocket.stages[0].dryMass);
 
     REQUIRE_THAT(idealDeltaV(m.rocket), WithinRel(expected, 1e-15));
     REQUIRE_THAT(burnout->sample.speed(), WithinRel(expected, 1e-9));
-    REQUIRE_THAT(burnout->sample.t, WithinRel(burnTime(m.rocket), 1e-12));
+    REQUIRE_THAT(burnout->sample.t, WithinRel(burnTime(m.rocket.stages[0]), 1e-12));
     REQUIRE_THAT(r.deltaVUsed, WithinRel(expected, 1e-12));
 }
 
 TEST_CASE("Launching east from the equator saves about 930 m/s over west", "[simulation]") {
     Mission base = defaultMission();
     base.site.latitude = 0.0;
-    base.rocket.isp = 420.0; // enough Δv for the westward rocket to reach orbit too
+    base.rocket.stages[0].isp = 420.0; // enough Δv for the westward rocket to reach orbit too
 
     Mission east = base;
     east.guidance.azimuth = degToRad(90.0);
@@ -196,7 +197,7 @@ TEST_CASE("Obvious failures are classified correctly", "[simulation]") {
     Mission m = defaultMission();
 
     SECTION("Thrust below weight never leaves the pad") {
-        m.rocket.thrust = 100e3;
+        m.rocket.stages[0].thrust = 100e3;
         const SimResult r = simulate(m);
         REQUIRE(r.outcome == Outcome::Crashed);
         REQUIRE(r.endReason == EndReason::Impact);
@@ -207,7 +208,7 @@ TEST_CASE("Obvious failures are classified correctly", "[simulation]") {
         REQUIRE(simulate(m).outcome == Outcome::Crashed);
     }
     SECTION("Straight up with little propellant: a hop into space and back") {
-        m.rocket.propellantMass = 10e3;
+        m.rocket.stages[0].propellantMass = 10e3;
         m.guidance.kickAngle = 0.0;
         m.plan = FlightPlan::BurnToDepletion;
         const SimResult r = simulate(m);
@@ -215,7 +216,7 @@ TEST_CASE("Obvious failures are classified correctly", "[simulation]") {
         REQUIRE(r.maxAltitude > kKarmanLine);
     }
     SECTION("A huge Isp escapes") {
-        m.rocket.isp = 1000.0;
+        m.rocket.stages[0].isp = 1000.0;
         m.guidance.kickAngle = degToRad(5.0);
         m.plan = FlightPlan::BurnToDepletion;
         const SimResult r = simulate(m);
@@ -223,14 +224,14 @@ TEST_CASE("Obvious failures are classified correctly", "[simulation]") {
         REQUIRE(r.endReason == EndReason::EscapeDistance);
     }
     SECTION("No propellant at all") {
-        m.rocket.propellantMass = 0.0;
+        m.rocket.stages[0].propellantMass = 0.0;
         REQUIRE(simulate(m).outcome == Outcome::Crashed);
     }
 }
 
 TEST_CASE("Running out of propellant while circularizing falls short of orbit", "[simulation]") {
     Mission m = defaultMission();
-    m.rocket.propellantMass = 50e3; // not quite enough (52 t just makes it)
+    m.rocket.stages[0].propellantMass = 50e3; // not quite enough (52 t just makes it)
     const SimResult r = simulate(m);
 
     const FlightEvent* start = findEvent(r, EventType::EngineStart);

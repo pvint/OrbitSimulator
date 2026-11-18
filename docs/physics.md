@@ -68,7 +68,7 @@ the Earth, which itself falls towards the Moon and Sun, and only the
 *difference* moves the rocket relative to the Earth. (It's also what raises
 tides.)
 
-No staging yet.
+Thrust and mass flow are those of the **stage** that is firing (see below).
 
 ## The atmosphere (`atmosphere.hpp`)
 
@@ -157,6 +157,36 @@ its own.
 
 **Thrust-to-weight ratio** on the pad, `F / (m₀·g)`, must exceed 1 to lift
 off. It also shapes the gravity turn: a low ratio turns more, a high one less.
+So a heavier rocket (more stages, more payload) needs a smaller kick.
+
+## Stages (`rocket.hpp`)
+
+A rocket is a stack of up to three **stages** with a **payload** on top. The
+bottom stage fires first. When its propellant runs out it is **dropped**
+(stage separation: its dry mass leaves the rocket, a sudden step in the mass
+graph) and the stage above ignites at once.
+
+Why bother? The rocket equation punishes dead weight: an empty tank still
+has to be accelerated by the engine. Each stage gets its own rocket equation,
+with everything above it (the upper stages, full, and the payload) as its
+load:
+
+    Δv_k = v_e,k · ln((m_k + m_above) / (m_dry,k + m_above))
+
+and the rocket's ideal Δv is the sum. Cutting the default 64 t rocket into
+two stages, with exactly the same structure, propellant and engines, raises
+it from 9.2 to 13.2 km/s: the second stage no longer drags the first
+stage's 3 t of empty tanks to orbit. That's enough to reach the Moon on
+ordinary 340 s engines, which the single stage can't do.
+
+A burn that empties a stage carries on with the next one. Only when the
+last stage that can fire runs dry does the burn end (and then the empty
+stage is kept: there's nothing to gain by dropping it).
+
+**Dropped stages** fly on by themselves, unpowered, under gravity and drag,
+until they hit the ground or the flight ends. A first stage dropped at
+4 km/s and 75 km lands about 1500 km downrange. That's why launch sites
+face an ocean, and why Florida launches eastward over the Atlantic.
 
 ## Guidance: which way the engine points (`guidance.hpp`)
 
@@ -190,6 +220,16 @@ orbital speed is reached. (The prototype tried 40,000 combinations; see
    horizontally", and if the rocket starts to sink, Δv tilts up to correct
    it. The burn ends when Δv reaches zero.
 
+**Gravity compensation.** Correcting only once the rocket sinks comes late
+for a weak engine. An upper stage pushing about its own weight takes minutes
+to circularize, and would sink tens of kilometres meanwhile. So the engine
+aims at `Δv + (g − v_h²/r) · t_go · up`, where `t_go = |Δv| / (F/m)` is
+roughly how long the burn still needs, and `g − v_h²/r` is the part of
+gravity the sideways speed doesn't yet hold up. That is the speed gravity
+will take away before the burn ends, supplied in advance by tilting the
+nose up, as real upper stages do. For a short, hard burn it changes almost
+nothing.
+
 ## Flight programs (`flight_program.hpp`)
 
 A flight is a list of **steps**, each burning or coasting, with a steering
@@ -206,7 +246,8 @@ the list:
 | Lunar flyby | as Orbit up to the parking orbit → wait for the Moon → Trans-lunar injection → Coast to the Moon → Coast |
 | Lunar orbit | as Lunar flyby, then Lunar orbit insertion (brake) → Coast round the Moon |
 
-Running out of propellant ends any burn and skips later burns. A step whose
+Running out of propellant (in the last stage that can fire) ends any burn
+and skips later burns. A step whose
 condition already holds is skipped, and a step can time out (a transfer that
 misses the Moon never reaches "closest approach").
 

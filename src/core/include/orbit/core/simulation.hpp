@@ -16,7 +16,9 @@
 //   thrust   a = F/m along the steering direction, while the engine runs
 //   drag     a = −½ρ|v_air|·Cd·A·v_air / m, below 1000 km (aerodynamics.hpp)
 //   mass     dm/dt = −F / (Isp·g0)
-// No staging yet.
+// F and Isp are those of the stage that is firing (rocket.hpp). When its
+// propellant runs out it is dropped (its dry mass leaves the rocket) and the
+// next stage takes over at once. Dropped stages are then flown on their own.
 //
 // FLIGHT PROGRAM
 // The mission's flight plan becomes a list of burn and coast steps
@@ -41,6 +43,7 @@
 
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -121,7 +124,8 @@ enum class Outcome {
 enum class EventType {
     EngineStart,         ///< a burn step begins
     EngineStop,          ///< a burn step ends as planned
-    Burnout,             ///< the propellant ran out
+    Burnout,             ///< the propellant ran out (in the last stage that can fire)
+    StageSeparation,     ///< a stage ran dry and was dropped; the next one ignites
     EnterMoonSphere,     ///< entered the Moon's sphere of influence
     LeaveMoonSphere,     ///< left it again
     MoonClosestApproach, ///< closest point to the Moon
@@ -152,6 +156,17 @@ struct FlightEvent {
     Sample sample;
 };
 
+/// A stage after it was dropped: it coasts on by itself, usually falling back
+/// to the ground downrange of the launch site.
+struct SpentStage {
+    int stage = 0;               ///< 0 = the first stage
+    std::vector<Sample> samples; ///< from separation; times since liftoff
+    /// When and how far from the launch site (m, along the ground) it came
+    /// down, if it did before the main flight ended.
+    std::optional<double> impactTime;
+    double impactDistance = 0.0;
+};
+
 /// What happened near the Moon.
 struct LunarSummary {
     bool enteredSphereOfInfluence = false;
@@ -174,6 +189,8 @@ struct SimResult {
     /// never shut down, or if the Moon has since changed the orbit).
     OrbitalElements orbit;
     LunarSummary lunar;
+    /// The dropped stages, in the order they were dropped.
+    std::vector<SpentStage> spentStages;
     Outcome outcome = Outcome::Crashed;
     EndReason endReason = EndReason::MaxTime;
     double maxAltitude = 0.0; ///< m, highest sample
@@ -204,6 +221,9 @@ Aerodynamics aerodynamicsAt(const SimResult& result, const Sample& sample);
 /// (clamped to the start and end of the flight). Samples are close enough
 /// together that this is accurate to a few metres. Used for playback.
 State stateAt(const SimResult& result, double t);
+
+/// The same for any samples in time order (a dropped stage's, say).
+State stateAt(std::span<const Sample> samples, double t);
 
 std::string_view toString(Outcome outcome);
 std::string_view toString(EventType type);

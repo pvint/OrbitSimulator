@@ -19,12 +19,18 @@ double Sample::speed() const { return norm(state.v); }
 
 Mission defaultMission() {
     Mission m;
-    m.rocket = {.dryMass = 4000.0,
-                .propellantMass = 60000.0,
-                .thrust = 1.2e6,
-                .isp = 340.0,
-                .dragCoefficient = 0.3,
-                .diameter = 2.4};
+    // One stage by default. The upper stages are there for when the stage
+    // count is raised: small enough that the stack still flies with the
+    // default pitch program (a heavier stack needs a smaller kick).
+    m.rocket = {
+        .stages = {Stage{
+                       .dryMass = 4000.0, .propellantMass = 60000.0, .thrust = 1.2e6, .isp = 340.0},
+                   Stage{.dryMass = 400.0, .propellantMass = 3500.0, .thrust = 50e3, .isp = 350.0},
+                   Stage{.dryMass = 100.0, .propellantMass = 600.0, .thrust = 10e3, .isp = 290.0}},
+        .stageCount = 1,
+        .payloadMass = 0.0,
+        .dragCoefficient = 0.3,
+        .diameter = 2.4};
     m.site = {.latitude = degToRad(28.5), .longitude = degToRad(-80.6)}; // Cape Canaveral
     m.guidance = {.azimuth = degToRad(90.0),
                   .pitchStartTime = 10.0,
@@ -65,7 +71,7 @@ class FlightSimulator {
 public:
     FlightSimulator(const Mission& mission, FlightProgram program, const SimOptions& options)
         : m_mission(mission), m_program(std::move(program)), m_opt(options),
-          m_mdot(massFlowRate(mission.rocket)), m_drag(hasDrag(mission.rocket)),
+          m_mdot(massFlowRate(mission.rocket.stages[0])), m_drag(hasDrag(mission.rocket)),
           m_stepper([this](double t, const State& y) { return derivative(t, y); },
                     options.tolerances) {}
 
@@ -75,8 +81,8 @@ private:
     Mission m_mission;
     FlightProgram m_program;
     SimOptions m_opt;
-    double m_mdot;
-    bool m_drag; ///< does the rocket feel the air?
+    double m_mdot; ///< propellant flow of the firing stage
+    bool m_drag;   ///< does the rocket feel the air?
     DormandPrince45 m_stepper;
 
     // Read by derivative(); set before each integration step.
@@ -88,8 +94,19 @@ private:
     // Progress through the program.
     std::size_t m_stepIndex = 0;
     double m_stepEndTime = kInfinity; ///< time limit of the current step
-    bool m_propellantGone = false;
+    bool m_propellantGone = false;    ///< no stage left that can fire
     bool m_done = false;
+
+    // Staging.
+    int m_stage = 0;               ///< the stage firing, or next to fire
+    double m_stageStartMass = 0.0; ///< the rocket's mass when it ignited (for its Δv)
+    double m_deltaVUsed = 0.0;     ///< Δv given by the stages already dropped
+    struct Separation {
+        int stage;
+        double t;
+        State state; ///< of the dropped stage alone
+    };
+    std::vector<Separation> m_separations;
 
     double m_t = 0.0;
     State m_y;
@@ -98,6 +115,15 @@ private:
     SimResult m_result;
 
     const FlightStep& step() const { return m_program[m_stepIndex]; }
+    const Stage& currentStage() const {
+        return m_mission.rocket.stages.at(static_cast<std::size_t>(m_stage));
+    }
+    /// The rocket's mass once the firing stage's tanks are empty.
+    double stageEmptyMass() const {
+        return massAbove(m_mission.rocket, m_stage) + currentStage().dryMass;
+    }
+    double stagePropellant(const State& y) const { return y.m - stageEmptyMass(); }
+    bool laterStageCanFire() const;
 
     // Physics
     Vec3 moonAt(double t) const { return moonPosition(m_mission.launchEpoch + t); }
@@ -107,6 +133,8 @@ private:
     // Steps
     void beginStep(std::size_t index);
     void endStep(bool burnedOut);
+    void burnout();
+    void separateStage();
     bool endConditionHolds(double t, const State& y) const;
 
     // Triggers and output
@@ -120,6 +148,7 @@ private:
     void finish(EndReason reason);
     void summarise();
     void summariseDrag();
+    void flySpentStages();
 };
 
 // --- Physics -------------------------------------------------------------
@@ -150,7 +179,7 @@ State FlightSimulator::derivative(double t, const State& y) const {
 
     double massRate = 0.0;
     if (m_engineOn) {
-        acceleration += (m_mission.rocket.thrust / y.m) * steeringDirection(t, y);
+        acceleration += (currentStage().thrust / y.m) * steeringDirection(t, y);
         massRate = -m_mdot;
     }
     return {y.v, acceleration, massRate};
@@ -165,7 +194,8 @@ Vec3 FlightSimulator::steeringDirection(double t, const State& y) const {
     }
     case Steering::Circularize:
         return thrustDirection(GuidancePhase::Circularize, y.r, y.v, Vec3{},
-                               m_mission.guidance.kickAngle, m_launchPlaneNormal, m_opt.mu);
+                               m_mission.guidance.kickAngle, m_launchPlaneNormal, m_opt.mu,
+                               currentStage().thrust / y.m);
     case Steering::Prograde:
         return normalized(y.v);
     case Steering::Retrograde:
@@ -224,6 +254,87 @@ void FlightSimulator::endStep(bool burnedOut) {
         m_result.cutoff = m_result.samples.back();
     }
     beginStep(m_stepIndex + 1);
+}
+
+// --- Staging -----------------------------------------------------------------
+
+bool FlightSimulator::laterStageCanFire() const {
+    const Rocket& rocket = m_mission.rocket;
+    for (int k = m_stage + 1; k < rocket.stageCount; ++k) {
+        if (canFire(rocket.stages.at(static_cast<std::size_t>(k)))) return true;
+    }
+    return false;
+}
+
+/// The firing stage's tanks are empty. If a stage above can still fire,
+/// drop the empty one and carry on with the next: the burn goes on.
+/// Otherwise the burn is over, and the empty stage stays attached (there is
+/// no point dropping it with nothing left to fire).
+void FlightSimulator::burnout() {
+    m_y.m = stageEmptyMass();
+    if (!laterStageCanFire()) {
+        endStep(true);
+        return;
+    }
+    do {
+        separateStage();
+    } while (!canFire(currentStage()));
+}
+
+/// Drop the firing stage and light the one above it.
+void FlightSimulator::separateStage() {
+    const Stage& spent = currentStage();
+    // The rocket equation for the stage's burn, from ignition to now.
+    m_deltaVUsed += exhaustVelocity(spent.isp) * std::log(m_stageStartMass / m_y.m);
+    record(EventType::StageSeparation,
+           step().name + ": stage " + std::to_string(m_stage + 1) + " separation");
+    m_separations.push_back({m_stage, m_t, State{m_y.r, m_y.v, spent.dryMass}});
+
+    m_y.m -= spent.dryMass;
+    ++m_stage;
+    m_mdot = massFlowRate(currentStage());
+    m_stageStartMass = m_y.m;
+    // A second sample at the same moment: the mass graph drops straight down.
+    pushSample(m_t, m_y, m_engineOn);
+}
+
+/// Each dropped stage coasts on by itself, under gravity and drag, until it
+/// hits the ground or the main flight ends.
+void FlightSimulator::flySpentStages() {
+    for (const Separation& separation : m_separations) {
+        SpentStage spent;
+        spent.stage = separation.stage;
+        const double remaining = m_t - separation.t;
+
+        // An empty stage on its own: no engine, the rocket's shape for drag.
+        Mission alone = m_mission;
+        alone.rocket.stages[0] = {.dryMass = separation.state.m};
+        alone.rocket.stageCount = 1;
+        alone.rocket.payloadMass = 0.0;
+        alone.launchEpoch += separation.t;
+        SimOptions options = m_opt;
+        options.initialState = separation.state;
+        options.maxTime = remaining;
+        const FlightProgram coast{
+            FlightStep{.name = "Falling", .end = StepEnd::Duration, .value = remaining}};
+        SimResult flight = FlightSimulator(alone, coast, options).run();
+
+        spent.samples = std::move(flight.samples);
+        for (Sample& s : spent.samples) s.t += separation.t;
+        if (flight.endReason == EndReason::Impact) {
+            const Sample& last = spent.samples.back();
+            spent.impactTime = last.t;
+            // Distance along the ground from the pad, both in the Earth-fixed
+            // frame: R × the angle between them.
+            const double theta = earthRotationAngleAt(m_mission.launchEpoch + last.t);
+            const Vec3 impact = eciToEcef(last.state.r, theta);
+            const Vec3 pad =
+                positionFromLatLon(m_mission.site.latitude, m_mission.site.longitude, kRadiusEarth);
+            spent.impactDistance =
+                kRadiusEarth * std::atan2(norm(cross(pad, impact)), dot(pad, impact));
+        }
+        m_result.spentStages.push_back(std::move(spent));
+    }
 }
 
 bool FlightSimulator::endConditionHolds(double t, const State& y) const {
@@ -403,8 +514,8 @@ void FlightSimulator::finish(EndReason reason) {
 
 SimResult FlightSimulator::run() {
     const Rocket& rocket = m_mission.rocket;
-    const double m0 = rocket.dryMass + rocket.propellantMass;
-    m_propellantGone = rocket.propellantMass <= 0.0 || rocket.thrust <= 0.0;
+    const double m0 = liftoffMass(rocket);
+    m_propellantGone = !canFire(currentStage()) && !laterStageCanFire();
 
     // On the pad: at the launch site, moving with the ground (unless told
     // to start somewhere else).
@@ -424,6 +535,9 @@ SimResult FlightSimulator::run() {
     m_result.samples.front().burning = m_engineOn;
     if (m_engineOn && m_result.cutoff) m_result.cutoff.reset();
     if (!m_engineOn) m_result.cutoff = m_result.samples.front();
+    m_stageStartMass = m_y.m;
+    // A first stage that can't fire is dropped on the pad.
+    if (m_engineOn && !canFire(currentStage())) burnout();
 
     const std::array pitchChanges{m_mission.guidance.pitchStartTime,
                                   m_mission.guidance.pitchStartTime +
@@ -446,7 +560,7 @@ SimResult FlightSimulator::run() {
         // each integration step sees smooth physics.
         double hStep = std::min(h, m_engineOn ? m_opt.maxBurnStep : m_opt.maxCoastStep);
         double tLimit = std::min(m_opt.maxTime, m_stepEndTime);
-        if (m_engineOn) tLimit = std::min(tLimit, m_t + (m_y.m - rocket.dryMass) / m_mdot);
+        if (m_engineOn) tLimit = std::min(tLimit, m_t + stagePropellant(m_y) / m_mdot);
         if (m_steering == Steering::PitchProgram && m_engineOn) {
             for (const double tc : pitchChanges) {
                 if (tc > m_t + 1e-9) tLimit = std::min(tLimit, tc);
@@ -470,7 +584,7 @@ SimResult FlightSimulator::run() {
             } else if (m_steering == Steering::MoonRetrograde) {
                 remaining = norm(m_y.v - moonVelocity(m_mission.launchEpoch + m_t));
             }
-            const double timeToFinish = remaining / (rocket.thrust / m_y.m);
+            const double timeToFinish = remaining / (currentStage().thrust / m_y.m);
             if (timeToFinish <= hStep) {
                 hStep = timeToFinish;
                 lastStepOfBurn = true;
@@ -548,24 +662,28 @@ SimResult FlightSimulator::run() {
             break;
         }
 
-        if (m_engineOn && m_y.m - rocket.dryMass <= 1e-9 * m0) {
-            m_y.m = rocket.dryMass;
-            endStep(true);
+        if (m_engineOn && stagePropellant(m_y) <= 1e-9 * m0) {
+            burnout();
         } else if (lastStepOfBurn || m_t >= m_stepEndTime - 1e-9) {
             endStep(false);
         }
     }
 
+    flySpentStages();
     summarise();
     return std::move(m_result);
 }
 
 void FlightSimulator::summarise() {
     const Rocket& rocket = m_mission.rocket;
-    const double m0 = rocket.dryMass + rocket.propellantMass;
     m_result.duration = m_t;
-    m_result.propellantLeft = m_y.m - rocket.dryMass;
-    m_result.deltaVUsed = exhaustVelocity(rocket.isp) * std::log(m0 / m_y.m);
+    m_result.propellantLeft = stagePropellant(m_y);
+    for (int k = m_stage + 1; k < rocket.stageCount; ++k) {
+        m_result.propellantLeft += rocket.stages.at(static_cast<std::size_t>(k)).propellantMass;
+    }
+    // Each stage's Δv from the rocket equation, over the mass it burnt.
+    m_result.deltaVUsed =
+        m_deltaVUsed + exhaustVelocity(currentStage().isp) * std::log(m_stageStartMass / m_y.m);
     for (const Sample& s : m_result.samples) {
         m_result.maxAltitude = std::max(m_result.maxAltitude, s.altitude());
     }
@@ -636,8 +754,9 @@ SimResult simulateProgram(const Mission& mission, const FlightProgram& program,
     return FlightSimulator(mission, program, options).run();
 }
 
-State stateAt(const SimResult& result, double t) {
-    const auto& samples = result.samples;
+State stateAt(const SimResult& result, double t) { return stateAt(result.samples, t); }
+
+State stateAt(std::span<const Sample> samples, double t) {
     if (samples.empty()) return {};
     if (t <= samples.front().t) return samples.front().state;
     if (t >= samples.back().t) return samples.back().state;
@@ -676,6 +795,8 @@ std::string_view toString(EventType type) {
         return "engine stop";
     case EventType::Burnout:
         return "propellant exhausted";
+    case EventType::StageSeparation:
+        return "stage separation";
     case EventType::EnterMoonSphere:
         return "entered the Moon's sphere of influence";
     case EventType::LeaveMoonSphere:

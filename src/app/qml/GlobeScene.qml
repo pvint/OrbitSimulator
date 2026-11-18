@@ -19,6 +19,7 @@ Item {
     // --- from C++ -----------------------------------------------------
     property real earthRotation: 0             // degrees about the north pole
     property vector3d rocketPosition: Qt.vector3d(0, 0, 0)
+    property var stagePositions: [] // of vector3d: dropped stages still falling
     property vector3d launchSitePosition: Qt.vector3d(0, 0, 0) // Earth-fixed
     property vector3d moonPosition: Qt.vector3d(384400, 0, 0)
     /// Turns the Moon so its near side faces the Earth (tidal locking).
@@ -212,6 +213,22 @@ Item {
                 lighting: PrincipledMaterial.NoLighting
                 vertexColorsEnabled: true
                 lineWidth: root.trajectoryWidth
+            }
+        }
+
+        // Dropped stages during playback, falling away.
+        Repeater3D {
+            model: root.stagePositions
+            delegate: Model {
+                required property vector3d modelData
+                source: "#Sphere"
+                position: modelData
+                scale: Qt.vector3d(root.markerScale * 0.7, root.markerScale * 0.7,
+                                   root.markerScale * 0.7)
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
+                    baseColor: "#94a3b8"
+                }
             }
         }
 

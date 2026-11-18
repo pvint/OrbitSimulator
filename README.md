@@ -10,7 +10,7 @@ flights on a textured 3D Earth (lit by the real Sun for the launch date), with
 the Moon, playback, live parameter sliders, results and graphs, parameter
 sweeps that compare a whole family of flights, scenario files with built-in
 examples, and a guided tour. Rockets fly through a real atmosphere, with
-drag and max-Q. `orbitsim-cli` flies missions and sweeps from the command
+drag and max-Q, and can have up to three stages. `orbitsim-cli` flies missions and sweeps from the command
 line. See the roadmap in [CLAUDE.md](CLAUDE.md). The
 original 2D browser prototype, which already works, is in
 [prototype/web](prototype/web/README.md).
@@ -75,14 +75,21 @@ Flight panel shows **max-Q**, the moment the air pushes hardest, and the
 **drag loss**, the speed the air took away; the pink graph shows the dynamic
 pressure. A drag coefficient of 0 flies in a vacuum.
 
+**Stages.** Set *Stages* (under Rocket) to 2 or 3 and each stage gets its
+own dry mass, propellant, thrust and specific impulse; *Payload* rides on
+top. When a stage is empty it is dropped and the next one fires. Dropped
+stages fall back on their own, drawn in grey, and the Flight panel says
+where they came down. A heavier stack climbs off the pad more slowly, so it
+usually needs a smaller kick angle.
+
 **Scenarios.** *File ▸ Examples* has ready-made scenarios (equatorial and
 polar launches, east vs west, kick-angle, propellant, drag and thrust
-sweeps, a pure gravity turn...). *Save Scenario* writes the current setup to a JSON file
+sweeps, a pure gravity turn, two-stage rockets...). *Save Scenario* writes the current setup to a JSON file
 you can share or edit by hand; `orbitsim file.json` opens one directly. The
 examples live in [scenarios/](scenarios/).
 
-**Demo tour.** *Help ▸ Demo Tour* walks through twelve scenarios with
-captions: a first orbit, why rockets tilt over, air resistance, latitude and launch
+**Demo tour.** *Help ▸ Demo Tour* walks through thirteen scenarios with
+captions: a first orbit, why rockets tilt over, air resistance, staging, latitude and launch
 direction, polar orbits, and a trip to the Moon with launch windows and a
 gravity assist. It moves on by itself; use the caption's buttons to go back,
 skip ahead or end it. `orbitsim --demo-step N` starts at step N.

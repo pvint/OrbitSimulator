@@ -13,16 +13,19 @@ prototype settled the physics model and the UI ideas; this is the full version.
 - Milestones M0–M6 are done and merged to `main`, and the Moon texture is in.
 - **Atmosphere + drag is done** and merged to `main`: 1976 US Standard
   Atmosphere + exponential table, Mach-dependent drag, max-Q and drag loss
-  in the stats, a dynamic pressure graph, scenario format 2, two new
-  examples and a 12-step demo tour. 74 test suites pass (GCC, Clang,
-  ASan/UBSan); clang-tidy is clean.
-- The app flies a single-stage rocket from any site and date, through the
-  air, to low orbit or to the Moon (flyby, capture, impact), with sweeps,
-  ghosts, scenario files, a dozen example scenarios, a textured Earth and
-  Moon lit by the real Sun, and the demo tour.
-- **Next:** the user picks from the "Later" rows of the roadmap below
-  (staging, scripting, natural bodies, solar system, distribution / GitHub /
-  ebuild, sweepable burn timing). Ask which, don't assume.
+  in the stats, a dynamic pressure graph, scenario format 2.
+- **Staging is done** and merged to `main`: up to three stages plus payload,
+  separation mid-burn, dropped stages flown and drawn in grey, gravity
+  compensation while circularizing, three new examples, a 13-step demo
+  tour. 82 test suites pass (GCC, Clang, ASan/UBSan); clang-tidy is clean.
+- The app flies a rocket of one to three stages from any site and date,
+  through the air, to low orbit or to the Moon (flyby, capture, impact),
+  with sweeps, ghosts, scenario files, 17 example scenarios, a textured Earth
+  and Moon lit by the real Sun, and the demo tour.
+- **Next:** the sweepable burn timing (the user asked for it to follow
+  staging without asking again). After that, the user picks from the
+  "Later" rows (scripting, natural bodies, solar system, distribution /
+  GitHub / ebuild, ...). Ask which, don't assume.
 - **Open questions:** see the end of `docs/decisions.md` (scripting
   language, how to specify natural bodies, app icon).
 
@@ -141,7 +144,8 @@ Each milestone ends with something that runs.
 | M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | done |
 | M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | done |
 | A1 | Atmosphere + drag: 1976 US Standard Atmosphere, Mach-dependent Cd, max-Q, drag loss, dynamic pressure graph, scenario format 2 | done |
-| Later | Staging, full maneuver editor, other bodies. Thrust that depends on air pressure (sea-level vs vacuum Isp) | |
+| A2 | Staging: up to three stages + payload, separation mid-burn, dropped stages flown and drawn, gravity compensation for weak upper stages | done |
+| Later | Full maneuver editor, other bodies. Thrust that depends on air pressure (sea-level vs vacuum Isp). A coast between stage separation and ignition | |
 | Later | Sweepable burn timing: e.g. a TLI start offset in seconds, or any burn's start time, as a mission parameter so it can be swept (today `lead-angle-adjust` does this for TLI, in degrees). Fits the maneuver editor | |
 | Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |
 | Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
@@ -161,6 +165,17 @@ trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
 `qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
 Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
 series it finds through properties on `qml/Plots.qml`.
+
+### Core API in brief (staging)
+
+`Rocket` = `std::array<Stage, kMaxStages> stages` (bottom first) + `stageCount`
++ `payloadMass` + drag shape. `Stage` = dry mass, propellant, thrust, Isp.
+`rocket.hpp`: `massAbove`, `liftoffMass`, `stageDeltaV`, `idealDeltaV`,
+`thrustToWeightAtIgnition`, `canFire`. The simulator tracks the firing stage;
+`EventType::StageSeparation`; `SimResult::spentStages` (samples, impact time
+and distance downrange). Parameters: `stages`, `payload`, stage 1 on the old
+keys, `stage-2-*`, `stage-3-*`; `parameterTitle()` gives unique names
+("Stage 2 thrust") for lists.
 
 ### Core API in brief (atmosphere)
 
@@ -203,5 +218,9 @@ evenly spaced `Sample`s (dense output), `FlightEvent`s, the final orbit's
   lat 28.5°, azimuth 90°, pitch start 10 s, kick 20° held 10 s, target 200 km,
   Cd 0.3, diameter 2.4 m. (In a vacuum the kick was 25°; with air, 25° flies
   flat through thick air and 27° turns over: see decision 24.)
+- A heavier stack (more stages, payload) lifts off more slowly and the same
+  kick over-rotates: two- and three-stage rockets want a smaller kick. The
+  "default rocket cut in two" (3 t + 48 t, then 1 t + 12 t at 150 kN, all
+  340 s) flies well at 18–20° and reaches the Moon (scenarios/two-stages*).
   The default launch time is Apollo 11's (1969-07-16 13:32 UTC); with Isp
   450 s the same rocket reaches lunar orbit (see scenarios/).

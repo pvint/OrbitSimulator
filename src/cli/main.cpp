@@ -140,6 +140,18 @@ void printResult(const orbit::SimResult& r) {
                   << aero.mach << '\n'
                   << std::setprecision(0) << "Drag loss:        " << r.dragLoss << " m/s\n";
     }
+    for (const orbit::SpentStage& spent : r.spentStages) {
+        const orbit::Sample& separation = spent.samples.front();
+        std::cout << "Stage " << spent.stage + 1 << ":          dropped at T+"
+                  << duration(separation.t) << ", " << km(separation.altitude()) << ", "
+                  << std::setprecision(0) << separation.speed() << " m/s; ";
+        if (spent.impactTime) {
+            std::cout << "came down " << km(spent.impactDistance) << " downrange at T+"
+                      << duration(*spent.impactTime) << '\n';
+        } else {
+            std::cout << "still up at the end\n";
+        }
+    }
     const orbit::LunarSummary& moon = r.lunar;
     if (moon.enteredSphereOfInfluence || r.mission.plan == orbit::FlightPlan::LunarFlyby ||
         r.mission.plan == orbit::FlightPlan::LunarOrbit) {
@@ -183,7 +195,7 @@ void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec) {
     const orbit::ParameterInfo& p = *orbit::findParameter(spec.parameter);
     const auto values = orbit::sweepValues(spec);
     const auto missions = orbit::sweepMissions(base, spec);
-    std::cout << "Sweep of " << p.label
+    std::cout << "Sweep of " << orbit::parameterTitle(p)
               << (p.unit.empty() ? std::string() : " (" + std::string(p.unit) + ")") << "\n\n"
               << std::right << std::setw(10) << "value" << "  " << std::left << std::setw(13)
               << "outcome" << std::right << std::setw(13) << "periapsis" << std::setw(13)
