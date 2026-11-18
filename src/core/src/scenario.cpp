@@ -57,6 +57,7 @@ std::string optionalString(const json& object, const char* key) {
 /// exactly as it always did.
 Mission defaultsForVersion(int version) {
     Mission mission = defaultMission();
+    if (version < 5) mission.rocket.separationCoast = 0.0; // stages lit at once
     if (version < 4) {
         // Before version 4 the engines lost nothing in thick air, and the
         // first stage's thrust was 1.2 MN (now 1.36 MN in a vacuum, which is

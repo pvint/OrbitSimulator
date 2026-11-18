@@ -84,6 +84,9 @@ TEST_CASE("A two-stage burn matches the rocket equation, stage by stage", "[stag
     Mission m = splitRocket();
     m.rocket.payloadMass = 500.0;
     m.rocket.dragCoefficient = 0.0;
+    m.rocket.stages[0].seaLevelLoss = 0.0;
+    m.rocket.stages[1].seaLevelLoss = 0.0;
+    m.rocket.separationCoast = 4.0; // 4 s between dropping stage 1 and lighting stage 2
     m.site.latitude = degToRad(90.0);
     m.guidance.pitchStartTime = 1e9;
     m.plan = FlightPlan::BurnToDepletion;
@@ -111,8 +114,17 @@ TEST_CASE("A two-stage burn matches the rocket equation, stage by stage", "[stag
     // Then the second stage burns until it is empty, and that ends the burn.
     const auto burnouts = eventsOf(r, EventType::Burnout);
     REQUIRE(burnouts.size() == 1);
-    REQUIRE_THAT(burnouts[0]->sample.t,
-                 WithinRel(burnTime(m.rocket.stages[0]) + burnTime(m.rocket.stages[1]), 1e-12));
+    REQUIRE_THAT(
+        burnouts[0]->sample.t,
+        WithinRel(burnTime(m.rocket.stages[0]) + 4.0 + burnTime(m.rocket.stages[1]), 1e-12));
+    // Stage 2 lit 4 s after the separation, having coasted (with no gravity
+    // here, at the same speed).
+    const auto ignition = std::ranges::find(r.events, std::string("Ascent: stage 2 ignition"),
+                                            &FlightEvent::description);
+    REQUIRE(ignition != r.events.end());
+    REQUIRE_THAT(ignition->sample.t - atSeparation.t, WithinAbs(4.0, 1e-9));
+    REQUIRE_THAT(ignition->sample.speed(), WithinRel(atSeparation.speed(), 1e-12));
+    REQUIRE(ignition->sample.state.m == after->state.m); // no propellant burnt meanwhile
     REQUIRE_THAT(burnouts[0]->sample.speed(), WithinRel(idealDeltaV(m.rocket), 1e-9));
     REQUIRE_THAT(r.deltaVUsed, WithinRel(idealDeltaV(m.rocket), 1e-12));
     REQUIRE(r.propellantLeft == 0.0);
@@ -269,4 +281,27 @@ TEST_CASE("Orbit insertion steering stays within its pitch limits", "[guidance]"
     const Vec3 down =
         orbitInsertionDirection(r, tooFast, kRadiusEarth + 200e3, 20.0, 60.0, fallback);
     REQUIRE_THAT(std::asin(down.x), WithinAbs(degToRad(-30.0), 1e-9));
+}
+
+TEST_CASE("A short coast between stages barely changes the flight", "[staging]") {
+    // Gravity losses build up while the engine pushes against gravity, not
+    // while coasting, and this plan coasts up to its apoapsis anyway: a
+    // pause part way up just moves some of that coasting earlier.
+    Mission m = splitRocket();
+    m.rocket.separationCoast = 0.0;
+    const SimResult none = simulate(m);
+    m.rocket.separationCoast = 10.0;
+    const SimResult ten = simulate(m);
+    REQUIRE(none.outcome == Outcome::Orbit);
+    REQUIRE(ten.outcome == Outcome::Orbit);
+    REQUIRE_THAT(ten.propellantLeft, WithinAbs(none.propellantLeft, 100.0));
+    const auto ignition = std::ranges::find(ten.events, std::string("Ascent: stage 2 ignition"),
+                                            &FlightEvent::description);
+    REQUIRE(ignition != ten.events.end());
+
+    // Single-stage rockets have nothing to wait for.
+    Mission single = defaultMission();
+    const double before = simulate(single).duration;
+    single.rocket.separationCoast = 20.0;
+    REQUIRE(simulate(single).duration == before);
 }

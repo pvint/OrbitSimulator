@@ -194,7 +194,12 @@ it from 9.2 to 13.2 km/s: the second stage no longer drags the first
 stage's 3 t of empty tanks to orbit. That's enough to reach the Moon on
 ordinary 340 s engines, which the single stage can't do.
 
-A burn that empties a stage carries on with the next one. Only when the
+A burn that empties a stage carries on with the next one, after a short
+**coast between stages** (5 s by default; Saturn V took about 4 s, Falcon 9
+about 7) so the two drift apart before the next engine lights. The coast
+costs surprisingly little: gravity losses build up while the engine pushes
+against gravity, and a rocket that coasts up to its apoapsis anyway only
+does some of that coasting earlier. Only when the
 last stage that can fire runs dry does the burn end (and then the empty
 stage is kept: there's nothing to gain by dropping it).
 

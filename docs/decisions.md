@@ -430,6 +430,21 @@ max-Q higher (70 kPa). Steeper climbs let the Earth's rotation turn the
 orbit's plane a little more (due north from Florida now gives 83°, not
 85°), and Aim at the Moon gives 71.0° for the default rocket.
 
+### 30. A coast between stages (2026-11-17)
+
+**Decision:** `Rocket::separationCoast` (default 5 s): after a separation
+the burn step carries on, but the next engine lights only when the coast
+is over (an ignition event marks it). Scenario format 5; older files get
+0 s and fly as before.
+
+**Why:** real stages coast a few seconds apart before the next engine
+lights. A single number for the rocket is enough for that; a per-stage
+value would add three sliders for very little.
+
+**Learned on the way:** the expectation that the coast must cost
+propellant was wrong for our plans: the open-loop plan coasts up to its
+apoapsis anyway, and a 10 s pause left 6 kg *more*. The test now says so.
+
 ---
 
 ## Open questions

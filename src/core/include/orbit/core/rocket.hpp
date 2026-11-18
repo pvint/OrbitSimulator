@@ -4,8 +4,8 @@
 // A rocket is a stack of up to three stages with a payload on top. Each
 // stage has its own tanks and engine, which burns at full, constant thrust.
 // The bottom stage fires first; when its propellant is gone it is dropped
-// (stage separation) and the one above it ignites at once. The payload is
-// what's left at the very end.
+// (stage separation) and, after a short coast, the one above it ignites. The
+// payload is what's left at the very end.
 //
 // WHY STAGES?
 // The rocket equation, Δv = v_e · ln(m0 / m_final), punishes carrying dead
@@ -60,6 +60,9 @@ struct Rocket {
     std::array<Stage, kMaxStages> stages{};
     int stageCount = 1;
     double payloadMass = 0.0; ///< kg, carried on top of the last stage
+    /// s between dropping an empty stage and lighting the next, so the two
+    /// drift apart first (Saturn V: about 4 s, Falcon 9: about 7 s).
+    double separationCoast = 0.0;
     /// Drag coefficient Cd below the speed of sound; it rises near Mach 1
     /// (aerodynamics.hpp). 0 means no drag at all, as in a vacuum.
     double dragCoefficient = 0.0;

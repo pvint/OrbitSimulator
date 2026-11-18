@@ -42,6 +42,7 @@ Mission defaultMission() {
                                  .seaLevelLoss = 0.15}},
                 .stageCount = 1,
                 .payloadMass = 0.0,
+                .separationCoast = 5.0,
                 .dragCoefficient = 0.3,
                 .diameter = 2.4};
     m.site = {.latitude = degToRad(28.5), .longitude = degToRad(-80.6)}; // Cape Canaveral
@@ -100,6 +101,10 @@ private:
 
     // Read by derivative(); set before each integration step.
     bool m_engineOn = false;
+    /// Between stages: the burn goes on, but the next engine hasn't lit yet.
+    bool m_waitingToIgnite = false;
+    double m_ignitionTime = 0.0;
+    bool thrusting() const { return m_engineOn && !m_waitingToIgnite; }
     Steering m_steering = Steering::Prograde;
     GuidancePhase m_phase = GuidancePhase::Vertical;
     Vec3 m_launchPlaneNormal;
@@ -202,7 +207,7 @@ State FlightSimulator::derivative(double t, const State& y) const {
     }
 
     double massRate = 0.0;
-    if (m_engineOn) {
+    if (thrusting()) {
         acceleration += (currentThrust(y) / y.m) * steeringDirection(t, y);
         massRate = -m_mdot;
     }
@@ -284,6 +289,7 @@ void FlightSimulator::beginStep(std::size_t index) {
         }
 
         m_engineOn = s.engineOn;
+        m_waitingToIgnite = false;
         m_steering = s.steering;
         m_stepEndTime = m_t + s.timeout;
         if (s.end == StepEnd::Duration) m_stepEndTime = std::min(m_stepEndTime, m_t + s.value);
@@ -356,8 +362,14 @@ void FlightSimulator::separateStage() {
     ++m_stage;
     m_mdot = massFlowRate(currentStage());
     m_stageStartMass = m_y.m;
+    // A short coast before the next engine lights, if the rocket has one.
+    const double coast = m_mission.rocket.separationCoast;
+    if (coast > 0.0 && m_engineOn) {
+        m_waitingToIgnite = true;
+        m_ignitionTime = m_t + coast;
+    }
     // A second sample at the same moment: the mass graph drops straight down.
-    pushSample(m_t, m_y, m_engineOn);
+    pushSample(m_t, m_y, thrusting());
 }
 
 /// Each dropped stage coasts on by itself, under gravity and drag, until it
@@ -564,7 +576,7 @@ double FlightSimulator::findCrossing(Trigger trigger, double t0, double t1) cons
 /// fixed fraction of the local orbital period while coasting, around the
 /// Earth or the Moon, whichever is nearer in that sense.
 double FlightSimulator::outputInterval(double t, const State& y) const {
-    if (m_engineOn) return m_opt.burnOutputInterval;
+    if (thrusting()) return m_opt.burnOutputInterval;
     const double r = norm(y.r);
     if (m_drag && r - kRadiusEarth < kKarmanLine) return m_opt.burnOutputInterval;
     double interval = m_opt.coastOutputFraction * std::sqrt(r * r * r / m_opt.mu);
@@ -591,14 +603,14 @@ void FlightSimulator::pushSample(double t, const State& y, bool burning) {
 void FlightSimulator::emitOutputs(double tEnd) {
     while (m_nextOutputTime < tEnd) {
         const State y = m_stepper.interpolate(m_nextOutputTime);
-        pushSample(m_nextOutputTime, y, m_engineOn);
+        pushSample(m_nextOutputTime, y, thrusting());
         m_nextOutputTime += outputInterval(m_nextOutputTime, y);
     }
 }
 
 /// Store the current moment as an event (and as a sample).
 void FlightSimulator::record(EventType type, std::string description) {
-    pushSample(m_t, m_y, m_engineOn);
+    pushSample(m_t, m_y, thrusting());
     m_result.events.push_back({type, std::move(description), m_result.samples.back()});
 }
 
@@ -656,10 +668,11 @@ SimResult FlightSimulator::run() {
         // Never step across a moment where the equations of motion change
         // abruptly (pitch program changes, burnout, a step's time limit), so
         // each integration step sees smooth physics.
-        double hStep = std::min(h, m_engineOn ? m_opt.maxBurnStep : m_opt.maxCoastStep);
+        double hStep = std::min(h, thrusting() ? m_opt.maxBurnStep : m_opt.maxCoastStep);
         double tLimit = std::min(m_opt.maxTime, m_stepEndTime);
-        if (m_engineOn) tLimit = std::min(tLimit, m_t + stagePropellant(m_y) / m_mdot);
-        if (m_steering == Steering::PitchProgram && m_engineOn) {
+        if (thrusting()) tLimit = std::min(tLimit, m_t + stagePropellant(m_y) / m_mdot);
+        if (m_waitingToIgnite) tLimit = std::min(tLimit, m_ignitionTime);
+        if (m_steering == Steering::PitchProgram && thrusting()) {
             for (const double tc : pitchChanges) {
                 if (tc > m_t + 1e-9) tLimit = std::min(tLimit, tc);
             }
@@ -678,7 +691,7 @@ SimResult FlightSimulator::run() {
         // it the burn's last step: past that point the steering direction
         // would flip round, which no integrator can follow.
         bool lastStepOfBurn = false;
-        if (m_engineOn) {
+        if (thrusting()) {
             double remaining = kInfinity;
             if (step().end == StepEnd::Circular) {
                 const Vec3 fallback = downrangeDirection(m_y.r, m_launchPlaneNormal);
@@ -766,7 +779,13 @@ SimResult FlightSimulator::run() {
             break;
         }
 
-        if (m_engineOn && stagePropellant(m_y) <= 1e-9 * m0) {
+        if (m_waitingToIgnite && m_t >= m_ignitionTime - 1e-9) {
+            // The coast after a separation is over: light the next stage.
+            m_waitingToIgnite = false;
+            record(EventType::EngineStart,
+                   step().name + ": stage " + std::to_string(m_stage + 1) + " ignition");
+            m_nextOutputTime = m_t + outputInterval(m_t, m_y);
+        } else if (thrusting() && stagePropellant(m_y) <= 1e-9 * m0) {
             burnout();
         } else if (lastStepOfBurn || m_t >= m_stepEndTime - 1e-9) {
             endStep(false);
