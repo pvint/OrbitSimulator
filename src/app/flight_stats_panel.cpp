@@ -47,6 +47,11 @@ FlightStatsPanel::FlightStatsPanel(QWidget* parent) : QWidget(parent) {
     m_dragLoss = addRow(tr("Drag loss"), tr("Speed taken away by air resistance on the way up: "
                                             "Δv the engine spent pushing through the air"));
     m_dragLoss->setObjectName(QStringLiteral("dragLoss"));
+    m_pressureLoss =
+        addRow(tr("Back-pressure loss"),
+               tr("Speed lost because the engine pushes less in thick air, where the air "
+                  "presses on its nozzle (the Sea-level loss parameter)"));
+    m_pressureLoss->setObjectName(QStringLiteral("pressureLoss"));
     m_duration = addRow(tr("Simulated time"), {});
     layout->addWidget(orbitGroup);
 
@@ -110,6 +115,8 @@ void FlightStatsPanel::showResult(const orbit::SimResult& result) {
     m_maxAltitude->setText(display::altitude(result.maxAltitude));
     m_deltaV->setText(display::speed(result.deltaVUsed));
     m_propellantLeft->setText(display::mass(result.propellantLeft));
+    m_pressureLoss->setText(result.pressureLoss > 0.0 ? display::speed(result.pressureLoss)
+                                                      : QStringLiteral("—"));
     if (result.maxDynamicPressure) {
         const orbit::Sample& s = *result.maxDynamicPressure;
         const orbit::Aerodynamics aero = orbit::aerodynamicsAt(result, s);

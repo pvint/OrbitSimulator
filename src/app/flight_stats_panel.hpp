@@ -29,6 +29,7 @@ private:
     QLabel* m_propellantLeft = nullptr;
     QLabel* m_maxQ = nullptr;
     QLabel* m_dragLoss = nullptr;
+    QLabel* m_pressureLoss = nullptr;
     QLabel* m_duration = nullptr;
     QLabel* m_events = nullptr;
     QGroupBox* m_stagesGroup = nullptr;

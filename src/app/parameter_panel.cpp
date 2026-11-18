@@ -206,6 +206,9 @@ void ParameterPanel::buildDerivedSection(QBoxLayout* layout) {
         return value;
     };
     m_liftoffMass = addRow(tr("Liftoff mass"), tr("Every stage, full, and the payload"));
+    m_liftoffThrust = addRow(tr("Liftoff thrust"),
+                             tr("The first stage's thrust at sea level: its vacuum thrust less "
+                                "the sea-level loss"));
     m_burnTime = addRow(tr("Burn time"),
                         tr("Propellant ÷ mass flow, at full thrust (each stage, bottom first)"));
     m_massFlow = addRow(tr("Mass flow"), tr("F / (Isp · g0)"));
@@ -319,6 +322,8 @@ void ParameterPanel::refreshDerived() {
         return parts.join(QStringLiteral(" + "));
     };
     m_liftoffMass->setText(display::mass(orbit::liftoffMass(rocket)));
+    m_liftoffThrust->setText(tr("%1 kN").arg(
+        QLocale().toString(orbit::seaLevelThrust(rocket.stages[0]) / 1000.0, 'f', 0)));
     m_burnTime->setText(
         perStage([](const orbit::Stage& s, int) { return display::duration(orbit::burnTime(s)); }));
     m_massFlow->setText(tr("%1 kg/s").arg(perStage([](const orbit::Stage& s, int) {

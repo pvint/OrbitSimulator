@@ -184,6 +184,10 @@ void PlotPanel::refresh() {
         };
 
         g.series->replace(pointsFor(r));
+        // The dynamic pressure of a sweep's crashes and re-entries can be
+        // twenty times the others' max-Q; scale to the selected flight, and
+        // let the rest run off the top.
+        const double selectedMax = yMax;
         g.series->setColor(m_runs->isSweep() ? selected.color : g.defaultColor);
 
         ensureOverlays(g.view, g.series, g.overlays, overlayCount);
@@ -205,7 +209,7 @@ void PlotPanel::refresh() {
         g.xAxis->setLabelFormat(labelFormatFor(xNice.tick));
         g.item->setProperty("timeUnit", minutes ? tr("min") : tr("s"));
 
-        const NiceAxis yNice = niceAxis(yMax);
+        const NiceAxis yNice = niceAxis(g.airborneOnly ? selectedMax * 1.2 : yMax);
         g.yAxis->setRange(0.0, yNice.top);
         g.yAxis->setTickInterval(yNice.tick);
         g.yAxis->setLabelFormat(labelFormatFor(yNice.tick));
