@@ -1,0 +1,17 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 2,
+  "name": "Payload sweep, two stages",
+  "description": "How much can the two-stage rocket carry to orbit? Up to about 2.5 t; the same rocket in one stage manages under 1 t. Beyond that it runs short, and the heavier rocket also climbs more slowly off the pad, so the same tilt turns it over sooner: at 4 t it falls back. (The kick is 18° here, a little gentler than the default, for the heavier loads.)",
+  "mission": {
+    "stages": 2,
+    "dry-mass": 3,
+    "propellant": 48,
+    "stage-2-dry-mass": 1,
+    "stage-2-propellant": 12,
+    "stage-2-thrust": 150,
+    "stage-2-isp": 340,
+    "kick-angle": 18
+  },
+  "sweep": { "parameter": "payload", "from": 0, "to": 4, "steps": 9 }
+}

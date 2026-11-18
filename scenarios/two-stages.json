@@ -1,0 +1,15 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 2,
+  "name": "Two stages: the same rocket cut in two",
+  "description": "The default rocket's 64 t, with the same structure, propellant and engines, split into two stages. When the first stage is empty it is dropped, so the second doesn't have to carry its 3 t of tanks: the ideal delta-v rises from 9.2 to 13.2 km/s. It reaches orbit with 2.8 t of propellant to spare, against 0.8 t for the single stage. The first stage falls back into the Atlantic (grey), about 1450 km downrange.",
+  "mission": {
+    "stages": 2,
+    "dry-mass": 3,
+    "propellant": 48,
+    "stage-2-dry-mass": 1,
+    "stage-2-propellant": 12,
+    "stage-2-thrust": 150,
+    "stage-2-isp": 340
+  }
+}

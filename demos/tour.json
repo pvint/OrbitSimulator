@@ -26,6 +26,16 @@
       "seconds": 25
     },
     {
+      "title": "Dropping dead weight",
+      "caption": "The same rocket cut into two stages. When the first stage's tanks are empty, it is dropped and falls back into the Atlantic (grey), and a smaller engine carries on with a much lighter rocket. Without the empty tanks, the same propellant gives 4 km/s more. Nearly every real rocket has two or three stages.",
+      "scenario": "two-stages.json",
+      "view": "launch-site",
+      "distance": 9000,
+      "start-hours": 0.06,
+      "speed": 10,
+      "seconds": 30
+    },
+    {
       "title": "A knife edge",
       "caption": "The same rocket, but burning until its tank is empty, with no second burn, and (to give it a chance) without air. Now orbit is only reached in a thin band of tilt angles, and only just: the turn has to level off at the very moment orbital speed is reached. With air, none of them make it. This is why real rockets coast up and burn again.",
       "scenario": "pure-gravity-turn.json",
