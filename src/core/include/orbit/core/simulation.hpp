@@ -78,6 +78,9 @@ struct Mission {
     LaunchSite site;
     AscentGuidance guidance;
     FlightPlan plan = FlightPlan::Orbit;
+    /// The steps to fly when plan is Custom (the maneuver editor's program).
+    /// Other plans build theirs from the settings (flightProgramFor).
+    FlightProgram program;
     double targetAltitude = 200e3; ///< m: the orbit (or lunar parking orbit) altitude
     LunarTransfer lunar;
     /// Liftoff time: seconds since J2000 (astro_time.hpp). It sets where the

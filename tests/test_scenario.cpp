@@ -186,7 +186,7 @@ TEST_CASE("Version 1 files fly as they always did: in a vacuum, with a 25° kick
 
     // Saved files are always the current version, with drag written out.
     const std::string json = scenarioToJson(Scenario{});
-    REQUIRE_THAT(json, ContainsSubstring("\"version\": 2"));
+    REQUIRE_THAT(json, ContainsSubstring("\"version\": " + std::to_string(kScenarioFormatVersion)));
     REQUIRE_THAT(json, ContainsSubstring("\"drag-coefficient\": 0.3"));
     REQUIRE_THAT(json, ContainsSubstring("\"diameter\": 2.4"));
 }

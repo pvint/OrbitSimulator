@@ -94,7 +94,8 @@ private:
     // Progress through the program.
     std::size_t m_stepIndex = 0;
     double m_stepEndTime = kInfinity; ///< time limit of the current step
-    bool m_propellantGone = false;    ///< no stage left that can fire
+    double m_stepSign = 1.0;       ///< +1: the watched altitude must rise to the target; −1: fall
+    bool m_propellantGone = false; ///< no stage left that can fire
     bool m_done = false;
 
     // Staging.
@@ -139,6 +140,9 @@ private:
 
     // Triggers and output
     double gTrigger(Trigger trigger, double t, const State& y) const;
+    /// For the "... reaches an altitude" end conditions: the distance from
+    /// the Earth's centre being watched (apoapsis, periapsis or the rocket's).
+    double crossingDistance(const State& y) const;
     std::vector<Trigger> activeTriggers() const;
     double findCrossing(Trigger trigger, double t0, double t1) const;
     double outputInterval(double t, const State& y) const;
@@ -202,6 +206,14 @@ Vec3 FlightSimulator::steeringDirection(double t, const State& y) const {
         return -normalized(y.v);
     case Steering::MoonRetrograde:
         return -normalized(y.v - moonVelocity(m_mission.launchEpoch + t));
+    case Steering::Normal:
+        return normalized(cross(y.r, y.v));
+    case Steering::Antinormal:
+        return -normalized(cross(y.r, y.v));
+    case Steering::RadialOut:
+        return normalized(y.r);
+    case Steering::RadialIn:
+        return -normalized(y.r);
     }
     return normalized(y.v);
 }
@@ -214,10 +226,17 @@ void FlightSimulator::beginStep(std::size_t index) {
     for (m_stepIndex = index; m_stepIndex < m_program.size(); ++m_stepIndex) {
         const FlightStep& s = step();
         if (s.engineOn && m_propellantGone) continue;
+        // "Until the apoapsis reaches 300 km" works both ways: raising it or
+        // lowering it, whichever is needed from here.
+        m_stepSign = crossingDistance(m_y) <= kRadiusEarth + s.value ? 1.0 : -1.0;
         // Braking into lunar orbit only makes sense near the Moon.
         if (s.steering == Steering::MoonRetrograde && !m_insideMoonSphere) continue;
         if (s.end != StepEnd::Duration && s.end != StepEnd::Revolutions &&
             s.end != StepEnd::PropellantExhausted && endConditionHolds(m_t, m_y)) {
+            continue;
+        }
+        // A step that takes no time at all (a 0 s wait) is nothing to do.
+        if ((s.end == StepEnd::Duration || s.end == StepEnd::Revolutions) && s.value <= 0.0) {
             continue;
         }
 
@@ -344,7 +363,11 @@ bool FlightSimulator::endConditionHolds(double t, const State& y) const {
     case StepEnd::Circular:
         return norm(circularizationDeltaV(y.r, y.v, downrangeDirection(y.r, m_launchPlaneNormal),
                                           m_opt.mu)) < 0.01;
+    case StepEnd::Periapsis:
+        return dot(y.r, y.v) >= 0.0; // not falling: at or past periapsis
     case StepEnd::ApoapsisAltitude:
+    case StepEnd::PeriapsisAltitude:
+    case StepEnd::Altitude:
     case StepEnd::MoonCapture:
         return gTrigger(Trigger::StepEnd, t, y) >= 0.0;
     case StepEnd::MoonAhead:
@@ -358,6 +381,19 @@ bool FlightSimulator::endConditionHolds(double t, const State& y) const {
 }
 
 // --- Triggers -------------------------------------------------------------
+
+double FlightSimulator::crossingDistance(const State& y) const {
+    switch (step().end) {
+    case StepEnd::ApoapsisAltitude:
+        return elementsFromState(y.r, y.v, m_opt.mu).apoapsis;
+    case StepEnd::PeriapsisAltitude:
+        return elementsFromState(y.r, y.v, m_opt.mu).periapsis;
+    case StepEnd::Altitude:
+        return norm(y.r);
+    default:
+        return 0.0;
+    }
+}
 
 double FlightSimulator::gTrigger(Trigger trigger, double t, const State& y) const {
     switch (trigger) {
@@ -380,9 +416,13 @@ double FlightSimulator::gTrigger(Trigger trigger, double t, const State& y) cons
     const double value = step().value;
     switch (step().end) {
     case StepEnd::ApoapsisAltitude:
-        return elementsFromState(y.r, y.v, m_opt.mu).apoapsis - (kRadiusEarth + value);
+    case StepEnd::PeriapsisAltitude:
+    case StepEnd::Altitude:
+        return m_stepSign * (crossingDistance(y) - (kRadiusEarth + value));
     case StepEnd::Apoapsis:
         return -dot(y.r, y.v); // climbing → falling
+    case StepEnd::Periapsis:
+        return dot(y.r, y.v); // falling → climbing
     case StepEnd::MoonAhead: {
         // Angle from the rocket to the Moon, measured forwards in the orbit
         // plane. It shrinks as the faster rocket catches up; the step ends
@@ -428,7 +468,10 @@ std::vector<Trigger> FlightSimulator::activeTriggers() const {
     if (!m_engineOn) triggers.push_back(Trigger::EscapeDistance);
     switch (step().end) {
     case StepEnd::ApoapsisAltitude:
+    case StepEnd::PeriapsisAltitude:
+    case StepEnd::Altitude:
     case StepEnd::Apoapsis:
+    case StepEnd::Periapsis:
     case StepEnd::MoonAhead:
     case StepEnd::MoonClosestApproach:
     case StepEnd::MoonCapture:
@@ -567,6 +610,12 @@ SimResult FlightSimulator::run() {
             }
         }
         hStep = std::min(hStep, tLimit - m_t);
+        // Already at the step's time limit: end it rather than take a step of
+        // zero length (whose zero "next step size" would stall everything).
+        if (hStep <= 0.0) {
+            endStep(false);
+            continue;
+        }
 
         // Some burns aim at a velocity: circularizing (towards circular-orbit
         // velocity) and braking (towards zero speed relative to the Earth or

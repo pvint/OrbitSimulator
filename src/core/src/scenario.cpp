@@ -22,6 +22,7 @@ constexpr std::string_view kPlanKey = "plan";
 /// Older files: "auto-circularize": false meant burn until empty.
 constexpr std::string_view kAutoCircularizeKey = "auto-circularize";
 constexpr std::string_view kLaunchUtcKey = "launch-utc";
+constexpr std::string_view kProgramKey = "program";
 
 /// Rounds to 12 significant figures, so values that went through a unit
 /// conversion are saved as 28.5 rather than 28.500000000000004.
@@ -65,6 +66,49 @@ Mission defaultsForVersion(int version) {
     return mission;
 }
 
+/// One step of a custom program: {"name": "Deorbit burn", "engine": true,
+/// "steering": "retrograde", "until": "periapsis-altitude", "value": 50,
+/// "timeout": 600}. The value is in the end condition's display unit.
+FlightStep readStep(const json& object, const std::string& where) {
+    if (!object.is_object()) throw ScenarioError(where + " must be an object");
+    FlightStep step;
+    step.name = optionalString(object, "name");
+    if (const auto it = object.find("engine"); it != object.end()) {
+        if (!it->is_boolean()) throw ScenarioError(where + ".engine must be true or false");
+        step.engineOn = it->get<bool>();
+    }
+    const std::string steering = optionalString(object, "steering");
+    if (!steering.empty() && !steeringFromKey(steering, step.steering)) {
+        throw ScenarioError(where + ".steering \"" + steering + "\" is not a steering mode");
+    }
+    const std::string until = optionalString(object, "until");
+    if (!stepEndFromKey(until, step.end)) {
+        throw ScenarioError(where + ".until \"" + until + "\" is not an end condition");
+    }
+    if (const auto it = object.find("value"); it != object.end()) {
+        step.value = stepValueFromDisplay(step.end, requireNumber(*it, where + ".value"));
+    }
+    if (const auto it = object.find("timeout"); it != object.end()) {
+        step.timeout = requireNumber(*it, where + ".timeout");
+    }
+    if (const auto it = object.find("look-ahead"); it != object.end()) {
+        step.lookAhead = requireNumber(*it, where + ".look-ahead");
+    }
+    return step;
+}
+
+nlohmann::ordered_json writeStep(const FlightStep& step) {
+    nlohmann::ordered_json object;
+    object["name"] = step.name;
+    object["engine"] = step.engineOn;
+    object["steering"] = steeringKey(step.steering);
+    object["until"] = stepEndKey(step.end);
+    if (stepEndHasValue(step.end)) object["value"] = tidy(stepValueToDisplay(step.end, step.value));
+    if (std::isfinite(step.timeout)) object["timeout"] = tidy(step.timeout);
+    if (step.lookAhead != 0.0) object["look-ahead"] = tidy(step.lookAhead);
+    return object;
+}
+
 Mission readMission(const json& object, int version, std::vector<std::string>& warnings) {
     if (!object.is_object()) throw ScenarioError("\"mission\" must be an object");
     Mission mission = defaultsForVersion(version);
@@ -98,24 +142,31 @@ Mission readMission(const json& object, int version, std::vector<std::string>& w
     if (const auto it = object.find(std::string(kPlanKey)); it != object.end()) {
         if (!it->is_string() || !planFromKey(it->get<std::string>(), mission.plan)) {
             throw ScenarioError(R"(mission.plan must be "orbit", "burn-to-depletion", )"
-                                R"("lunar-flyby" or "lunar-orbit")");
+                                R"("lunar-flyby", "lunar-orbit" or "custom")");
+        }
+    }
+    if (const auto it = object.find(std::string(kProgramKey)); it != object.end()) {
+        if (!it->is_array()) throw ScenarioError("mission.program must be a list of steps");
+        for (std::size_t i = 0; i < it->size(); ++i) {
+            mission.program.push_back(
+                readStep((*it)[i], "mission.program[" + std::to_string(i) + "]"));
         }
     }
 
     for (const auto& [key, value] : object.items()) {
         if (key != kAutoCircularizeKey && key != kPlanKey && key != kLaunchUtcKey &&
-            findParameter(key) == nullptr) {
+            key != kProgramKey && findParameter(key) == nullptr) {
             warnings.push_back("ignored unknown mission parameter \"" + key + "\"");
         }
     }
     return mission;
 }
 
-SweepSpec readSweep(const json& object) {
+SweepSpec readSweep(const json& object, const Mission& mission) {
     if (!object.is_object()) throw ScenarioError("\"sweep\" must be an object");
     SweepSpec spec;
     spec.parameter = optionalString(object, "parameter");
-    if (findParameter(spec.parameter) == nullptr) {
+    if (!findSweepTarget(mission, spec.parameter)) {
         throw ScenarioError("sweep.parameter \"" + spec.parameter + "\" is not a known parameter");
     }
     for (const char* key : {"from", "to", "steps"}) {
@@ -167,7 +218,7 @@ LoadedScenario scenarioFromJson(std::string_view text) {
         s.mission = defaultsForVersion(formatVersion);
     }
     if (const auto it = doc.find("sweep"); it != doc.end() && !it->is_null()) {
-        s.sweep = readSweep(*it);
+        s.sweep = readSweep(*it, s.mission);
     }
     for (const auto& [key, value] : doc.items()) {
         if (key != "format" && key != "version" && key != "name" && key != "description" &&
@@ -188,6 +239,11 @@ std::string scenarioToJson(const Scenario& scenario) {
     }
     mission[std::string(kPlanKey)] = planKey(scenario.mission.plan);
     mission[std::string(kLaunchUtcKey)] = formatIsoUtc(scenario.mission.launchEpoch);
+    if (scenario.mission.plan == FlightPlan::Custom) {
+        nlohmann::ordered_json steps = nlohmann::ordered_json::array();
+        for (const FlightStep& step : scenario.mission.program) steps.push_back(writeStep(step));
+        mission[std::string(kProgramKey)] = steps;
+    }
 
     nlohmann::ordered_json doc;
     doc["format"] = kScenarioFormatName;
