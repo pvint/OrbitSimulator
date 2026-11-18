@@ -4,12 +4,14 @@
 #include "flight_stats_panel.hpp"
 #include "orbit/core/angles.hpp"
 #include "parameter_panel.hpp"
+#include "program_panel.hpp"
 #include "scene_coordinates.hpp"
 #include "simulation_controller.hpp"
 #include "sweep_panel.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDoubleSpinBox>
 #include <QGroupBox>
 #include <QLabel>
@@ -279,6 +281,60 @@ private slots:
         QVERIFY(list->isVisibleTo(&stats));
         QVERIFY(list->text().contains(QStringLiteral("Stage 1 dropped")));
         QVERIFY(list->text().contains(QStringLiteral("downrange")));
+    }
+
+    void programPanelShowsThePlanUntilCustomized() {
+        ProgramPanel panel;
+        QSignalSpy spy(&panel, &ProgramPanel::missionChanged);
+        auto* table = panel.findChild<QTableWidget*>(QStringLiteral("programTable"));
+        auto* customize = panel.findChild<QPushButton*>(QStringLiteral("customizeProgram"));
+        QVERIFY(table && customize);
+        QCOMPARE(table->rowCount(), 4); // the Orbit plan: ascent, coast, circularize, coast
+        auto* value = panel.findChild<QDoubleSpinBox*>(QStringLiteral("stepValue-1"));
+        QVERIFY(value);
+        QVERIFY(!value->isEnabled());    // read-only until customized
+        QCOMPARE(value->value(), 200.0); // km
+
+        customize->click();
+        // The table replaces its cell widgets; the old ones go at the next
+        // event loop pass, so let them go before looking for the new ones.
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(panel.mission().plan == orbit::FlightPlan::Custom);
+        QCOMPARE(panel.mission().program.size(), std::size_t{4});
+
+        value = panel.findChild<QDoubleSpinBox*>(QStringLiteral("stepValue-1"));
+        QVERIFY(value && value->isEnabled());
+        value->setValue(300.0);
+        QCOMPARE(panel.mission().program.front().value, 300e3);
+
+        table->setCurrentCell(3, 0);
+        panel.findChild<QPushButton*>(QStringLiteral("addStep"))->click();
+        QCOMPARE(panel.mission().program.size(), std::size_t{5});
+        QCOMPARE(table->rowCount(), 5);
+        QVERIFY(panel.mission().program.back().end == orbit::StepEnd::Duration);
+        panel.findChild<QPushButton*>(QStringLiteral("removeStep"))->click();
+        QCOMPARE(panel.mission().program.size(), std::size_t{4});
+
+        // A swept step value is locked.
+        panel.setLockedKey("step-1-value");
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QVERIFY(!panel.findChild<QDoubleSpinBox*>(QStringLiteral("stepValue-1"))->isEnabled());
+    }
+
+    void sweepPanelOffersCustomStepValues() {
+        SweepPanel panel;
+        auto* parameter = panel.findChild<QComboBox*>(QStringLiteral("sweepParameter"));
+        QVERIFY(parameter);
+        QCOMPARE(parameter->findData(QStringLiteral("step-1-value")), -1);
+
+        orbit::Mission m = orbit::defaultMission();
+        m.program = orbit::flightProgramFor(m);
+        m.plan = orbit::FlightPlan::Custom;
+        panel.setMission(m);
+        QVERIFY(parameter->findData(QStringLiteral("step-1-value")) >= 0);
+        // The current choice survives the list being rebuilt.
+        QCOMPARE(parameter->currentData().toString(), QStringLiteral("kick-angle"));
     }
 
     void dragControlsChangeTheMission() {

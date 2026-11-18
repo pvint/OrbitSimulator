@@ -38,6 +38,7 @@ signals:
     void runSelected(int index);
 
 private:
+    void fillParameterList();
     void suggestRange();
     orbit::SweepSpec currentSpec() const;
 

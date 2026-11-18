@@ -9,6 +9,7 @@
 #include "orbit/core/scenario.hpp"
 #include "parameter_panel.hpp"
 #include "plot_panel.hpp"
+#include "program_panel.hpp"
 #include "simulation_controller.hpp"
 #include "sweep_panel.hpp"
 
@@ -108,13 +109,29 @@ void MainWindow::createDocks() {
     m_flightDock->raise();
 
     m_plots = new PlotPanel;
-    addDock(tr("Graphs"), QStringLiteral("graphsDock"), m_plots, Qt::BottomDockWidgetArea);
+    QDockWidget* graphs =
+        addDock(tr("Graphs"), QStringLiteral("graphsDock"), m_plots, Qt::BottomDockWidgetArea);
+
+    // The flight program is a wide table, so it shares the bottom with the graphs.
+    m_programPanel = new ProgramPanel;
+    m_programDock = addDock(tr("Flight program"), QStringLiteral("programDock"), m_programPanel,
+                            Qt::BottomDockWidgetArea);
+    tabifyDockWidget(graphs, m_programDock);
+    graphs->raise();
 }
 
 void MainWindow::connectPanels() {
     connect(m_parameters, &ParameterPanel::missionChanged, this,
             [this](const orbit::Mission& mission) {
                 m_mission = mission;
+                m_sweepPanel->setMission(mission);
+                m_programPanel->setMission(mission);
+                requestSimulation();
+            });
+    connect(m_programPanel, &ProgramPanel::missionChanged, this,
+            [this](const orbit::Mission& mission) {
+                m_mission = mission;
+                m_parameters->setMission(mission); // the plan may now be Custom
                 m_sweepPanel->setMission(mission);
                 requestSimulation();
             });
@@ -133,6 +150,7 @@ void MainWindow::startSweep(const orbit::SweepSpec& spec) {
     m_sweep = spec;
     m_sweepDock->raise();
     m_parameters->setLockedParameter(spec.parameter);
+    m_programPanel->setLockedKey(spec.parameter);
     requestSimulation();
 }
 
@@ -140,6 +158,7 @@ void MainWindow::stopSweep() {
     m_sweep.reset();
     m_flightDock->raise();
     m_parameters->setLockedParameter({});
+    m_programPanel->setLockedKey({});
     requestSimulation();
 }
 
@@ -163,9 +182,10 @@ void MainWindow::onResult(const std::shared_ptr<const RunSet>& runs, double mill
     showSelection();
 
     if (sweep) {
-        const orbit::ParameterInfo* p = orbit::findParameter(sweep->parameter);
+        const std::optional<orbit::SweepTarget> p =
+            orbit::findSweepTarget(m_mission, sweep->parameter);
         statusBar()->showMessage(tr("Sweep of %1: %2 flights in %3 ms")
-                                     .arg(p ? QString::fromStdString(orbit::parameterTitle(*p))
+                                     .arg(p ? QString::fromStdString(p->title)
                                             : QString::fromStdString(sweep->parameter))
                                      .arg(runs->runs.size())
                                      .arg(QLocale().toString(milliseconds, 'f', 1)));
@@ -200,6 +220,7 @@ void MainWindow::newScenario() {
     m_mission = orbit::defaultMission();
     m_parameters->setMission(m_mission);
     m_sweepPanel->setMission(m_mission);
+    m_programPanel->setMission(m_mission);
     m_globe->clearGhosts();
     updateTitle();
     stopSweep();
@@ -254,6 +275,9 @@ bool MainWindow::openScenarioText(const QByteArray& text, const QString& path) {
     m_mission = s.mission;
     m_parameters->setMission(m_mission);
     m_sweepPanel->setMission(m_mission);
+    m_programPanel->setMission(m_mission);
+    // A custom program is the point of such a scenario: show it.
+    if (m_mission.plan == orbit::FlightPlan::Custom) m_programDock->raise();
     m_globe->clearGhosts();
     m_globe->resetViewOnNextResult();
     updateTitle();
@@ -350,7 +374,7 @@ void MainWindow::updateTitle() {
 // set of panels changes: an older saved layout is then ignored once (it
 // wouldn't know where the new panels go) and the default below applies.
 namespace {
-constexpr int kLayoutVersion = 2; // 2: Sweep panel added (M4)
+constexpr int kLayoutVersion = 3; // 2: Sweep panel added (M4); 3: Flight program panel
 }
 
 void MainWindow::restoreLayout() {
