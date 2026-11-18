@@ -39,12 +39,14 @@ jobs:
             qt: '6.11.*'
             cmake-args: -DCMAKE_CXX_COMPILER=g++-12
             package: appimage
+          # Qt 6.10 on Windows: from 6.11 the Windows downloads are split by
+          # compiler, which aqtinstall 3.3 can't read yet.
           - name: Windows
             os: windows-2022
-            qt: '6.11.*'
+            qt: '6.10.*'
             package: zip
           - name: macOS
-            os: macos-14
+            os: macos-15
             qt: '6.11.*'
             # One app for both Apple Silicon and Intel Macs.
             cmake-args: '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"'

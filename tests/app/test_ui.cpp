@@ -63,7 +63,9 @@ private slots:
             m.guidance.kickAngle = orbit::degToRad(kick);
             controller.run(m);
         }
-        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 5000);
+        // qWaitFor rather than QTRY_COMPARE: Qt 6.8's QTRY macros narrow a
+        // duration to int in their own expansion, which -Wconversion flags.
+        QVERIFY(QTest::qWaitFor([&] { return spy.count() >= 2; }, 5000));
         QTest::qWait(200); // and nothing more arrives
         QCOMPARE(spy.count(), 2);
 
