@@ -14,17 +14,16 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <vector>
 
 namespace {
-
-QString toQString(std::string_view text) {
-    return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
-}
 
 int decimalsFor(double step) {
     if (step >= 1.0) return 0;
@@ -56,13 +55,7 @@ SweepPanel::SweepPanel(QWidget* parent)
       m_legend(new QTableWidget(0, ColumnCount, this)) {
     auto* layout = new QVBoxLayout(this);
 
-    for (const orbit::ParameterInfo& p : orbit::missionParameters()) {
-        const QString title = QString::fromStdString(orbit::parameterTitle(p));
-        // Unitless numbers (the drag coefficient) get no empty "()".
-        const QString name =
-            p.unit.empty() ? title : QStringLiteral("%1 (%2)").arg(title, toQString(p.unit));
-        m_parameter->addItem(name, toQString(p.key));
-    }
+    fillParameterList();
     m_parameter->setCurrentIndex(m_parameter->findData(QStringLiteral("kick-angle")));
     m_parameter->setObjectName(QStringLiteral("sweepParameter"));
     m_from->setObjectName(QStringLiteral("sweepFrom"));
@@ -120,19 +113,57 @@ SweepPanel::SweepPanel(QWidget* parent)
     suggestRange();
 }
 
-void SweepPanel::setMission(const orbit::Mission& mission) { m_mission = mission; }
+void SweepPanel::setMission(const orbit::Mission& mission) {
+    m_mission = mission;
+    fillParameterList();
+}
+
+/// Everything the mission lets a sweep vary: the parameters, and a custom
+/// program's step values. Rebuilt when that list changes, keeping the choice.
+void SweepPanel::fillParameterList() {
+    const std::vector<orbit::SweepTarget> targets = orbit::sweepTargets(m_mission);
+    QStringList keys;
+    QStringList names;
+    for (const orbit::SweepTarget& t : targets) {
+        const QString title = QString::fromStdString(t.title);
+        keys.append(QString::fromStdString(t.key));
+        // Unitless numbers (the drag coefficient) get no empty "()".
+        names.append(t.unit.empty()
+                         ? title
+                         : QStringLiteral("%1 (%2)").arg(title, QString::fromStdString(t.unit)));
+    }
+    QStringList current;
+    QStringList currentNames;
+    for (int i = 0; i < m_parameter->count(); ++i) {
+        current.append(m_parameter->itemData(i).toString());
+        currentNames.append(m_parameter->itemText(i));
+    }
+    if (keys == current && names == currentNames) return;
+
+    const QString chosen = m_parameter->currentData().toString();
+    {
+        const QSignalBlocker block(m_parameter);
+        m_parameter->clear();
+        for (qsizetype i = 0; i < keys.size(); ++i) m_parameter->addItem(names[i], keys[i]);
+        const int index = m_parameter->findData(chosen);
+        m_parameter->setCurrentIndex(
+            index >= 0 ? index : m_parameter->findData(QStringLiteral("kick-angle")));
+    }
+    if (m_parameter->currentData().toString() != chosen) suggestRange();
+}
 
 /// Set the spin boxes up for the chosen parameter, with a range of ±50 %
 /// around its current value (or its full range, if it is zero).
 void SweepPanel::suggestRange() {
-    const orbit::ParameterInfo* p =
-        orbit::findParameter(m_parameter->currentData().toString().toStdString());
-    if (p == nullptr) return;
+    const std::optional<orbit::SweepTarget> p =
+        orbit::findSweepTarget(m_mission, m_parameter->currentData().toString().toStdString());
+    if (!p) return;
     for (QDoubleSpinBox* box : {m_from, m_to}) {
         box->setRange(p->min, p->max);
         box->setDecimals(decimalsFor(p->step));
         box->setSingleStep(p->step);
-        box->setSuffix(p->unit.empty() ? QString() : QLatin1Char(' ') + toQString(p->unit));
+        box->setSuffix(p->unit.empty() ? QString()
+                                       : QLatin1Char(' ') + QString::fromStdString(p->unit));
     }
     const double value = p->get(m_mission);
     if (std::abs(value) < p->step) {
@@ -164,9 +195,10 @@ void SweepPanel::showRunSet(const RunSet& runs, int selected) {
         m_legend->setRowCount(0);
         return;
     }
-    const orbit::ParameterInfo* p = orbit::findParameter(runs.sweep->parameter);
+    const std::optional<orbit::SweepTarget> p =
+        orbit::findSweepTarget(m_mission, runs.sweep->parameter);
     const int decimals = p ? decimalsFor(p->step) + 1 : 2;
-    const QString unit = p ? toQString(p->unit) : QString();
+    const QString unit = p ? QString::fromStdString(p->unit) : QString();
 
     m_legend->setRowCount(static_cast<int>(runs.runs.size()));
     for (int row = 0; row < m_legend->rowCount(); ++row) {

@@ -24,6 +24,8 @@
 //   2  the atmosphere arrives: "drag-coefficient" and "diameter". Keys left
 //      out of a version 1 file take version 1's defaults: no drag, and a
 //      25° kick (the default is now 20°, which suits flying through air).
+//   3  custom flight programs: "plan": "custom" and a "program" list of steps
+//      (scenario.cpp, readStep). Nothing else changed, so 2 needs no upgrade.
 #pragma once
 
 #include "orbit/core/simulation.hpp"
@@ -38,7 +40,7 @@
 
 namespace orbit {
 
-inline constexpr int kScenarioFormatVersion = 2;
+inline constexpr int kScenarioFormatVersion = 3;
 inline constexpr std::string_view kScenarioFormatName = "orbitsim-scenario";
 
 struct Scenario {

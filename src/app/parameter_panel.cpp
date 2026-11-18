@@ -49,7 +49,10 @@ QString toQString(std::string_view text) {
 bool appliesToPlan(const orbit::ParameterInfo& p, orbit::FlightPlan plan) {
     using orbit::FlightPlan;
     const bool lunar = plan == FlightPlan::LunarFlyby || plan == FlightPlan::LunarOrbit;
-    if (p.key == "target-altitude") return plan != FlightPlan::BurnToDepletion;
+    // A custom program carries its own numbers (altitudes, timings).
+    if (p.key == "target-altitude") {
+        return plan != FlightPlan::BurnToDepletion && plan != FlightPlan::Custom;
+    }
     if (p.key == "capture-apoapsis") return plan == FlightPlan::LunarOrbit;
     if (p.group == "Lunar transfer") return lunar;
     return true;
@@ -102,9 +105,7 @@ ParameterPanel::ParameterPanel(QWidget* parent)
             if (p.group == "Orbit insertion") {
                 m_plan = new QComboBox(group);
                 m_plan->setObjectName(QStringLiteral("flightPlan"));
-                for (const orbit::FlightPlan plan :
-                     {orbit::FlightPlan::Orbit, orbit::FlightPlan::BurnToDepletion,
-                      orbit::FlightPlan::LunarFlyby, orbit::FlightPlan::LunarOrbit}) {
+                for (const orbit::FlightPlan plan : orbit::kAllPlans) {
                     m_plan->addItem(toQString(orbit::planLabel(plan)), static_cast<int>(plan));
                 }
                 m_plan->setToolTip(
@@ -112,13 +113,20 @@ ParameterPanel::ParameterPanel(QWidget* parent)
                        "coast up, then burn to make the orbit circular.\n"
                        "Burn until empty: a pure gravity turn with no second burn.\n"
                        "Lunar flyby / orbit: from that circular parking orbit, a trans-lunar "
-                       "injection burn towards the Moon, and for an orbit, braking there."));
+                       "injection burn towards the Moon, and for an orbit, braking there.\n"
+                       "Custom program: your own list of steps (Flight program panel), "
+                       "starting from the plan chosen before."));
                 const int row = grid->rowCount();
                 grid->addWidget(new QLabel(tr("Flight plan"), group), row, 0);
                 grid->addWidget(m_plan, row, 1);
                 connect(m_plan, &QComboBox::currentIndexChanged, this, [this](int index) {
-                    m_mission.plan =
+                    const auto plan =
                         static_cast<orbit::FlightPlan>(m_plan->itemData(index).toInt());
+                    // A new custom program starts as a copy of the plan before.
+                    if (plan == orbit::FlightPlan::Custom && m_mission.program.empty()) {
+                        m_mission.program = orbit::flightProgramFor(m_mission);
+                    }
+                    m_mission.plan = plan;
                     refreshWidgets();
                     emit missionChanged(m_mission);
                 });

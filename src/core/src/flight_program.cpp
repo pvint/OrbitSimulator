@@ -25,6 +25,8 @@ constexpr double kTypicalTransferTime = 3.5 * kSecondsPerDay;
 
 std::string_view planKey(FlightPlan plan) {
     switch (plan) {
+    case FlightPlan::Custom:
+        return "custom";
     case FlightPlan::Orbit:
         return "orbit";
     case FlightPlan::BurnToDepletion:
@@ -38,8 +40,7 @@ std::string_view planKey(FlightPlan plan) {
 }
 
 bool planFromKey(std::string_view key, FlightPlan& plan) {
-    for (const FlightPlan p : {FlightPlan::Orbit, FlightPlan::BurnToDepletion,
-                               FlightPlan::LunarFlyby, FlightPlan::LunarOrbit}) {
+    for (const FlightPlan p : kAllPlans) {
         if (planKey(p) == key) {
             plan = p;
             return true;
@@ -58,8 +59,177 @@ std::string_view planLabel(FlightPlan plan) {
         return "Lunar flyby";
     case FlightPlan::LunarOrbit:
         return "Lunar orbit";
+    case FlightPlan::Custom:
+        return "Custom program";
     }
     return {};
+}
+
+std::string_view steeringKey(Steering steering) {
+    switch (steering) {
+    case Steering::PitchProgram:
+        return "pitch-program";
+    case Steering::Prograde:
+        return "prograde";
+    case Steering::Retrograde:
+        return "retrograde";
+    case Steering::Circularize:
+        return "circularize";
+    case Steering::MoonRetrograde:
+        return "moon-retrograde";
+    case Steering::Normal:
+        return "normal";
+    case Steering::Antinormal:
+        return "antinormal";
+    case Steering::RadialOut:
+        return "radial-out";
+    case Steering::RadialIn:
+        return "radial-in";
+    }
+    return "prograde";
+}
+
+std::string_view steeringLabel(Steering steering) {
+    switch (steering) {
+    case Steering::PitchProgram:
+        return "Pitch program (ascent)";
+    case Steering::Prograde:
+        return "Prograde (along the velocity)";
+    case Steering::Retrograde:
+        return "Retrograde (against the velocity)";
+    case Steering::Circularize:
+        return "Towards circular orbit";
+    case Steering::MoonRetrograde:
+        return "Retrograde, relative to the Moon";
+    case Steering::Normal:
+        return "Normal (tilt the orbit north)";
+    case Steering::Antinormal:
+        return "Anti-normal (tilt the orbit south)";
+    case Steering::RadialOut:
+        return "Radial out (straight up)";
+    case Steering::RadialIn:
+        return "Radial in (straight down)";
+    }
+    return {};
+}
+
+bool steeringFromKey(std::string_view key, Steering& steering) {
+    for (const Steering s : kAllSteerings) {
+        if (steeringKey(s) == key) {
+            steering = s;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string_view stepEndKey(StepEnd end) {
+    switch (end) {
+    case StepEnd::PropellantExhausted:
+        return "propellant-exhausted";
+    case StepEnd::ApoapsisAltitude:
+        return "apoapsis-altitude";
+    case StepEnd::PeriapsisAltitude:
+        return "periapsis-altitude";
+    case StepEnd::Altitude:
+        return "altitude";
+    case StepEnd::Apoapsis:
+        return "apoapsis";
+    case StepEnd::Periapsis:
+        return "periapsis";
+    case StepEnd::Circular:
+        return "circular";
+    case StepEnd::MoonAhead:
+        return "moon-ahead";
+    case StepEnd::MoonClosestApproach:
+        return "moon-closest-approach";
+    case StepEnd::MoonCapture:
+        return "moon-capture";
+    case StepEnd::Revolutions:
+        return "revolutions";
+    case StepEnd::Duration:
+        return "duration";
+    }
+    return "duration";
+}
+
+std::string_view stepEndLabel(StepEnd end) {
+    switch (end) {
+    case StepEnd::PropellantExhausted:
+        return "Propellant runs out";
+    case StepEnd::ApoapsisAltitude:
+        return "Apoapsis altitude reaches";
+    case StepEnd::PeriapsisAltitude:
+        return "Periapsis altitude reaches";
+    case StepEnd::Altitude:
+        return "Altitude reaches";
+    case StepEnd::Apoapsis:
+        return "At apoapsis";
+    case StepEnd::Periapsis:
+        return "At periapsis";
+    case StepEnd::Circular:
+        return "Orbit is circular";
+    case StepEnd::MoonAhead:
+        return "Moon's arrival point ahead by";
+    case StepEnd::MoonClosestApproach:
+        return "Closest to the Moon";
+    case StepEnd::MoonCapture:
+        return "Captured by the Moon, apoapsis below";
+    case StepEnd::Revolutions:
+        return "Revolutions";
+    case StepEnd::Duration:
+        return "Time";
+    }
+    return {};
+}
+
+bool stepEndFromKey(std::string_view key, StepEnd& end) {
+    for (const StepEnd e : kAllStepEnds) {
+        if (stepEndKey(e) == key) {
+            end = e;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool stepEndHasValue(StepEnd end) { return !stepEndUnit(end).empty(); }
+
+std::string_view stepEndUnit(StepEnd end) {
+    switch (end) {
+    case StepEnd::ApoapsisAltitude:
+    case StepEnd::PeriapsisAltitude:
+    case StepEnd::Altitude:
+    case StepEnd::MoonCapture:
+        return "km";
+    case StepEnd::MoonAhead:
+        return "°";
+    case StepEnd::Revolutions:
+        return "rev";
+    case StepEnd::Duration:
+        return "s";
+    case StepEnd::PropellantExhausted:
+    case StepEnd::Apoapsis:
+    case StepEnd::Periapsis:
+    case StepEnd::Circular:
+    case StepEnd::MoonClosestApproach:
+        break;
+    }
+    return {};
+}
+
+double stepValueToDisplay(StepEnd end, double value) {
+    const std::string_view unit = stepEndUnit(end);
+    if (unit == "km") return value / 1000.0;
+    if (unit == "°") return radToDeg(value);
+    return value;
+}
+
+double stepValueFromDisplay(StepEnd end, double display) {
+    const std::string_view unit = stepEndUnit(end);
+    if (unit == "km") return display * 1000.0;
+    if (unit == "°") return degToRad(display);
+    return display;
 }
 
 // The trans-lunar injection (TLI) burn starts in the parking orbit and raises
@@ -109,6 +279,7 @@ double lunarTravelAngle(const Mission& mission) {
 }
 
 FlightProgram flightProgramFor(const Mission& mission) {
+    if (mission.plan == FlightPlan::Custom) return mission.program;
     FlightProgram program;
 
     if (mission.plan == FlightPlan::BurnToDepletion) {

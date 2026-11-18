@@ -358,6 +358,30 @@ stages do by pitching up. For the existing short, hard burns it changes
 results by under a kilometre (the default orbit now ends at 200.0 km
 instead of 198.8), so old scenario files fly essentially as before.
 
+### 27. The maneuver editor: a Custom plan with its own steps (2026-11-17)
+
+**Decision:** `FlightPlan::Custom` flies `Mission::program`, a list of
+`FlightStep`s the user edits in the Flight program panel. For the built-in
+plans the panel shows their steps read-only; *Customize* copies them into a
+custom program. Scenario files (format 3) store the steps with readable keys
+(`"until": "periapsis-altitude"`) and values in display units (km, degrees,
+s). A custom step's value is a sweep target, `step-N-value`, alongside the
+mission parameters (`sweepTargets()`); sweeping a coast's length is how any
+burn's timing is swept. New steering (normal, anti-normal, radial in/out)
+and end conditions (periapsis altitude, altitude, at periapsis); "reaches"
+conditions work in both directions.
+
+**Why:** flight programs were designed for this from the start (decision
+17); the editor is a thin view over them, and it doubles as a way to see
+what each plan does. Making step values sweep targets, rather than adding a
+parameter per kind of burn, makes "sweep the burn timing" work for any burn.
+Display units in files keep them hand-editable, like the mission section.
+
+**Found on the way:** a step lasting 0 s made the integrator take a
+zero-length step; its "next step size" was then 0 too, and the flight
+stalled until the step limit. Zero-length steps are now skipped, and a step
+already at its time limit ends without integrating.
+
 ---
 
 ## Open questions

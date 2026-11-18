@@ -19,6 +19,8 @@ qt_add_library(orbitsim_ui STATIC
     flight_stats_panel.hpp
     parameter_panel.cpp
     parameter_panel.hpp
+    program_panel.cpp
+    program_panel.hpp
     run_set.cpp
     run_set.hpp
     simulation_controller.cpp

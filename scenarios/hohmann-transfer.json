@@ -1,0 +1,19 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 3,
+  "name": "Hohmann transfer to 1000 km",
+  "description": "A custom flight program (see the Flight program panel). After reaching a 200 km orbit, a short prograde burn raises the far side of the orbit to 1000 km; half an orbit later, at the top, a second burn makes it circular. Two burns, about 430 m/s in all: the cheapest way between two circular orbits.",
+  "mission": {
+    "plan": "custom",
+    "program": [
+      { "name": "Ascent", "engine": true, "steering": "pitch-program", "until": "apoapsis-altitude", "value": 200 },
+      { "name": "Coast to apoapsis", "engine": false, "until": "apoapsis" },
+      { "name": "Circularization", "engine": true, "steering": "circularize", "until": "circular" },
+      { "name": "Parking orbit", "engine": false, "until": "revolutions", "value": 0.5 },
+      { "name": "Raise apoapsis", "engine": true, "steering": "prograde", "until": "apoapsis-altitude", "value": 1000 },
+      { "name": "Transfer", "engine": false, "until": "apoapsis" },
+      { "name": "Circularize at 1000 km", "engine": true, "steering": "circularize", "until": "circular" },
+      { "name": "Coast", "engine": false, "until": "revolutions", "value": 1 }
+    ]
+  }
+}

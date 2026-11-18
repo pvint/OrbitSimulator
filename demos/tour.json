@@ -36,6 +36,13 @@
       "seconds": 30
     },
     {
+      "title": "Your own flight program",
+      "caption": "Every flight is a list of steps: burn or coast, which way to point, and when to stop. This one reaches a low orbit, then raises it to 1000 km with two short burns half an orbit apart, the cheapest way between two circular orbits. The steps are in the Flight program tab under the 3D view: change them, or customize any example's.",
+      "scenario": "hohmann-transfer.json",
+      "view": "north",
+      "seconds": 25
+    },
+    {
       "title": "A knife edge",
       "caption": "The same rocket, but burning until its tank is empty, with no second burn, and (to give it a chance) without air. Now orbit is only reached in a thin band of tilt angles, and only just: the turn has to level off at the very moment orbital speed is reached. With air, none of them make it. This is why real rockets coast up and burn again.",
       "scenario": "pure-gravity-turn.json",

@@ -17,6 +17,7 @@ class GlobeView;
 class ParameterPanel;
 class PlotPanel;
 class SimulationController;
+class ProgramPanel;
 class SweepPanel;
 
 /// The application window: the 3D view in the centre, parameters on the
@@ -76,6 +77,8 @@ private:
     FlightStatsPanel* m_flightStats = nullptr;
     PlotPanel* m_plots = nullptr;
     SweepPanel* m_sweepPanel = nullptr;
+    ProgramPanel* m_programPanel = nullptr;
+    QDockWidget* m_programDock = nullptr;
     QDockWidget* m_flightDock = nullptr;
     QDockWidget* m_sweepDock = nullptr;
     QMenu* m_viewMenu = nullptr;
