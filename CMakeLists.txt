@@ -15,6 +15,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Write compile_commands.json for clangd and clang-tidy.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# The app's reverse-DNS identifier: the name of its .desktop file, AppStream
+# metadata and icon on Linux, and its bundle id on macOS.
+set(ORBIT_APP_ID "io.github.pvint.OrbitSimulator")
+
 option(ORBIT_BUILD_APP "Build the Qt desktop app (needs Qt 6.8+)" ON)
 option(ORBIT_BUILD_TESTS "Build the physics tests (needs Catch2 3)" ON)
 option(ORBIT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)

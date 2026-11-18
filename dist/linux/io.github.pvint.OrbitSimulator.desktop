@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Orbit Simulator
+GenericName=Orbit Simulator
+Comment=Launch rockets from a turning Earth and see how orbits work
+Exec=orbitsim %f
+Icon=io.github.pvint.OrbitSimulator
+Terminal=false
+Categories=Education;Astronomy;Physics;
+Keywords=rocket;orbit;space;moon;launch;physics;spaceflight;
+StartupWMClass=orbitsim

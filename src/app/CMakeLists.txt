@@ -32,7 +32,19 @@ target_include_directories(orbitsim_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(orbitsim_ui PUBLIC orbit::core Qt6::Widgets Qt6::Concurrent)
 orbit_set_warnings(orbitsim_ui)
 
+# The app icon: built into the .exe on Windows, the bundle on macOS. (On Linux
+# the desktop installs it; see the end of this file.)
+set(orbitsim_platform_sources)
+if(WIN32)
+    list(APPEND orbitsim_platform_sources orbitsim.rc)
+elseif(APPLE)
+    set(orbitsim_icns assets/icons/orbitsim.icns)
+    set_source_files_properties(${orbitsim_icns} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    list(APPEND orbitsim_platform_sources ${orbitsim_icns})
+endif()
+
 qt_add_executable(orbitsim
+    ${orbitsim_platform_sources}
     demo_controller.cpp
     demo_controller.hpp
     globe_geometry.cpp
@@ -97,6 +109,21 @@ qt_add_resources(orbitsim "textures"
     FILES ${orbitsim_textures}
 )
 
+# The window icon, at the sizes window managers ask for (qrc:/icons/...).
+# PNGs rather than the SVG, which would need the Qt SVG plugin.
+qt_add_resources(orbitsim "icons"
+    PREFIX "/"
+    BASE assets
+    FILES
+        assets/icons/png/orbitsim-16.png
+        assets/icons/png/orbitsim-32.png
+        assets/icons/png/orbitsim-48.png
+        assets/icons/png/orbitsim-64.png
+        assets/icons/png/orbitsim-128.png
+        assets/icons/png/orbitsim-256.png
+)
+
+target_compile_definitions(orbitsim PRIVATE ORBIT_APP_ID="${ORBIT_APP_ID}")
 target_link_libraries(orbitsim PRIVATE
     orbitsim_ui
     Qt6::Quick
@@ -112,13 +139,31 @@ set_target_properties(orbitsim PROPERTIES
     WIN32_EXECUTABLE ON
     MACOSX_BUNDLE ON
     MACOSX_BUNDLE_BUNDLE_NAME "Orbit Simulator"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.orbitsim"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "${ORBIT_APP_ID}"
+    MACOSX_BUNDLE_ICON_FILE orbitsim.icns
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 
 install(TARGETS orbitsim
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# Linux desktops: the menu entry, the software-centre description and the
+# icon, all named after the app id (the freedesktop.org convention).
+if(UNIX AND NOT APPLE)
+    install(FILES "${PROJECT_SOURCE_DIR}/dist/linux/${ORBIT_APP_ID}.desktop"
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES "${PROJECT_SOURCE_DIR}/dist/linux/${ORBIT_APP_ID}.metainfo.xml"
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+    install(FILES assets/icons/orbitsim.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+        RENAME ${ORBIT_APP_ID}.svg)
+    foreach(size 16 32 48 64 128 256 512)
+        install(FILES assets/icons/png/orbitsim-${size}.png
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
+            RENAME ${ORBIT_APP_ID}.png)
+    endforeach()
+endif()
 
 # Bundling Qt: copy the Qt libraries, plugins and QML modules the app needs
 # next to it on install, so the packaged app runs without Qt installed.
