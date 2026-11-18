@@ -14,18 +14,20 @@ prototype settled the physics model and the UI ideas; this is the full version.
 - **Atmosphere + drag is done** and merged to `main`: 1976 US Standard
   Atmosphere + exponential table, Mach-dependent drag, max-Q and drag loss
   in the stats, a dynamic pressure graph, scenario format 2.
-- **Staging is done** and merged to `main`: up to three stages plus payload,
-  separation mid-burn, dropped stages flown and drawn in grey, gravity
-  compensation while circularizing, three new examples, a 13-step demo
-  tour. 82 test suites pass (GCC, Clang, ASan/UBSan); clang-tidy is clean.
+- **Staging is done**: up to three stages plus payload, dropped stages
+  flown and drawn, gravity compensation while circularizing.
+- **Second stretch (user's list, in order):** burn timing (`tli-delay`),
+  night-side lighting (a mid-task request), the maneuver editor: done and
+  merged. Still to do, in order: better ascent guidance, thrust that
+  depends on air pressure, a coast between stage separation and ignition.
+  Then STOP: natural bodies are next on the roadmap but the user said not
+  yet; ask what's next.
 - The app flies a rocket of one to three stages from any site and date,
-  through the air, to low orbit or to the Moon (flyby, capture, impact),
-  with sweeps, ghosts, scenario files, 17 example scenarios, a textured Earth
-  and Moon lit by the real Sun, and the demo tour.
-- **Next:** the sweepable burn timing (the user asked for it to follow
-  staging without asking again). After that, the user picks from the
-  "Later" rows (scripting, natural bodies, solar system, distribution /
-  GitHub / ebuild, ...). Ask which, don't assume.
+  through the air, to low orbit or to the Moon, with built-in plans or a
+  custom flight program, sweeps (of any parameter or program step),
+  ghosts, scenario files, 19 example scenarios, a textured Earth and Moon
+  lit by the real Sun, and a 14-step demo tour. 91 test suites pass (GCC,
+  Clang, ASan/UBSan); clang-tidy is clean.
 - **Open questions:** see the end of `docs/decisions.md` (scripting
   language, how to specify natural bodies, app icon).
 
@@ -145,7 +147,8 @@ Each milestone ends with something that runs.
 | M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | done |
 | A1 | Atmosphere + drag: 1976 US Standard Atmosphere, Mach-dependent Cd, max-Q, drag loss, dynamic pressure graph, scenario format 2 | done |
 | A2 | Staging: up to three stages + payload, separation mid-burn, dropped stages flown and drawn, gravity compensation for weak upper stages | done |
-| Later | Full maneuver editor, other bodies. Thrust that depends on air pressure (sea-level vs vacuum Isp). A coast between stage separation and ignition | |
+| A4 | Maneuver editor: Custom plan with an editable step list (Flight program panel), new steering and end conditions, step values as sweep targets, scenario format 3 | done |
+| Later | Other bodies. Thrust that depends on air pressure (sea-level vs vacuum Isp). A coast between stage separation and ignition | |
 | A3 | Sweepable burn timing: `tli-delay`, the injection burn's start in seconds (any burn's timing comes with the maneuver editor) | done |
 | Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |
 | Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
@@ -165,6 +168,15 @@ trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
 `qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
 Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
 series it finds through properties on `qml/Plots.qml`.
+
+### Core API in brief (maneuver editor)
+
+`FlightPlan::Custom` flies `Mission::program`. `flight_program.hpp` has key/label
+functions for plans, `Steering` and `StepEnd` (`kAll...` arrays), and
+`stepValueToDisplay/FromDisplay` (km, °, rev, s). `sweep.hpp`: `SweepTarget`,
+`sweepTargets(mission)` (parameters + `step-N-value` for custom programs),
+`findSweepTarget`. App: `ProgramPanel` (orbitsim_ui) in the "Flight program"
+dock, tabbed with Graphs. CLI: `--show-program`, and impact points.
 
 ### Core API in brief (staging)
 

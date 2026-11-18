@@ -84,14 +84,22 @@ stages fall back on their own, drawn in grey, and the Flight panel says
 where they came down. A heavier stack climbs off the pad more slowly, so it
 usually needs a smaller kick angle.
 
+**Flight programs.** Every flight is a list of steps: burn or coast, which
+way to point, and when to stop. The *Flight program* panel (a tab next to
+the graphs) shows the steps the chosen plan makes. *Customize* turns them
+into your own program: add, remove and reorder steps, change the steering
+(prograde, retrograde, normal, radial, ...) and the end condition. A step's
+value, like the length of a wait before a burn, can be swept from the Sweep
+panel. Try the *Hohmann transfer* and *deorbit* examples.
+
 **Scenarios.** *File ▸ Examples* has ready-made scenarios (equatorial and
 polar launches, east vs west, kick-angle, propellant, drag and thrust
 sweeps, a pure gravity turn, two-stage rockets...). *Save Scenario* writes the current setup to a JSON file
 you can share or edit by hand; `orbitsim file.json` opens one directly. The
 examples live in [scenarios/](scenarios/).
 
-**Demo tour.** *Help ▸ Demo Tour* walks through thirteen scenarios with
-captions: a first orbit, why rockets tilt over, air resistance, staging, latitude and launch
+**Demo tour.** *Help ▸ Demo Tour* walks through fourteen scenarios with
+captions: a first orbit, why rockets tilt over, air resistance, staging, flight programs, latitude and launch
 direction, polar orbits, and a trip to the Moon with launch windows and a
 gravity assist. It moves on by itself; use the caption's buttons to go back,
 skip ahead or end it. `orbitsim --demo-step N` starts at step N.
@@ -109,6 +117,7 @@ build/dev/src/cli/orbitsim-cli --scenario scenarios/vandenberg-polar.json
 build/dev/src/cli/orbitsim-cli --plan lunar-orbit --isp 450 --lead-angle-adjust 2 --aim-moon
 build/dev/src/cli/orbitsim-cli --help                 # all options
 build/dev/src/cli/orbitsim-cli --csv flight.csv       # every sample, for plotting
+build/dev/src/cli/orbitsim-cli --scenario scenarios/hohmann-transfer.json --show-program
 ```
 
 How the physics works is explained in [docs/physics.md](docs/physics.md).

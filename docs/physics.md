@@ -233,11 +233,7 @@ nothing.
 ## Flight programs (`flight_program.hpp`)
 
 A flight is a list of **steps**, each burning or coasting, with a steering
-mode (pitch program, prograde, retrograde, circularize, retrograde relative to
-the Moon) and an end condition (apoapsis reached, apoapsis high enough,
-orbit circular, Moon in position, closest approach to the Moon, captured by
-the Moon, N revolutions, a duration). The mission's **flight plan** builds
-the list:
+mode and an end condition. The mission's **flight plan** builds the list:
 
 | Plan | Steps |
 |---|---|
@@ -245,11 +241,40 @@ the list:
 | Burn until empty | Ascent (until the propellant runs out) → Coast |
 | Lunar flyby | as Orbit up to the parking orbit → wait for the Moon → Trans-lunar injection → Coast to the Moon → Coast |
 | Lunar orbit | as Lunar flyby, then Lunar orbit insertion (brake) → Coast round the Moon |
+| Custom program | your own list, edited in the Flight program panel |
+
+**Steering** (which way the engine points):
+
+| Mode | Direction | What it's for |
+|---|---|---|
+| Pitch program | vertical, kick, gravity turn (above) | the ascent |
+| Prograde / retrograde | along / against the velocity | raising / lowering the orbit, the cheapest way |
+| Towards circular orbit | `Δv = v_circular − v`, with gravity compensation | circularizing |
+| Retrograde, relative to the Moon | against the velocity relative to the Moon | being captured by it |
+| Normal / anti-normal | along / against `r × v` | turning the orbit's plane |
+| Radial out / in | straight up / down | changing the orbit's shape (a radial burn raises one side and lowers the other) |
+
+**End conditions**: the propellant runs out; the apoapsis, periapsis or
+altitude *reaches* a value (in whichever direction is needed: a retrograde
+burn "until the periapsis reaches 50 km" lowers it); at apoapsis; at
+periapsis; the orbit is circular; the Moon's arrival point is a given angle
+ahead; closest to the Moon; captured by the Moon; a number of revolutions; a
+time.
+
+**Custom programs** start as a copy of a plan's steps (*Customize* in the
+Flight program panel) and can then be edited freely. Each step's value can
+be swept: sweeping the length of a coast sweeps when the next burn starts.
+The examples include a **Hohmann transfer** (two prograde burns half an
+orbit apart, the cheapest way between two circular orbits: from 200 to
+1000 km it costs `Δv₁ + Δv₂ = 434 m/s`, with
+`Δv₁ = √(μ/r₁)(√(2r₂/(r₁+r₂)) − 1)` and `Δv₂ = √(μ/r₂)(1 − √(2r₁/(r₁+r₂)))`)
+and a **deorbit burn**, swept over the wait before it: each minute moves the
+landing point about 450 km round the Earth.
 
 Running out of propellant (in the last stage that can fire) ends any burn
-and skips later burns. A step whose
-condition already holds is skipped, and a step can time out (a transfer that
-misses the Moon never reaches "closest approach").
+and skips later burns. A step whose condition already holds is skipped, as
+is one that takes no time (a 0 s wait), and a step can time out (a transfer
+that misses the Moon never reaches "closest approach").
 
 ## Going to the Moon (`flight_program.cpp`, `lunar_targeting.hpp`)
 
