@@ -337,7 +337,8 @@ Item {
         // Labels at the arrow tips, placed by projecting each tip into the view.
         Repeater {
             model: [
-                { text: "X ♈", tip: Qt.vector3d(112, 0, 0), color: "#ef4444" },
+                // U+FE0E asks for the plain symbol: macOS otherwise draws ♈ as an emoji.
+                { text: "X ♈\uFE0E", tip: Qt.vector3d(112, 0, 0), color: "#ef4444" },
                 { text: "Y", tip: Qt.vector3d(0, 0, -112), color: "#22c55e" },
                 { text: "Z N", tip: Qt.vector3d(0, 112, 0), color: "#3b82f6" },
                 { text: "ecl", tip: Qt.vector3d(0, 92 * Math.cos(23.44 * Math.PI / 180),

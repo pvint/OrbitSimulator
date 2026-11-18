@@ -445,6 +445,50 @@ value would add three sliders for very little.
 propellant was wrong for our plans: the open-loop plan coasts up to its
 apoapsis anyway, and a 10 s pause left 6 kg *more*. The test now says so.
 
+### 31. Distribution: CI on three platforms, packages, an ebuild (2026-11-18)
+
+**Decision:** GitHub Actions (`.github/workflows/ci.yml`) builds and tests
+with warnings as errors on Linux (GCC, Qt 6.8 and 6.11), Windows (MSVC) and
+macOS (Apple Clang, universal arm64 + x86_64), then packages the Qt 6.11
+builds: an AppImage (linuxdeploy, built on Ubuntu 22.04), a ZIP with the
+MSVC runtime, and a disk image. Each package is started under its own
+platform and screenshotted (`tools/smoke_test.sh`). A `v*` tag drafts a
+release; a person publishes it. The live Gentoo ebuild lives in
+`dist/gentoo/` and uses only system dependencies.
+
+**Why:** the rules promised MSVC, Apple Clang and Qt 6.8, but nothing
+checked them; every feature made the eventual fix bigger. Packages are
+only worth handing out if they start, and a missing Qt plugin or QML
+module only shows when the app runs, hence the smoke test. The AppImage is
+built on the oldest available Ubuntu because an AppImage runs only where
+glibc is at least as new as where it was built. Releases are drafts
+because publishing is public and hard to take back.
+
+**Not yet:** native Wayland in the AppImage. It runs through XWayland,
+which every Wayland desktop has. linuxdeploy's Qt plugin bundles Qt's
+Wayland platform plugin but not the EGL client integration that OpenGL,
+and so the 3D view, needs there; bundling half of it would risk a blank
+view instead of a working one.
+
+**Not yet:** code signing. Unsigned apps work, but Windows SmartScreen and
+macOS Gatekeeper make the first start awkward (README, *Installing*).
+Signing needs paid certificates (an Apple Developer account; a Windows
+code-signing certificate), so it is the user's call.
+
+### 32. App id and icon (2026-11-18)
+
+**Decision:** the app id is `io.github.pvint.OrbitSimulator` (`ORBIT_APP_ID`
+in CMakeLists.txt): it names the .desktop file, the AppStream metadata, the
+installed icons and the macOS bundle. The icon (`src/app/assets/icons/`) is
+an eccentric orbit, burn in orange then coast in blue, with the Earth at
+one focus, on the app's dark blue.
+
+**Why:** freedesktop.org and Flathub want reverse-DNS ids, and a GitHub
+account's is `io.github.<account>`. The first icon draft centred the orbit
+on the Earth and read as Saturn's rings; the Earth at a focus is what makes
+it an orbit. The settings keep their old organisation and app names, so
+saved layouts survive.
+
 ---
 
 ## Open questions
@@ -459,5 +503,5 @@ apoapsis anyway, and a 10 s pause left 6 kg *more*. The test now says so.
   already start from any state (`SimOptions::initialState`) and coast with no
   engine. Open: how the user specifies one: orbital elements, position and
   velocity, or an imported real object, and how to place it in the UI.
-- **App icon and identifier.** The macOS bundle id is a placeholder
-  (`io.github.orbitsim`).
+- **Code signing** for Windows and macOS packages (decision 31): needs
+  paid certificates, so it is the user's decision.

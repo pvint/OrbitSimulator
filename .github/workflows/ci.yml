@@ -1,0 +1,178 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Builds and tests on Linux, Windows and macOS, then packages the app: an
+# AppImage, a Windows ZIP and a macOS disk image. Each package is started
+# once and screenshotted, to catch anything missing from it. Pushing a tag
+# such as v0.2.0 also drafts a GitHub release with the packages attached.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest Qt we support, so "Qt 6.8+" stays true.
+          - name: Linux, Qt 6.8
+            os: ubuntu-24.04
+            qt: '6.8.*'
+            cmake-args: -DCMAKE_CXX_COMPILER=g++-13
+          # The packages. Linux builds on the oldest Ubuntu GitHub still
+          # offers, so the AppImage runs on as many distributions as it can.
+          - name: Linux AppImage
+            os: ubuntu-22.04
+            qt: '6.11.*'
+            cmake-args: -DCMAKE_CXX_COMPILER=g++-12
+            package: appimage
+          # Qt 6.10 on Windows: from 6.11 the Windows downloads are split by
+          # compiler, which aqtinstall 3.3 can't read yet.
+          - name: Windows
+            os: windows-2022
+            qt: '6.10.*'
+            package: zip
+          - name: macOS
+            os: macos-15
+            qt: '6.11.*'
+            # One app for both Apple Silicon and Intel Macs.
+            cmake-args: '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"'
+            package: dmg
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build g++-12 \
+            libgl1-mesa-dev libvulkan-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libfontconfig1 libegl1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1 xvfb libgl1-mesa-dri
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+      - name: Install build tools (Windows)
+        if: runner.os == 'Windows'
+        run: command -v ninja || choco install ninja -y --no-progress
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt }}
+          modules: qtquick3d qtshadertools qtgraphs
+          cache: true
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DORBIT_WARNINGS_AS_ERRORS=ON
+          ${{ matrix.cmake-args }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen # the GUI tests need no display
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+      - name: Package (Windows, macOS)
+        if: matrix.package == 'zip' || matrix.package == 'dmg'
+        run: |
+          cmake --build build --target package
+          mkdir -p packages
+          mv build/OrbitSimulator-*.${{ matrix.package }} packages/
+
+      - name: Package (AppImage)
+        if: matrix.package == 'appimage'
+        run: |
+          QMAKE="$QT_ROOT_DIR/bin/qmake" tools/make_appimage.sh build
+          mkdir -p packages
+          mv build/OrbitSimulator-*.AppImage packages/
+
+      # Start each package as a user would get it.
+      - name: Smoke test (AppImage)
+        if: matrix.package == 'appimage'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" tools/smoke_test.sh packages/*.AppImage linux.png
+      - name: Smoke test (Windows)
+        if: matrix.package == 'zip'
+        run: |
+          7z x -ounpacked packages/*.zip > /dev/null
+          tools/smoke_test.sh "$(find unpacked -name orbitsim.exe | head -n 1)" windows.png
+      - name: Smoke test (macOS)
+        if: matrix.package == 'dmg'
+        run: |
+          hdiutil attach -mountpoint /Volumes/OrbitSimulator packages/*.dmg
+          tools/smoke_test.sh /Volumes/OrbitSimulator/orbitsim.app/Contents/MacOS/orbitsim macos.png
+          hdiutil detach /Volumes/OrbitSimulator
+
+      - name: Upload the package
+        if: matrix.package
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.package }}
+          path: packages/*
+          if-no-files-found: error
+      - name: Upload the screenshot
+        if: matrix.package && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshot-${{ matrix.package }}
+          path: '*.png'
+          if-no-files-found: ignore
+
+  release:
+    name: Draft a release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the tag matches the version in CMakeLists.txt
+        run: |
+          version=$(sed -n 's/^ *VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -n 1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but CMakeLists.txt says $version"
+            exit 1
+          fi
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          path: packages
+          merge-multiple: true
+      # A draft, so a person looks it over before it is published.
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" packages/*
+          --draft --generate-notes
+          --title "Orbit Simulator ${GITHUB_REF_NAME#v}"

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<component type="desktop-application">
+  <id>io.github.pvint.OrbitSimulator</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Orbit Simulator</name>
+  <summary>Launch rockets from a turning Earth and see how orbits work</summary>
+  <developer id="io.github.pvint">
+    <name>Paul Vint</name>
+  </developer>
+  <description>
+    <p>
+      Orbit Simulator is for building an intuition for orbital mechanics. A rocket
+      launches from anywhere on a rotating 3D Earth, at any date and time, and you see
+      its path, its orbit and graphs of the flight.
+    </p>
+    <ul>
+      <li>One to three stages, a payload, and an atmosphere with drag</li>
+      <li>Built-in flight plans, or your own list of burns and coasts</li>
+      <li>Sweep any setting to compare a whole family of flights side by side</li>
+      <li>Fly to the Moon, with the Sun and Moon where they really were</li>
+      <li>A guided demo tour and example scenarios to start from</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.pvint.OrbitSimulator.desktop</launchable>
+  <url type="homepage">https://github.com/pvint/OrbitSimulator</url>
+  <url type="bugtracker">https://github.com/pvint/OrbitSimulator/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>A flight to low orbit from Cape Canaveral</caption>
+      <image>https://raw.githubusercontent.com/pvint/OrbitSimulator/main/docs/images/main-window.png</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>Education</category>
+    <category>Science</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>orbitsim</binary>
+    <binary>orbitsim-cli</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-11-18"/>
+  </releases>
+</component>

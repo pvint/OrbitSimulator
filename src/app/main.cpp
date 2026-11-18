@@ -4,6 +4,8 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QIcon>
+#include <QStandardPaths>
 #include <QTimer>
 
 #include <algorithm>
@@ -14,6 +16,20 @@ int main(int argc, char* argv[]) {
     QApplication::setOrganizationName(QStringLiteral("OrbitSim"));
     QApplication::setApplicationVersion(
         QString::fromUtf8(orbit::kVersion.data(), static_cast<qsizetype>(orbit::kVersion.size())));
+    // Lets Linux desktops (Wayland in particular) match the window to its
+    // .desktop file, and so to its icon and name. Only when that file is
+    // installed: otherwise (e.g. run from the build folder) Qt warns that
+    // the desktop portal doesn't know the app.
+    const QString desktopId = QStringLiteral(ORBIT_APP_ID);
+    if (!QStandardPaths::locate(QStandardPaths::ApplicationsLocation, desktopId + ".desktop")
+             .isEmpty()) {
+        QApplication::setDesktopFileName(desktopId);
+    }
+    QIcon icon;
+    for (const int size : {16, 32, 48, 64, 128, 256}) {
+        icon.addFile(QStringLiteral(":/icons/png/orbitsim-%1.png").arg(size), QSize(size, size));
+    }
+    QApplication::setWindowIcon(icon);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QApplication::applicationName());

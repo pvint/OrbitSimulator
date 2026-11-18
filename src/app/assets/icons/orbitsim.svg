@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Orbit Simulator's icon: the Earth with a tilted orbit, burn (orange) then coast (blue),
+     in the app's own colours. PNG, ICO and ICNS versions: tools/make_icons.sh. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2a4a"/>
+      <stop offset="1" stop-color="#0b1222"/>
+    </linearGradient>
+    <radialGradient id="earth" cx="0.36" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#7cc4ff"/>
+      <stop offset="0.45" stop-color="#2f7fe0"/>
+      <stop offset="1" stop-color="#0b2f6e"/>
+    </radialGradient>
+    <!-- The night side: darkens the lower right of the Earth. -->
+    <radialGradient id="night" cx="0.2" cy="0.15" r="1.05">
+      <stop offset="0.55" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.55"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.9"/>
+      <stop offset="0.35" stop-color="#ffe9c4" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ffb347" stop-opacity="0"/>
+    </radialGradient>
+    <!-- The near half of the orbit (below its centre line), drawn over the Earth. -->
+    <clipPath id="near">
+      <rect x="0" y="136" width="256" height="120"/>
+    </clipPath>
+  </defs>
+
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#sky)"/>
+
+  <g fill="#e2e8f0">
+    <circle cx="52" cy="54" r="2.2"/>
+    <circle cx="198" cy="44" r="1.6"/>
+    <circle cx="214" cy="200" r="2"/>
+    <circle cx="40" cy="190" r="1.4"/>
+    <circle cx="160" cy="30" r="1.2"/>
+  </g>
+
+  <!-- An eccentric orbit with the Earth at one focus (a = 92, e = 0.35, seen
+       tilted), so it reads as an orbit rather than a ring. -->
+  <g transform="rotate(-22 128 136)">
+    <!-- The far half of the orbit, behind the Earth. -->
+    <ellipse cx="140" cy="136" rx="92" ry="35" fill="none" stroke="#38bdf8"
+             stroke-width="7" stroke-opacity="0.55"/>
+
+    <circle cx="108" cy="136" r="46" fill="url(#earth)"/>
+    <circle cx="108" cy="136" r="46" fill="url(#night)"/>
+
+    <!-- The near half: coast in blue, the burn in orange ending at the craft. -->
+    <g clip-path="url(#near)" fill="none" stroke-width="7" stroke-linecap="round">
+      <ellipse cx="140" cy="136" rx="92" ry="35" stroke="#38bdf8"/>
+      <path d="M 48 136 A 92 35 0 0 0 108.5 168.9" stroke="#ffb347"/>
+    </g>
+    <circle cx="108.5" cy="168.9" r="20" fill="url(#glow)"/>
+    <circle cx="108.5" cy="168.9" r="6" fill="#fff"/>
+  </g>
+</svg>

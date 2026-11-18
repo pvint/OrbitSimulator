@@ -20,6 +20,16 @@ prototype settled the physics model and the UI ideas; this is the full version.
   (`tli-delay`), night-side lighting (a mid-task request), the maneuver
   editor, guided ascent, thrust that depends on air pressure, a coast
   between stages. All merged to `main`.
+- **Polish (2026-11-18):** graph time units under the axis, camera views
+  (edge-on / above the orbit / north, also as demo views), release warning.
+- **Distribution (2026-11-18) is done:** public repo
+  https://github.com/pvint/OrbitSimulator (remote `origin`). App icon and id
+  (`io.github.pvint.OrbitSimulator`), Linux desktop file + AppStream,
+  GitHub Actions CI (Linux Qt 6.8 + 6.11, Windows MSVC Qt 6.10, macOS
+  universal Qt 6.11) with packages (AppImage, ZIP, DMG) that are started
+  and screenshotted on each platform, a live Gentoo ebuild (`dist/gentoo/`).
+  No release tagged yet: pushing `v0.1.0` drafts one. Work on a branch and
+  open a PR so CI runs before merging.
 - **Next:** natural bodies are next on the roadmap, but the user said not
   to start them yet. Ask what's next.
 - The app flies a rocket of one to three stages from any site and date,
@@ -29,7 +39,7 @@ prototype settled the physics model and the UI ideas; this is the full version.
   lit by the real Sun, and a 14-step demo tour. 98 test suites pass (GCC,
   Clang, ASan/UBSan); clang-tidy is clean.
 - **Open questions:** see the end of `docs/decisions.md` (scripting
-  language, how to specify natural bodies, app icon).
+  language, how to specify natural bodies, code signing).
 
 ## Hard rules
 
@@ -64,6 +74,7 @@ build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
 build/dev/src/cli/orbitsim-cli        # CLI
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
 cmake --build build/release --target package   # archive in build/release/
+QMAKE=<official Qt>/bin/qmake tools/make_appimage.sh build/release   # AppImage
 ```
 
 ## Layout
@@ -74,7 +85,7 @@ src/cli/       orbitsim-cli
 src/app/       Qt app. orbitsim_ui (static lib): panels + SimulationController, no QML.
                orbitsim (exe): main window, GlobeView (3D + playback), PlotPanel,
                custom Quick 3D geometries, QML scenes in qml/, textures in assets/
-tools/         make_earth_texture.sh: rebuilds the Earth texture from NASA's original
+tools/         textures and icons (make_*.sh), make_appimage.sh, smoke_test.sh (CI)
 scenarios/     example scenario files (built into the app's File ▸ Examples; each is
                loaded and flown by a test)
 demos/         tour.json: the guided demo tour (Help ▸ Demo Tour); a test checks every
@@ -82,6 +93,8 @@ demos/         tour.json: the guided demo tour (Help ▸ Demo Tour); a test chec
 tests/         Catch2 tests for the core; tests/app: Qt Test GUI tests of orbitsim_ui
 cmake/         CompilerWarnings.cmake (orbit_set_warnings), Packaging.cmake (CPack)
 docs/          decisions.md (why things are the way they are), physics.md (the physics, explained)
+dist/          linux/ (.desktop, AppStream metainfo), gentoo/ (live ebuild)
+.github/       workflows/ci.yml: build, test, package, smoke-test; v* tags draft a release
 prototype/web/ the original JavaScript prototype, kept for reference
 ```
 
@@ -156,7 +169,7 @@ Each milestone ends with something that runs.
 | Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |
 | Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
-| Later | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | |
+| D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
 
 ### App structure in brief (M2–M4)
 

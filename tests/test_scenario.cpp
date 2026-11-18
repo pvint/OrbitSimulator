@@ -5,6 +5,7 @@
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/demo.hpp"
 #include "orbit/core/mission_parameters.hpp"
+#include "orbit/core/parse.hpp"
 #include "orbit/core/scenario.hpp"
 #include "orbit/core/sweep.hpp"
 
@@ -230,4 +231,15 @@ TEST_CASE("Demo steps can look along or down on the orbit's plane", "[demo]") {
                   {"title": "t", "caption": "c", "scenario": "s.json", "view": "above-orbit"}]})");
     REQUIRE(demo.steps.at(0).view == DemoView::EdgeOn);
     REQUIRE(demo.steps.at(1).view == DemoView::AboveOrbit);
+}
+
+TEST_CASE("Numbers are read the same in any locale", "[parse]") {
+    REQUIRE(parseDouble("28.5") == 28.5);
+    REQUIRE(parseDouble("-1e3") == -1000.0);
+    REQUIRE(parseDouble("7") == 7.0);
+    REQUIRE_FALSE(parseDouble("").has_value());
+    REQUIRE_FALSE(parseDouble("28,5").has_value());
+    REQUIRE_FALSE(parseDouble("12km").has_value());
+    REQUIRE_FALSE(parseDouble(" 3").has_value());
+    REQUIRE_FALSE(parseDouble("3 ").has_value());
 }

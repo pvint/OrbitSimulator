@@ -4,6 +4,7 @@
 #include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/mission_parameters.hpp"
+#include "orbit/core/parse.hpp"
 
 #include <array>
 #include <charconv>
@@ -31,9 +32,7 @@ double tidy(double value) {
     const auto [end, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value,
                                          std::chars_format::general, 12);
     if (ec != std::errc{}) return value;
-    double result = value;
-    std::from_chars(buffer.data(), end, result);
-    return result;
+    return parseDouble(std::string_view(buffer.data(), end)).value_or(value);
 }
 
 double requireNumber(const json& value, std::string_view where) {
