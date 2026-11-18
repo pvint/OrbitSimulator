@@ -3,6 +3,7 @@
 
 #include "orbit/core/angles.hpp"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -114,9 +115,13 @@ std::string formatIsoUtc(double epoch) {
         date = calendarFromEpoch(rounded - 1.0);
         sod = secondsOfDay();
     }
-    std::array<char, 32> buffer{};
-    std::snprintf(buffer.data(), buffer.size(), "%04d-%02d-%02dT%02lld:%02lld:%02lldZ", // NOLINT
-                  date.year, date.month, date.day, sod / 3600, (sod / 60) % 60, sod % 60);
+    // The clamp changes nothing (sod is already in range) but tells the
+    // compiler so; the buffer has room for any int, so nothing is cut off.
+    const auto seconds = static_cast<int>(std::clamp(sod, 0LL, 86399LL));
+    std::array<char, 80> buffer{};
+    std::snprintf(buffer.data(), buffer.size(), "%04d-%02d-%02dT%02d:%02d:%02dZ", // NOLINT
+                  date.year, date.month, date.day, seconds / 3600, (seconds / 60) % 60,
+                  seconds % 60);
     return buffer.data();
 }
 
