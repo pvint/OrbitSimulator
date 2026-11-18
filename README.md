@@ -84,7 +84,8 @@ costs, the *back-pressure loss*.
 
 **Stages.** Set *Stages* (under Rocket) to 2 or 3 and each stage gets its
 own dry mass, propellant, thrust and specific impulse; *Payload* rides on
-top. When a stage is empty it is dropped and the next one fires. Dropped
+top. When a stage is empty it is dropped and, after a short coast (*Coast
+between stages*), the next one fires. Dropped
 stages fall back on their own, drawn in grey, and the Flight panel says
 where they came down. A heavier stack climbs off the pad more slowly, so it
 usually needs a smaller kick angle.
