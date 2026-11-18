@@ -312,6 +312,45 @@ draggy ascent (max-Q 76 kPa, the ascent burn ending at 65 km at 7 km/s);
 **How to apply:** whenever a default changes, add it to
 `defaultsForVersion()` in `scenario.cpp` along with the format bump.
 
+### 25. Staging: up to three stages, fixed slots, payload on top (2026-11-17)
+
+**Decision:** a `Rocket` holds three stage slots (`std::array<Stage, 3>`)
+and a `stageCount`, plus a payload. Stage 1 keeps the old parameter keys
+(`dry-mass`, `thrust`, ...); stages 2 and 3 get `stage-2-...` keys. When a
+stage runs dry during a burn it is dropped and the next fires at once, with
+no coast between. Dropped stages are flown on their own (gravity and drag)
+and shown in grey. The scenario format did not change: old files have no
+`stages` key and so fly one stage, exactly as before.
+
+**Why:** fixed slots fit the flat parameter table, so every stage number gets
+a slider, a CLI option and a scenario key, and can be swept, with no new
+UI. Unused slots keep their values, so going from three stages to two and
+back loses nothing. Three stages covers nearly every real launcher. Keeping
+stage 1 on the old keys keeps old files meaning the same thing.
+
+**Considered:** a variable-length stage list with its own editor (more
+general, but not sweepable, and a lot of UI); a coast between separation and
+ignition (real, a few seconds, but another parameter for little insight).
+
+**Defaults:** one stage. The upper-stage slots hold a small second and third
+stage, light enough that raising the count still flies with the default
+20° kick (a heavier stack lifts off more slowly and over-rotates with the
+same kick). The examples use a better-matched design: the default rocket
+cut in two.
+
+### 26. Circularization compensates for gravity (2026-11-17)
+
+**Decision:** while circularizing, the engine aims at
+`Δv + (g − v_h²/r) · t_go · up` instead of along Δv alone (guidance.hpp).
+
+**Why:** staging brought weak upper stages (thrust about equal to weight).
+Steering along Δv only corrects for sinking after it happens; a three-minute
+burn sank from 200 to 150 km, and payload sweeps jumped about erratically.
+Adding the gravity the burn will soak up keeps the altitude, as real upper
+stages do by pitching up. For the existing short, hard burns it changes
+results by under a kilometre (the default orbit now ends at 200.0 km
+instead of 198.8), so old scenario files fly essentially as before.
+
 ---
 
 ## Open questions
