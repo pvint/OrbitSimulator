@@ -464,6 +464,12 @@ built on the oldest available Ubuntu because an AppImage runs only where
 glibc is at least as new as where it was built. Releases are drafts
 because publishing is public and hard to take back.
 
+**Not yet:** native Wayland in the AppImage. It runs through XWayland,
+which every Wayland desktop has. linuxdeploy's Qt plugin bundles Qt's
+Wayland platform plugin but not the EGL client integration that OpenGL,
+and so the 3D view, needs there; bundling half of it would risk a blank
+view instead of a working one.
+
 **Not yet:** code signing. Unsigned apps work, but Windows SmartScreen and
 macOS Gatekeeper make the first start awkward (README, *Installing*).
 Signing needs paid certificates (an Apple Developer account; a Windows

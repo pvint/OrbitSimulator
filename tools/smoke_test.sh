@@ -12,6 +12,13 @@ shot=${2:?usage: smoke_test.sh APP SCREENSHOT}
 log=$(mktemp)
 
 export QT_FORCE_STDERR_LOGGING=1 # Windows GUI apps otherwise log only to the debugger
+
+# Hide the Qt the app was built with, so a package can't quietly borrow its
+# plugins or libraries (CI's Qt setup points these at it).
+unset QT_PLUGIN_PATH QML_IMPORT_PATH QML2_IMPORT_PATH QT_QPA_PLATFORM_PLUGIN_PATH \
+    LD_LIBRARY_PATH DYLD_LIBRARY_PATH DYLD_FRAMEWORK_PATH
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '/Qt/[0-9]' | paste -sd: -)
+export PATH
 "$app" --screenshot "$shot" --screenshot-delay 5000 2>&1 | tee "$log"
 status=${PIPESTATUS[0]}
 
