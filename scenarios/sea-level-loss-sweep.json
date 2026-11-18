@@ -1,0 +1,8 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 4,
+  "name": "Engines in thick air: sea-level loss sweep",
+  "description": "An engine's nozzle opens onto the outside air, which presses back on the exhaust: at sea level it gives less thrust than in space. This sweeps how much less, from nothing to 30 %, for the same vacuum engine (SpaceX's Merlin 1D loses 9 %, the Space Shuttle's main engine 19 %). Up to 20 % the rocket still reaches orbit, losing around 100 m/s to back-pressure (Flight stats). At 25 % it lifts off too slowly and falls short; at 30 % the same tilt turns it over.",
+  "mission": {},
+  "sweep": { "parameter": "sea-level-loss", "from": 0, "to": 30, "steps": 7 }
+}

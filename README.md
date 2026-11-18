@@ -77,6 +77,11 @@ Flight panel shows **max-Q**, the moment the air pushes hardest, and the
 **drag loss**, the speed the air took away; the pink graph shows the dynamic
 pressure. A drag coefficient of 0 flies in a vacuum.
 
+**Engines and air.** *Thrust* and *Isp* are the vacuum values; *Sea-level
+loss* is how much thrust the engine loses on the pad, where the air presses
+on its nozzle (Merlin 1D: 9 %). The Flight panel shows the speed this
+costs, the *back-pressure loss*.
+
 **Stages.** Set *Stages* (under Rocket) to 2 or 3 and each stage gets its
 own dry mass, propellant, thrust and specific impulse; *Payload* rides on
 top. When a stage is empty it is dropped and the next one fires. Dropped
