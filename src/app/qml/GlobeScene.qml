@@ -99,7 +99,18 @@ Item {
         DirectionalLight {
             rotation: root.sunlightRotation
             brightness: 1.6
-            ambientColor: Qt.rgba(0.05, 0.06, 0.08, 1.0) // so the night side isn't pitch black
+            ambientColor: Qt.rgba(0.03, 0.035, 0.05, 1.0)
+        }
+        // A dim, cool fill light from the opposite direction, so the night
+        // side isn't pitch black: continents and craters stay faintly
+        // visible, while the day side and the day/night line are untouched.
+        Node {
+            rotation: root.sunlightRotation
+            DirectionalLight {
+                eulerRotation.y: 180
+                color: "#9db4ff"
+                brightness: 0.14
+            }
         }
 
         Node {
