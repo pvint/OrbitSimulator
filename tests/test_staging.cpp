@@ -202,3 +202,71 @@ TEST_CASE("Stage parameters have names that tell them apart", "[staging][paramet
     findParameter("stage-3-propellant")->set(m, 1.5);
     REQUIRE(m.rocket.stages[2].propellantMass == 1500.0);
 }
+
+TEST_CASE("Guided ascent hits the target orbit where the open-loop plan can't", "[guidance]") {
+    // The two-stage rocket with 2 t of payload: heavy, so the 20° kick flies
+    // flat. The classic plan reaches its apoapsis target only after passing
+    // the top of its path, and circularizes far too low.
+    Mission m = splitRocket();
+    m.rocket.payloadMass = 2000.0;
+    const SimResult classic = simulate(m);
+    REQUIRE(classic.orbit.periapsisAltitude < 150e3);
+
+    m.plan = FlightPlan::GuidedOrbit;
+    const SimResult guided = simulate(m);
+    REQUIRE(guided.outcome == Outcome::Orbit);
+    REQUIRE_THAT(guided.orbit.periapsisAltitude, WithinAbs(200e3, 1e3));
+    REQUIRE_THAT(guided.orbit.apoapsisAltitude, WithinAbs(200e3, 1e3));
+
+    SECTION("whatever the kick") {
+        for (const double kick : {12.0, 16.0, 20.0, 24.0}) {
+            CAPTURE(kick);
+            m.guidance.kickAngle = degToRad(kick);
+            const SimResult r = simulate(m);
+            REQUIRE_THAT(r.orbit.periapsisAltitude, WithinAbs(200e3, 1e3));
+            REQUIRE_THAT(r.orbit.apoapsisAltitude, WithinAbs(200e3, 1e3));
+        }
+    }
+    SECTION("and it carries more") {
+        m.rocket.payloadMass = 3000.0;
+        REQUIRE(simulate(m).outcome == Outcome::Orbit);
+        m.plan = FlightPlan::Orbit;
+        REQUIRE(simulate(m).outcome != Outcome::Orbit);
+    }
+}
+
+TEST_CASE("A powerful single stage flies guided too, coasting up at the end", "[guidance]") {
+    Mission m = defaultMission();
+    m.plan = FlightPlan::GuidedOrbit;
+    const SimResult r = simulate(m);
+    REQUIRE(r.outcome == Outcome::Orbit);
+    REQUIRE_THAT(r.orbit.periapsisAltitude, WithinAbs(200e3, 1e3));
+    REQUIRE_THAT(r.orbit.apoapsisAltitude, WithinAbs(200e3, 1e3));
+    // It gains speed faster than it climbs, so the apoapsis can't be held:
+    // the guided burn stops and the classic coast and circularization finish.
+    REQUIRE(std::ranges::any_of(r.events, [](const FlightEvent& e) {
+        return e.description == "Circularization: engine on";
+    }));
+    // Climbing steeper than the open-loop plan costs a little more.
+    const double classic = simulate(defaultMission()).deltaVUsed;
+    REQUIRE(r.deltaVUsed > classic);
+    REQUIRE(r.deltaVUsed < classic + 300.0);
+}
+
+TEST_CASE("Orbit insertion steering stays within its pitch limits", "[guidance]") {
+    const Vec3 r{kRadiusEarth + 100e3, 0.0, 0.0};
+    const Vec3 fallback{0.0, 1.0, 0.0};
+    const Vec3 slowClimb{500.0, 3000.0, 0.0};
+    const Vec3 d =
+        orbitInsertionDirection(r, slowClimb, kRadiusEarth + 200e3, 20.0, 60.0, fallback);
+    REQUIRE_THAT(norm(d), WithinAbs(1.0, 1e-12));
+    const double pitch = std::asin(d.x);
+    REQUIRE(pitch >= degToRad(-30.0) - 1e-9);
+    REQUIRE(pitch <= degToRad(80.0) + 1e-9);
+    // Far too fast for this height: the apoapsis is above the target, so
+    // it noses down as far as it may.
+    const Vec3 tooFast{0.0, 8500.0, 0.0};
+    const Vec3 down =
+        orbitInsertionDirection(r, tooFast, kRadiusEarth + 200e3, 20.0, 60.0, fallback);
+    REQUIRE_THAT(std::asin(down.x), WithinAbs(degToRad(-30.0), 1e-9));
+}

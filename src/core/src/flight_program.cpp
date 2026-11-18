@@ -21,12 +21,19 @@ constexpr double kSiderealMonth = 27.321661 * kSecondsPerDay;
 /// distance is taken at roughly the arrival time.
 constexpr double kTypicalTransferTime = 3.5 * kSecondsPerDay;
 
+/// The guided ascent takes over from the pitch program here (m): above most
+/// of the air, where turning the rocket away from its direction of motion no
+/// longer matters.
+constexpr double kGuidanceStartAltitude = 30e3;
+
 } // namespace
 
 std::string_view planKey(FlightPlan plan) {
     switch (plan) {
     case FlightPlan::Custom:
         return "custom";
+    case FlightPlan::GuidedOrbit:
+        return "guided-orbit";
     case FlightPlan::Orbit:
         return "orbit";
     case FlightPlan::BurnToDepletion:
@@ -61,6 +68,8 @@ std::string_view planLabel(FlightPlan plan) {
         return "Lunar orbit";
     case FlightPlan::Custom:
         return "Custom program";
+    case FlightPlan::GuidedOrbit:
+        return "Orbit (guided ascent)";
     }
     return {};
 }
@@ -85,6 +94,8 @@ std::string_view steeringKey(Steering steering) {
         return "radial-out";
     case Steering::RadialIn:
         return "radial-in";
+    case Steering::OrbitInsertion:
+        return "orbit-insertion";
     }
     return "prograde";
 }
@@ -109,6 +120,8 @@ std::string_view steeringLabel(Steering steering) {
         return "Radial out (straight up)";
     case Steering::RadialIn:
         return "Radial in (straight down)";
+    case Steering::OrbitInsertion:
+        return "Guided into orbit (closed loop)";
     }
     return {};
 }
@@ -139,6 +152,8 @@ std::string_view stepEndKey(StepEnd end) {
         return "periapsis";
     case StepEnd::Circular:
         return "circular";
+    case StepEnd::OrbitAt:
+        return "orbit-at";
     case StepEnd::MoonAhead:
         return "moon-ahead";
     case StepEnd::MoonClosestApproach:
@@ -169,6 +184,8 @@ std::string_view stepEndLabel(StepEnd end) {
         return "At periapsis";
     case StepEnd::Circular:
         return "Orbit is circular";
+    case StepEnd::OrbitAt:
+        return "In orbit at (apoapsis held)";
     case StepEnd::MoonAhead:
         return "Moon's arrival point ahead by";
     case StepEnd::MoonClosestApproach:
@@ -201,6 +218,7 @@ std::string_view stepEndUnit(StepEnd end) {
     case StepEnd::PeriapsisAltitude:
     case StepEnd::Altitude:
     case StepEnd::MoonCapture:
+    case StepEnd::OrbitAt:
         return "km";
     case StepEnd::MoonAhead:
         return "°";
@@ -281,6 +299,22 @@ double lunarTravelAngle(const Mission& mission) {
 FlightProgram flightProgramFor(const Mission& mission) {
     if (mission.plan == FlightPlan::Custom) return mission.program;
     FlightProgram program;
+
+    if (mission.plan == FlightPlan::GuidedOrbit) {
+        // Through the thick air on the pitch program (steering against the
+        // airflow would be hard on a real rocket), then closed-loop guidance
+        // straight into orbit.
+        program.push_back({"Ascent through the air", true, Steering::PitchProgram,
+                           StepEnd::Altitude, kGuidanceStartAltitude});
+        program.push_back({"Guided ascent", true, Steering::OrbitInsertion, StepEnd::OrbitAt,
+                           mission.targetAltitude});
+        // Only needed if the engine was too strong to hold the apoapsis (or
+        // ran dry): then coast up to it and circularize, as the Orbit plan.
+        program.push_back({"Coast to apoapsis", false, Steering::Prograde, StepEnd::Apoapsis});
+        program.push_back({"Circularization", true, Steering::Circularize, StepEnd::Circular});
+        program.push_back({"Coast", false, Steering::Prograde, StepEnd::Revolutions, 1.0});
+        return program;
+    }
 
     if (mission.plan == FlightPlan::BurnToDepletion) {
         program.push_back({"Ascent", true, Steering::PitchProgram, StepEnd::PropellantExhausted});
