@@ -250,3 +250,57 @@ TEST_CASE("A fatter rocket loses more to drag", "[simulation]") {
     const SimResult b = simulate(fat);
     REQUIRE(b.dragLoss > 2.0 * a.dragLoss);
 }
+
+TEST_CASE("Engines give less thrust in thick air", "[atmosphere][engine]") {
+    const Mission mission = defaultMission();
+    const Stage& stage = mission.rocket.stages[0];
+    // F = F_vac · (1 − L · p/p0): the full loss at sea level, none in a vacuum,
+    // and in between in proportion to the pressure.
+    REQUIRE(thrustAt(stage, 0.0) == stage.thrust);
+    REQUIRE_THAT(seaLevelThrust(stage),
+                 WithinRel(stage.thrust * (1.0 - stage.seaLevelLoss), 1e-12));
+    REQUIRE_THAT(thrustAt(stage, kSeaLevelPressure / 2.0),
+                 WithinRel(stage.thrust * (1.0 - stage.seaLevelLoss / 2.0), 1e-12));
+    REQUIRE_THAT(seaLevelIsp(stage), WithinRel(stage.isp * (1.0 - stage.seaLevelLoss), 1e-12));
+    // The default rocket lifts off with the prototype's 1.2 MN.
+    REQUIRE_THAT(seaLevelThrust(stage), WithinRel(1.2e6, 0.01));
+    REQUIRE_THAT(
+        liftoffThrustToWeight(defaultMission().rocket),
+        WithinRel(seaLevelThrust(stage) / (64000.0 * kMuEarth / (kRadiusEarth * kRadiusEarth)),
+                  1e-12));
+}
+
+TEST_CASE("Delta-v used counts what the engine really delivered", "[atmosphere][engine]") {
+    // Straight up from the pole with no gravity and no drag: every bit of the
+    // engine's push becomes speed. With a 12 % sea-level loss, the burn
+    // delivers less than the vacuum rocket equation says, by the
+    // back-pressure loss.
+    Mission m = defaultMission();
+    m.rocket.dragCoefficient = 0.0;
+    m.site.latitude = degToRad(90.0);
+    m.guidance.pitchStartTime = 1e9;
+    m.plan = FlightPlan::BurnToDepletion;
+    SimOptions noGravity;
+    noGravity.mu = 0.0;
+    noGravity.thirdBodyGravity = false;
+    const SimResult r = simulate(m, noGravity);
+
+    const double finalSpeed = r.events.front().sample.speed(); // at burnout
+    REQUIRE(r.pressureLoss > 10.0);
+    REQUIRE_THAT(r.deltaVUsed + r.pressureLoss, WithinRel(idealDeltaV(m.rocket), 1e-9));
+    REQUIRE_THAT(r.deltaVUsed, WithinRel(finalSpeed, 0.002));
+
+    // Without the loss, none of it.
+    m.rocket.stages[0].seaLevelLoss = 0.0;
+    const SimResult vacuum = simulate(m, noGravity);
+    REQUIRE(vacuum.pressureLoss == 0.0);
+    REQUIRE(vacuum.events.front().sample.speed() > finalSpeed);
+}
+
+TEST_CASE("A flight to orbit loses some tens of m/s to back-pressure", "[atmosphere][engine]") {
+    const SimResult r = simulate(defaultMission());
+    REQUIRE(r.outcome == Outcome::Orbit);
+    // Real launchers: a few tens to a hundred m/s.
+    REQUIRE(r.pressureLoss > 20.0);
+    REQUIRE(r.pressureLoss < 200.0);
+}

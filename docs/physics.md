@@ -155,8 +155,23 @@ In flight, part of that Δv is lost to fighting gravity while climbing
 why the simulator shows both *ideal Δv* and *Δv used*, and the drag loss on
 its own.
 
-**Thrust-to-weight ratio** on the pad, `F / (m₀·g)`, must exceed 1 to lift
-off. It also shapes the gravity turn: a low ratio turns more, a high one less.
+**Thrust and air pressure.** The engine burns propellant at a fixed rate,
+but its nozzle opens onto the outside air, which presses back on the
+exhaust leaving it: `F = F_vac − p·A_exit`. So an engine pushes least on
+the pad and most in space. We describe each stage's engine by its vacuum
+thrust and Isp and a **sea-level loss** `L = p0·A_exit / F_vac`:
+
+    F(p) = F_vac · (1 − L·p/p0)          Isp(p) = Isp_vac · (1 − L·p/p0)
+
+Merlin 1D (282 s at sea level, 311 s in vacuum) loses 9 %; the Space
+Shuttle main engine (366 s and 452 s) 19 %. The default rocket loses 12 %:
+1.36 MN in vacuum, 1.2 MN on the pad. The speed this costs, `∫ (F_vac − F)/m
+dt`, is the **back-pressure loss**, about 100 m/s for the default rocket;
+*Δv used* is what the engine really delivered: the vacuum rocket equation
+less that loss.
+
+**Thrust-to-weight ratio** on the pad, `F_sl / (m₀·g)` with the sea-level
+thrust, must exceed 1 to lift off. It also shapes the gravity turn: a low ratio turns more, a high one less.
 So a heavier rocket (more stages, more payload) needs a smaller kick.
 
 ## Stages (`rocket.hpp`)

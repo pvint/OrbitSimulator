@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cmath>
 
 namespace orbit {
@@ -58,6 +57,14 @@ template <std::size_t K>
 void setStageIsp(Mission& m, double v) {
     m.rocket.stages[K].isp = v;
 }
+template <std::size_t K>
+double stageSeaLevelLoss(const Mission& m) {
+    return m.rocket.stages[K].seaLevelLoss * 100.0;
+}
+template <std::size_t K>
+void setStageSeaLevelLoss(Mission& m, double v) {
+    m.rocket.stages[K].seaLevelLoss = v / 100.0;
+}
 
 // Each row: key, label, unit, group, help, min, max, step, get, set.
 // The lambdas convert between display units and the physics' units.
@@ -83,11 +90,18 @@ constexpr std::array kParameters{
                   stageDryMass<0>, setStageDryMass<0>},
     ParameterInfo{"propellant", "Propellant", "t", "Stage 1", "Propellant mass at liftoff", 0.0,
                   200.0, 0.5, stagePropellant<0>, setStagePropellant<0>},
-    ParameterInfo{"thrust", "Thrust", "kN", "Stage 1", "Engine thrust (constant)", 50.0, 5000.0,
-                  10.0, stageThrust<0>, setStageThrust<0>},
-    ParameterInfo{"isp", "Specific impulse", "s", "Stage 1",
-                  "Engine efficiency: exhaust velocity = Isp · g0", 150.0, 500.0, 1.0, stageIsp<0>,
-                  setStageIsp<0>},
+    ParameterInfo{"thrust", "Thrust (vacuum)", "kN", "Stage 1",
+                  "Engine thrust in a vacuum; a little less low down, where the air presses on "
+                  "the nozzle",
+                  50.0, 5000.0, 10.0, stageThrust<0>, setStageThrust<0>},
+    ParameterInfo{"isp", "Isp (vacuum)", "s", "Stage 1",
+                  "Specific impulse in a vacuum, the engine's efficiency: exhaust velocity = "
+                  "Isp · g0",
+                  150.0, 500.0, 1.0, stageIsp<0>, setStageIsp<0>},
+    ParameterInfo{"sea-level-loss", "Sea-level loss", "%", "Stage 1",
+                  "Thrust lost at sea level, where the air presses on the nozzle; less as the "
+                  "air thins. Merlin 1D: 9 %, Space Shuttle main engine: 19 %",
+                  0.0, 40.0, 0.5, stageSeaLevelLoss<0>, setStageSeaLevelLoss<0>},
     ParameterInfo{"burn-time", "Burn time", "s", "Stage 1",
                   "Sets the propellant so the engine can run this long at full thrust", 10.0,
                   1000.0, 1.0, [](const Mission& m) { return burnTime(m.rocket.stages[0]); },
@@ -102,22 +116,36 @@ constexpr std::array kParameters{
                   stageDryMass<1>, setStageDryMass<1>},
     ParameterInfo{"stage-2-propellant", "Propellant", "t", "Stage 2", "Propellant mass when full",
                   0.0, 100.0, 0.1, stagePropellant<1>, setStagePropellant<1>},
-    ParameterInfo{"stage-2-thrust", "Thrust", "kN", "Stage 2", "Engine thrust (constant)", 5.0,
-                  2000.0, 5.0, stageThrust<1>, setStageThrust<1>},
-    ParameterInfo{"stage-2-isp", "Specific impulse", "s", "Stage 2",
-                  "Engine efficiency: exhaust velocity = Isp · g0", 150.0, 500.0, 1.0, stageIsp<1>,
-                  setStageIsp<1>},
+    ParameterInfo{"stage-2-thrust", "Thrust (vacuum)", "kN", "Stage 2",
+                  "Engine thrust in a vacuum; a little less low down, where the air presses on "
+                  "the nozzle",
+                  5.0, 2000.0, 5.0, stageThrust<1>, setStageThrust<1>},
+    ParameterInfo{"stage-2-isp", "Isp (vacuum)", "s", "Stage 2",
+                  "Specific impulse in a vacuum, the engine's efficiency: exhaust velocity = "
+                  "Isp · g0",
+                  150.0, 500.0, 1.0, stageIsp<1>, setStageIsp<1>},
+    ParameterInfo{"stage-2-sea-level-loss", "Sea-level loss", "%", "Stage 2",
+                  "Thrust lost at sea level, where the air presses on the nozzle; less as the "
+                  "air thins. Merlin 1D: 9 %, Space Shuttle main engine: 19 %",
+                  0.0, 40.0, 0.5, stageSeaLevelLoss<1>, setStageSeaLevelLoss<1>},
 
     ParameterInfo{"stage-3-dry-mass", "Dry mass", "t", "Stage 3",
                   "Tanks, structure and engine, without propellant", 0.1, 20.0, 0.1,
                   stageDryMass<2>, setStageDryMass<2>},
     ParameterInfo{"stage-3-propellant", "Propellant", "t", "Stage 3", "Propellant mass when full",
                   0.0, 100.0, 0.1, stagePropellant<2>, setStagePropellant<2>},
-    ParameterInfo{"stage-3-thrust", "Thrust", "kN", "Stage 3", "Engine thrust (constant)", 5.0,
-                  2000.0, 5.0, stageThrust<2>, setStageThrust<2>},
-    ParameterInfo{"stage-3-isp", "Specific impulse", "s", "Stage 3",
-                  "Engine efficiency: exhaust velocity = Isp · g0", 150.0, 500.0, 1.0, stageIsp<2>,
-                  setStageIsp<2>},
+    ParameterInfo{"stage-3-thrust", "Thrust (vacuum)", "kN", "Stage 3",
+                  "Engine thrust in a vacuum; a little less low down, where the air presses on "
+                  "the nozzle",
+                  5.0, 2000.0, 5.0, stageThrust<2>, setStageThrust<2>},
+    ParameterInfo{"stage-3-isp", "Isp (vacuum)", "s", "Stage 3",
+                  "Specific impulse in a vacuum, the engine's efficiency: exhaust velocity = "
+                  "Isp · g0",
+                  150.0, 500.0, 1.0, stageIsp<2>, setStageIsp<2>},
+    ParameterInfo{"stage-3-sea-level-loss", "Sea-level loss", "%", "Stage 3",
+                  "Thrust lost at sea level, where the air presses on the nozzle; less as the "
+                  "air thins. Merlin 1D: 9 %, Space Shuttle main engine: 19 %",
+                  0.0, 40.0, 0.5, stageSeaLevelLoss<2>, setStageSeaLevelLoss<2>},
 
     ParameterInfo{"drag-coefficient", "Drag coefficient", "", "Aerodynamics",
                   "Cd below the speed of sound: how streamlined the rocket is. It nearly "
@@ -195,11 +223,8 @@ std::span<const ParameterInfo> missionParameters() { return kParameters; }
 std::string parameterTitle(const ParameterInfo& parameter) {
     const auto sameLabel = [&](const ParameterInfo& p) { return p.label == parameter.label; };
     if (std::ranges::count_if(kParameters, sameLabel) == 1) return std::string(parameter.label);
-    // "Stage 2" + "Thrust" → "Stage 2 thrust"
-    std::string title = std::string(parameter.group) + ' ' + std::string(parameter.label);
-    auto& first = title[parameter.group.size() + 1];
-    first = static_cast<char>(std::tolower(static_cast<unsigned char>(first)));
-    return title;
+    // "Stage 2" and "Thrust (vacuum)" → "Stage 2: Thrust (vacuum)"
+    return std::string(parameter.group) + ": " + std::string(parameter.label);
 }
 
 const ParameterInfo* findParameter(std::string_view key) {

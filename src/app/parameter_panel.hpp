@@ -71,6 +71,7 @@ private:
     QDateEdit* m_launchDate = nullptr;
 
     QLabel* m_liftoffMass = nullptr;
+    QLabel* m_liftoffThrust = nullptr;
     QLabel* m_burnTime = nullptr;
     QLabel* m_massFlow = nullptr;
     QLabel* m_thrustToWeight = nullptr;

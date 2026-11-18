@@ -407,6 +407,29 @@ without gravity: overestimated every candidate and left weak stages 15 km
 short. Apoapsis is conserved while coasting, so the prediction is now an
 instantaneous push at the current point.
 
+### 29. Engines lose thrust in thick air: a sea-level loss per stage (2026-11-17)
+
+**Decision:** each stage has a *sea-level loss* L, the fraction of thrust
+lost at sea level; thrust is `F_vac·(1 − L·p/p0)` at outside pressure p,
+with a fixed mass flow. *Thrust* and *Isp* are now the vacuum values. The
+default first stage is 1.36 MN with a 12 % loss: 1.2 MN on the pad, as
+before. Scenario format 4; older files get no loss and the old 1.2 MN, so
+they fly as before (all the existing examples). Results add the
+back-pressure loss, and *Δv used* is the vacuum rocket equation less it.
+
+**Why:** `F = F_vac − p·A_exit` is the real physics, and one number per
+engine is enough to describe it. A loss fraction rather than a sea-level
+Isp keeps the parameters independent: raising the vacuum Isp (to 450 s for
+the Moon, say) would otherwise have left the sea-level Isp behind and
+quietly cut liftoff thrust by a third, which first crashed half the lunar
+tests.
+
+**Side effects, all physical:** the engine now strengthens as it climbs,
+so the default ascent is steeper (cutoff at 68 km instead of 79) and
+max-Q higher (70 kPa). Steeper climbs let the Earth's rotation turn the
+orbit's plane a little more (due north from Florida now gives 83°, not
+85°), and Aim at the Moon gives 71.0° for the default rocket.
+
 ---
 
 ## Open questions

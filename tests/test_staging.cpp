@@ -189,9 +189,9 @@ TEST_CASE("A weak upper stage holds its altitude while circularizing", "[staging
 }
 
 TEST_CASE("Stage parameters have names that tell them apart", "[staging][parameters]") {
-    REQUIRE(parameterTitle(*findParameter("stage-2-thrust")) == "Stage 2 thrust");
-    REQUIRE(parameterTitle(*findParameter("thrust")) == "Stage 1 thrust");
-    REQUIRE(parameterTitle(*findParameter("isp")) == "Stage 1 specific impulse");
+    REQUIRE(parameterTitle(*findParameter("stage-2-thrust")) == "Stage 2: Thrust (vacuum)");
+    REQUIRE(parameterTitle(*findParameter("thrust")) == "Stage 1: Thrust (vacuum)");
+    REQUIRE(parameterTitle(*findParameter("isp")) == "Stage 1: Isp (vacuum)");
     REQUIRE(parameterTitle(*findParameter("kick-angle")) == "Kick angle");
 
     Mission m = defaultMission();

@@ -19,6 +19,22 @@
 //
 // The rocket's shape, for drag, is boiled down to two numbers for the whole
 // stack: a drag coefficient and a diameter (aerodynamics.hpp).
+//
+// THRUST AND AIR PRESSURE
+// An engine burns propellant at a fixed rate ṁ, whatever the air does. But
+// its nozzle opens onto the outside air, which presses back on the exhaust
+// leaving it: the thrust is
+//     F = F_vac − p · A_exit
+// with p the outside pressure and A_exit the nozzle's exit area. So an
+// engine gives the least thrust at sea level and the most in a vacuum, and
+// its specific impulse (thrust per propellant flow, F = ṁ·g0·Isp) slides
+// between its sea-level and vacuum values as the air thins:
+// We describe that with one number per stage, the fraction of thrust lost
+// at sea level, L = p0·A_exit / F_vac, so that
+//     F(p) = F_vac · (1 − L · p/p0),    Isp(p) = Isp_vac · (1 − L · p/p0)
+// Spec sheets give both Isps: SpaceX's Merlin 1D, 282 s at sea level and
+// 311 s in a vacuum, loses 9 %; the Space Shuttle's main engine, 366 s and
+// 452 s, 19 %. Thrust and isp here are the vacuum values.
 #pragma once
 
 #include <array>
@@ -31,8 +47,11 @@ inline constexpr int kMaxStages = 3;
 struct Stage {
     double dryMass = 0.0;        ///< kg: tanks, structure and engine, without propellant
     double propellantMass = 0.0; ///< kg when full
-    double thrust = 0.0;         ///< N
-    double isp = 0.0;            ///< s, specific impulse (engine efficiency)
+    double thrust = 0.0;         ///< N, in a vacuum
+    double isp = 0.0;            ///< s, specific impulse (engine efficiency), in a vacuum
+    /// Fraction of the thrust lost at sea level to air pressing on the
+    /// nozzle (0.09 = 9 %); in thinner air proportionally less.
+    double seaLevelLoss = 0.0;
 };
 
 struct Rocket {
@@ -50,8 +69,21 @@ struct Rocket {
 /// Exhaust velocity v_e = Isp · g0 (m/s).
 double exhaustVelocity(double isp);
 
-/// Propellant mass flow ṁ = F / v_e (kg/s). More thrust, or a less efficient
-/// engine (lower Isp), burns propellant faster.
+/// Standard sea-level air pressure p0 (Pa).
+inline constexpr double kSeaLevelPressure = 101325.0;
+
+/// Specific impulse at sea level (s): Isp_vac · (1 − L).
+double seaLevelIsp(const Stage& stage);
+
+/// Thrust (N) with this much outside air pressure (Pa):
+/// F_vac − p·A_exit = F_vac · (1 − L · p/p0).
+double thrustAt(const Stage& stage, double pressure);
+
+/// Thrust at sea level (N): on the launch pad.
+double seaLevelThrust(const Stage& stage);
+
+/// Propellant mass flow ṁ = F / v_e (kg/s), with the vacuum values. More thrust, or a less
+/// efficient engine (lower Isp), burns propellant faster.
 double massFlowRate(const Stage& stage);
 
 /// How long the stage's engine can run at full thrust (s).
@@ -81,8 +113,8 @@ double idealDeltaV(const Rocket& rocket);
 
 /// Thrust-to-weight ratio of stage k when it ignites, measured against the
 /// Earth's surface gravity. For the first stage this is the liftoff
-/// value, which must be above 1 to leave the pad. Upper stages fire when the
-/// rocket is already moving fast, sideways, so below 1 is common.
+/// value (with sea-level thrust), which must be above 1 to leave the pad. Upper stages fire when
+/// the rocket is already moving fast, sideways, so below 1 is common.
 double thrustToWeightAtIgnition(const Rocket& rocket, int k);
 
 /// Liftoff thrust-to-weight (thrustToWeightAtIgnition of the first stage).

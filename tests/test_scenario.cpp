@@ -71,7 +71,9 @@ TEST_CASE("A minimal scenario fills in defaults, in display units", "[scenario]"
     const Mission& m = loaded.scenario.mission;
     REQUIRE_THAT(radToDeg(m.guidance.kickAngle), WithinAbs(30.0, 1e-12));
     REQUIRE_THAT(m.rocket.stages[0].propellantMass, WithinAbs(50000.0, 1e-9)); // tonnes → kg
-    REQUIRE(m.rocket.stages[0].thrust == defaultMission().rocket.stages[0].thrust);
+    // A version 1 file gets version 1's defaults: 1.2 MN, with no loss in air.
+    REQUIRE(m.rocket.stages[0].thrust == 1.2e6);
+    REQUIRE(m.rocket.stages[0].seaLevelLoss == 0.0);
     REQUIRE_FALSE(loaded.scenario.sweep.has_value());
     REQUIRE(loaded.warnings.empty());
 }

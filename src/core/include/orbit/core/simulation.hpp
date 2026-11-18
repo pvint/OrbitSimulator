@@ -13,7 +13,8 @@
 //   Sun      The second term is there because the frame's origin, the Earth,
 //            is itself pulled towards the body; only the *difference* in pull
 //            moves the rocket relative to the Earth.
-//   thrust   a = F/m along the steering direction, while the engine runs
+//   thrust   a = F/m along the steering direction, while the engine runs;
+//            F = F_vac − p·A_exit is lower in thick air (rocket.hpp)
 //   drag     a = −½ρ|v_air|·Cd·A·v_air / m, below 1000 km (aerodynamics.hpp)
 //   mass     dm/dt = −F / (Isp·g0)
 // F and Isp are those of the stage that is firing (rocket.hpp). When its
@@ -152,6 +153,7 @@ struct Sample {
     double t = 0.0; ///< s since liftoff
     State state;
     bool burning = false; ///< is the engine firing from this sample onwards?
+    int stage = 0;        ///< the stage firing (or next to fire): 0 = the first
 
     double altitude() const;
     double speed() const;
@@ -201,7 +203,12 @@ struct SimResult {
     Outcome outcome = Outcome::Crashed;
     EndReason endReason = EndReason::MaxTime;
     double maxAltitude = 0.0; ///< m, highest sample
-    double deltaVUsed = 0.0;  ///< m/s, from the propellant actually burnt
+    /// m/s: the speed the engine added, ∫ F/m dt. The rocket equation with
+    /// the vacuum Isp, less the back-pressure loss.
+    double deltaVUsed = 0.0;
+    /// m/s: speed lost because the engine gives less thrust in thick air,
+    /// ∫ (F_vac − F)/m dt (summed over the samples, so to a few m/s).
+    double pressureLoss = 0.0;
     /// m/s: speed taken away by drag on the way up, ∫ D/m dt while climbing
     /// (summed over the samples, so accurate to a few per cent).
     double dragLoss = 0.0;

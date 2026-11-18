@@ -46,7 +46,7 @@ void printUsage() {
                  "Flies one mission with the orbit simulator physics and prints the result.\n\n"
                  "Mission options (defaults: the prototype's rocket from Cape Canaveral):\n";
     for (const auto& p : orbit::missionParameters()) {
-        std::cout << "  --" << padded(p.key, 17) << padded(p.unit, 4) << p.help << '\n';
+        std::cout << "  --" << padded(p.key, 22) << padded(p.unit, 4) << p.help << '\n';
     }
     std::cout << "  --plan PLAN            orbit, burn-to-depletion, lunar-flyby, lunar-orbit, or\n"
                  "                         custom (needs a scenario with a program)\n"
@@ -143,6 +143,10 @@ void printResult(const orbit::SimResult& r) {
                   << " kPa at T+" << duration(s.t) << ", " << km(s.altitude()) << ", Mach "
                   << aero.mach << '\n'
                   << std::setprecision(0) << "Drag loss:        " << r.dragLoss << " m/s\n";
+    }
+    if (r.pressureLoss > 0.0) {
+        std::cout << std::setprecision(0) << "Back-pressure:    " << r.pressureLoss
+                  << " m/s lost to air pressing on the nozzle\n";
     }
     if (r.endReason == orbit::EndReason::Impact) {
         const orbit::Sample& last = r.samples.back();
