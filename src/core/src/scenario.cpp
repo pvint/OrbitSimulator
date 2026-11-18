@@ -57,6 +57,13 @@ std::string optionalString(const json& object, const char* key) {
 /// exactly as it always did.
 Mission defaultsForVersion(int version) {
     Mission mission = defaultMission();
+    if (version < 4) {
+        // Before version 4 the engines lost nothing in thick air, and the
+        // first stage's thrust was 1.2 MN (now 1.36 MN in a vacuum, which is
+        // 1.2 MN at sea level).
+        for (Stage& stage : mission.rocket.stages) stage.seaLevelLoss = 0.0;
+        mission.rocket.stages[0].thrust = 1.2e6;
+    }
     if (version < 2) {
         // Version 1 predates the atmosphere: no drag, and the 25° kick
         // that was tuned for flying in a vacuum.

@@ -2,6 +2,7 @@
 #include "orbit/core/simulation.hpp"
 
 #include "orbit/core/angles.hpp"
+#include "orbit/core/atmosphere.hpp"
 #include "orbit/core/earth.hpp"
 #include "orbit/core/ephemeris.hpp"
 
@@ -22,15 +23,27 @@ Mission defaultMission() {
     // One stage by default. The upper stages are there for when the stage
     // count is raised: small enough that the stack still flies with the
     // default pitch program (a heavier stack needs a smaller kick).
-    m.rocket = {
-        .stages = {Stage{
-                       .dryMass = 4000.0, .propellantMass = 60000.0, .thrust = 1.2e6, .isp = 340.0},
-                   Stage{.dryMass = 400.0, .propellantMass = 3500.0, .thrust = 50e3, .isp = 350.0},
-                   Stage{.dryMass = 100.0, .propellantMass = 600.0, .thrust = 10e3, .isp = 290.0}},
-        .stageCount = 1,
-        .payloadMass = 0.0,
-        .dragCoefficient = 0.3,
-        .diameter = 2.4};
+    m.rocket = {// Thrust and Isp in a vacuum; at sea level the first stage gives
+                // 1.36 MN × 300/340 = 1.2 MN, the prototype's liftoff thrust.
+                .stages = {Stage{.dryMass = 4000.0,
+                                 .propellantMass = 60000.0,
+                                 .thrust = 1.36e6,
+                                 .isp = 340.0,
+                                 .seaLevelLoss = 0.12},
+                           Stage{.dryMass = 400.0,
+                                 .propellantMass = 3500.0,
+                                 .thrust = 50e3,
+                                 .isp = 350.0,
+                                 .seaLevelLoss = 0.15},
+                           Stage{.dryMass = 100.0,
+                                 .propellantMass = 600.0,
+                                 .thrust = 10e3,
+                                 .isp = 290.0,
+                                 .seaLevelLoss = 0.15}},
+                .stageCount = 1,
+                .payloadMass = 0.0,
+                .dragCoefficient = 0.3,
+                .diameter = 2.4};
     m.site = {.latitude = degToRad(28.5), .longitude = degToRad(-80.6)}; // Cape Canaveral
     m.guidance = {.azimuth = degToRad(90.0),
                   .pitchStartTime = 10.0,
@@ -124,6 +137,11 @@ private:
         return massAbove(m_mission.rocket, m_stage) + currentStage().dryMass;
     }
     double stagePropellant(const State& y) const { return y.m - stageEmptyMass(); }
+    /// The firing stage's thrust here: less low down, where the air presses
+    /// on the nozzle (rocket.hpp).
+    double currentThrust(const State& y) const {
+        return thrustAt(currentStage(), atmosphereAt(norm(y.r) - kRadiusEarth).pressure);
+    }
     bool laterStageCanFire() const;
 
     // Physics
@@ -153,6 +171,7 @@ private:
     void finish(EndReason reason);
     void summarise();
     void summariseDrag();
+    void summarisePressureLoss();
     void flySpentStages();
 };
 
@@ -184,7 +203,7 @@ State FlightSimulator::derivative(double t, const State& y) const {
 
     double massRate = 0.0;
     if (m_engineOn) {
-        acceleration += (currentStage().thrust / y.m) * steeringDirection(t, y);
+        acceleration += (currentThrust(y) / y.m) * steeringDirection(t, y);
         massRate = -m_mdot;
     }
     return {y.v, acceleration, massRate};
@@ -200,7 +219,7 @@ Vec3 FlightSimulator::steeringDirection(double t, const State& y) const {
     case Steering::Circularize:
         return thrustDirection(GuidancePhase::Circularize, y.r, y.v, Vec3{},
                                m_mission.guidance.kickAngle, m_launchPlaneNormal, m_opt.mu,
-                               currentStage().thrust / y.m);
+                               currentThrust(y) / y.m);
     case Steering::Prograde:
         return normalized(y.v);
     case Steering::Retrograde:
@@ -221,7 +240,7 @@ Vec3 FlightSimulator::steeringDirection(double t, const State& y) const {
         const double altitude =
             step().end == StepEnd::OrbitAt ? step().value : m_mission.targetAltitude;
         const double target = kRadiusEarth + altitude;
-        return orbitInsertionDirection(y.r, y.v, target, currentStage().thrust / y.m,
+        return orbitInsertionDirection(y.r, y.v, target, currentThrust(y) / y.m,
                                        insertionTimeToGo(y, target),
                                        downrangeDirection(y.r, m_launchPlaneNormal), m_opt.mu);
     }
@@ -557,7 +576,7 @@ double FlightSimulator::outputInterval(double t, const State& y) const {
 }
 
 void FlightSimulator::pushSample(double t, const State& y, bool burning) {
-    m_result.samples.push_back({t, y, burning});
+    m_result.samples.push_back({t, y, burning, m_stage});
     if (m_opt.thirdBodyGravity) {
         const double altitude = norm(y.r - moonAt(t)) - kRadiusMoon;
         if (altitude < m_result.lunar.closestApproachAltitude) {
@@ -669,7 +688,7 @@ SimResult FlightSimulator::run() {
             } else if (m_steering == Steering::MoonRetrograde) {
                 remaining = norm(m_y.v - moonVelocity(m_mission.launchEpoch + m_t));
             }
-            const double timeToFinish = remaining / (currentStage().thrust / m_y.m);
+            const double timeToFinish = remaining / (currentThrust(m_y) / m_y.m);
             if (timeToFinish <= hStep) {
                 hStep = timeToFinish;
                 lastStepOfBurn = true;
@@ -766,9 +785,12 @@ void FlightSimulator::summarise() {
     for (int k = m_stage + 1; k < rocket.stageCount; ++k) {
         m_result.propellantLeft += rocket.stages.at(static_cast<std::size_t>(k)).propellantMass;
     }
-    // Each stage's Δv from the rocket equation, over the mass it burnt.
-    m_result.deltaVUsed =
-        m_deltaVUsed + exhaustVelocity(currentStage().isp) * std::log(m_stageStartMass / m_y.m);
+    // Each stage's Δv from the rocket equation (with its vacuum Isp) over
+    // the mass it burnt, less what the air pressure on the nozzle cost.
+    summarisePressureLoss();
+    m_result.deltaVUsed = m_deltaVUsed +
+                          exhaustVelocity(currentStage().isp) * std::log(m_stageStartMass / m_y.m) -
+                          m_result.pressureLoss;
     for (const Sample& s : m_result.samples) {
         m_result.maxAltitude = std::max(m_result.maxAltitude, s.altitude());
     }
@@ -799,6 +821,24 @@ void FlightSimulator::summarise() {
     } else {
         m_result.outcome =
             m_result.maxAltitude >= kKarmanLine ? Outcome::Suborbital : Outcome::Crashed;
+    }
+}
+
+/// The back-pressure loss: ∫ (F_vac − F)/m dt while the engine burns, by the
+/// trapezoidal rule over the samples.
+void FlightSimulator::summarisePressureLoss() {
+    const auto& samples = m_result.samples;
+    const auto lossRate = [&](const Sample& s, int stage) {
+        const Stage& st = m_mission.rocket.stages.at(static_cast<std::size_t>(stage));
+        const double pressure = atmosphereAt(s.altitude()).pressure;
+        return (st.thrust - thrustAt(st, pressure)) / s.state.m;
+    };
+    for (std::size_t i = 1; i < samples.size(); ++i) {
+        const Sample& a = samples[i - 1];
+        if (!a.burning) continue;
+        // Both ends with the stage that fired over this interval.
+        m_result.pressureLoss +=
+            0.5 * (lossRate(a, a.stage) + lossRate(samples[i], a.stage)) * (samples[i].t - a.t);
     }
 }
 

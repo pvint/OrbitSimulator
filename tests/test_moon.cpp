@@ -38,6 +38,10 @@ Mission apolloMission() {
     Mission m = defaultMission(); // already Apollo 11's date and time
     m.plan = FlightPlan::LunarOrbit;
     m.rocket.stages[0].isp = 450.0;
+    // The engine of the Apollo example (a version 2 file): 1.2 MN, with no
+    // loss in thick air.
+    m.rocket.stages[0].thrust = 1.2e6;
+    m.rocket.stages[0].seaLevelLoss = 0.0;
     return m;
 }
 

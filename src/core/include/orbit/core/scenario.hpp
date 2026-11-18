@@ -26,6 +26,8 @@
 //      25° kick (the default is now 20°, which suits flying through air).
 //   3  custom flight programs: "plan": "custom" and a "program" list of steps
 //      (scenario.cpp, readStep). Nothing else changed, so 2 needs no upgrade.
+//   4  engines lose thrust in thick air: "sea-level-loss" (and per stage).
+//      Keys left out of older files mean no loss, and the old 1.2 MN thrust.
 #pragma once
 
 #include "orbit/core/simulation.hpp"
@@ -40,7 +42,7 @@
 
 namespace orbit {
 
-inline constexpr int kScenarioFormatVersion = 3;
+inline constexpr int kScenarioFormatVersion = 4;
 inline constexpr std::string_view kScenarioFormatName = "orbitsim-scenario";
 
 struct Scenario {

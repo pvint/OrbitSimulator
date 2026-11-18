@@ -46,7 +46,7 @@ std::span<const ParameterInfo> missionParameters();
 
 /// A name that is unique among the parameters: the label, or, where
 /// several share it (every stage has a "Thrust"), the group and the label:
-/// "Stage 2 thrust". For lists of all parameters, like the sweep's.
+/// "Stage 2: Thrust (vacuum)". For lists of all parameters, like the sweep's.
 std::string parameterTitle(const ParameterInfo& parameter);
 
 /// The parameter with this key, or nullptr.
