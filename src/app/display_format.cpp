@@ -33,6 +33,8 @@ QString duration(double seconds) {
     return tr("%1 days").arg(number(seconds / 86400.0, 1));
 }
 
+QString pressure(double pascals) { return tr("%1 kPa").arg(number(pascals / 1000.0, 1)); }
+
 QString speed(double metresPerSecond) { return tr("%1 m/s").arg(number(metresPerSecond, 0)); }
 
 QString mass(double kilograms) {

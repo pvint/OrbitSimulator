@@ -133,7 +133,7 @@ ParameterPanel::ParameterPanel(QWidget* parent)
         spinBox->setRange(p.min, p.max);
         spinBox->setSingleStep(p.step);
         spinBox->setDecimals(decimalsFor(p.step));
-        spinBox->setSuffix(QLatin1Char(' ') + toQString(p.unit));
+        spinBox->setSuffix(p.unit.empty() ? QString() : QLatin1Char(' ') + toQString(p.unit));
         spinBox->setKeyboardTracking(false); // update when Enter is pressed, not per keystroke
         spinBox->setAlignment(Qt::AlignRight);
 

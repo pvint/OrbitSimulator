@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -82,20 +83,27 @@ PlotPanel::PlotPanel(QWidget* parent)
     m_view->setSource(QUrl(QStringLiteral("qrc:/qt/qml/OrbitSim/qml/Plots.qml")));
     layout->addWidget(m_view, 1);
 
-    m_graphs[0].value = [](const orbit::Sample& s) { return s.altitude() / 1000.0; };
-    m_graphs[1].value = [](const orbit::Sample& s) { return s.speed(); };
-    m_graphs[2].value = [](const orbit::Sample& s) { return s.state.m / 1000.0; };
+    using orbit::Sample;
+    using orbit::SimResult;
+    m_graphs[0].value = [](const SimResult&, const Sample& s) { return s.altitude() / 1000.0; };
+    m_graphs[1].value = [](const SimResult&, const Sample& s) { return s.speed(); };
+    m_graphs[2].value = [](const SimResult&, const Sample& s) { return s.state.m / 1000.0; };
+    m_graphs[3].value = [](const SimResult& r, const Sample& s) {
+        return orbit::aerodynamicsAt(r, s).dynamicPressure / 1000.0;
+    };
+    m_graphs[3].airborneOnly = true;
     connectGraphs();
 }
 
-/// Find the series and axes of the three graphs in the QML scene.
+/// Find the series and axes of the graphs in the QML scene.
 void PlotPanel::connectGraphs() {
     QQuickItem* root = m_view->rootObject();
     if (root == nullptr) {
         for (const QQmlError& error : m_view->errors()) qWarning().noquote() << error.toString();
         return;
     }
-    const std::array<const char*, 3> names{"altitudeGraph", "speedGraph", "massGraph"};
+    const std::array<const char*, 4> names{"altitudeGraph", "speedGraph", "massGraph",
+                                           "pressureGraph"};
     for (std::size_t i = 0; i < names.size(); ++i) {
         auto* graph = root->property(names[i]).value<QObject*>();
         Graph& g = m_graphs[i];
@@ -136,21 +144,39 @@ void PlotPanel::refresh() {
     }
     tMax = std::max(tMax, 1.0);
 
-    // Long flights read better in minutes.
-    const bool minutes = tMax > 1200.0;
-    const double timeScale = minutes ? 1.0 / 60.0 : 1.0;
-    const NiceAxis xNice = niceAxis(tMax * timeScale);
+    // The dynamic pressure only matters in the air: a minute or two of a
+    // flight that may last days. Its graph ends soon after the selected
+    // flight was last in the air (q above 1 % of its peak).
+    double tAir = 0.0;
+    std::vector<double> q;
+    q.reserve(r.samples.size());
+    for (const orbit::Sample& s : r.samples) {
+        q.push_back(orbit::aerodynamicsAt(r, s).dynamicPressure);
+    }
+    const double peak = std::ranges::max(q);
+    for (std::size_t i = q.size(); i-- > 0;) {
+        if (q[i] > 0.01 * peak) {
+            tAir = r.samples[i].t;
+            break;
+        }
+    }
 
     const std::size_t overlayCount = m_runs->isSweep() ? m_runs->runs.size() - 1 : 0;
 
     for (Graph& g : m_graphs) {
+        const double tEnd = g.airborneOnly && tAir > 0.0 ? std::clamp(tAir * 1.2, 1.0, tMax) : tMax;
+        // Long flights read better in minutes.
+        const bool minutes = tEnd > 1200.0;
+        const double timeScale = minutes ? 1.0 / 60.0 : 1.0;
+        const NiceAxis xNice = niceAxis(tEnd * timeScale);
+
         double yMax = 0.0;
         const auto pointsFor = [&](const orbit::SimResult& result) {
             QList<QPointF> points;
             points.reserve(static_cast<qsizetype>(result.samples.size()));
             for (const orbit::Sample& s : result.samples) {
-                if (s.t > tMax) break;
-                const double y = g.value(s);
+                if (s.t > tEnd) break;
+                const double y = g.value(result, s);
                 points.append({s.t * timeScale, y});
                 yMax = std::max(yMax, y);
             }
@@ -174,7 +200,7 @@ void PlotPanel::refresh() {
             g.overlays[i]->setVisible(false);
         }
 
-        g.xAxis->setRange(0.0, tMax * timeScale);
+        g.xAxis->setRange(0.0, tEnd * timeScale);
         g.xAxis->setTickInterval(xNice.tick);
         g.xAxis->setLabelFormat(labelFormatFor(xNice.tick));
         g.item->setProperty("timeUnit", minutes ? tr("min") : tr("s"));

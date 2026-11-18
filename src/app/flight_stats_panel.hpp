@@ -27,6 +27,8 @@ private:
     QLabel* m_maxAltitude = nullptr;
     QLabel* m_deltaV = nullptr;
     QLabel* m_propellantLeft = nullptr;
+    QLabel* m_maxQ = nullptr;
+    QLabel* m_dragLoss = nullptr;
     QLabel* m_duration = nullptr;
     QLabel* m_events = nullptr;
 
