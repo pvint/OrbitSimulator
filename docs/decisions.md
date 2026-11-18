@@ -266,6 +266,52 @@ Encrypt's new "ISRG Root YR", which this system doesn't trust yet. Rather
 than disable certificate checks, the user downloaded the file in a browser.
 The texture stays optional in the build (grey Moon without it).
 
+### 23. Atmosphere: 1976 US Standard below 86 km, exponential table above (2026-11-17)
+
+**Decision:** the air's temperature, pressure and density come from the 1976
+US Standard Atmosphere's seven layers up to 86 km, then from the exponential
+model's densities (Vallado, table 8-4) interpolated exponentially up to
+1000 km, starting from the standard's own 86 km density so nothing jumps.
+Nothing above 1000 km. The air turns with the Earth. Drag is
+`½ρv²·Cd·A` against the velocity through the air, with the subsonic Cd
+scaled by a fixed, representative Mach curve (×1.8 just past Mach 1).
+
+**Why:** the standard atmosphere is *the* textbook reference, gives the
+temperature (so the speed of sound, so the Mach number) as well as density,
+and is short enough to read in one sitting. Above 86 km a "standard" means
+little because the Sun heats the thermosphere by hundreds of kelvin; the
+exponential table is what textbooks use for orbit decay. A Mach-dependent
+Cd makes max-Q and the sound barrier visible, which a constant Cd hides; a
+fixed curve keeps it to one number the user can understand. Continuity
+everywhere matters for the adaptive integrator.
+
+**Considered:** a single exponential (ρ₀·e^(−h/8.5 km): wrong by a factor of
+ten above 100 km); NRLMSISE-00 or JB2008 (need solar-flux and geomagnetic
+input data, far more code, more accuracy than a teaching tool needs); a
+constant Cd.
+
+**Not yet:** engine thrust doesn't change with air pressure. A real engine
+gives less thrust at sea level, where the air pushes back on the exhaust,
+than in a vacuum (Isp at sea level vs vacuum).
+
+### 24. Scenario format 2: old files keep their old defaults (2026-11-17)
+
+**Decision:** adding drag bumped the scenario format to version 2. Keys left
+out of a version 1 file take *version 1's* defaults (no drag, 25° kick),
+not today's. The example scenarios moved to version 2 and were re-checked
+with drag (four needed new settings or captions); the pure gravity turn
+example stays in a vacuum on purpose, since with air no kick reaches orbit.
+The default kick changed from 25° to 20°.
+
+**Why:** "never break existing files" has to mean they fly the same, not
+just that they load: hand-written files rely on defaults. With drag, 25°
+sits next to a cliff (27° turns over into the ground) and flies a flat,
+draggy ascent (max-Q 76 kPa, the ascent burn ending at 65 km at 7 km/s);
+20° has margin either side, a 63 kPa max-Q and 127 m/s of drag loss.
+
+**How to apply:** whenever a default changes, add it to
+`defaultsForVersion()` in `scenario.cpp` along with the format bump.
+
 ---
 
 ## Open questions

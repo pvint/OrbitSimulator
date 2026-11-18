@@ -59,6 +59,7 @@ full moons.
 | Earth | `a = −μ r / |r|³` | Point mass, μ = 3.986×10¹⁴ m³/s² |
 | Moon, Sun | `a = μ_b ((r_b − r)/|r_b − r|³ − r_b/|r_b|³)` | See below |
 | Thrust | `a = F/m` along the steering direction | Only while the engine runs |
+| Drag | `a = −½ρ|v_air|·Cd·A·v_air / m` | Below 1000 km; see below |
 | Mass flow | `dm/dt = −F / (Isp·g0)` | g0 = 9.80665 m/s² |
 
 The **third-body** formula has two terms. The first is the body's pull on the
@@ -67,7 +68,78 @@ the Earth, which itself falls towards the Moon and Sun, and only the
 *difference* moves the rocket relative to the Earth. (It's also what raises
 tides.)
 
-No drag and no staging yet.
+No staging yet.
+
+## The atmosphere (`atmosphere.hpp`)
+
+**Up to 86 km** the air follows the **1976 US Standard Atmosphere**: seven
+layers, in each of which the temperature changes at a constant rate with
+height (the *lapse rate* L) or stays constant. It cools through the
+troposphere (−6.5 K/km, where the weather is), stays at −56.5 °C, warms in the
+stratosphere (ozone absorbs sunlight) and cools again in the mesosphere.
+Pressure comes from the **hydrostatic equation**, `dP/dh = −ρg` (each layer
+of air holds up the weight of the air above it), and the **ideal gas law**,
+`ρ = P·M / (R·T)`:
+
+    L ≠ 0:  P = P_b · (T_b / T)^(g0·M / (R·L))
+    L = 0:  P = P_b · exp(−g0·M·(H − H_b) / (R·T_b))
+
+H is *geopotential* height, `H = r0·z / (r0 + z)`, which allows for gravity
+weakening with height. The **speed of sound** is `a = √(γ·R·T / M)`, 340 m/s
+at sea level and 295 m/s in the cold air at 11–20 km.
+
+**Above 86 km** the air is so thin that the Sun's activity changes it a lot,
+so we use the classic **exponential model** densities (Vallado, table 8-4) at
+90, 100, ... 1000 km. Between two of them the density falls exponentially,
+`ρ = ρ_1·exp(−(z − z_1)/H_s)`. The *scale height* H_s, the climb over which
+the density falls by a factor e, grows from about 6 km low down to over
+50 km at 300 km. At 200 km the air is about 10⁻¹⁰ as dense as at sea level;
+above 1000 km we treat it as empty.
+
+The atmosphere **turns with the Earth**.
+
+## Drag (`aerodynamics.hpp`)
+
+    D = ½ ρ v² · Cd · A,    against the velocity through the air
+
+- `v` is the speed **relative to the air**, `v_air = v − ω × r`: the air
+  moves with the ground, so a rocket on the pad feels no wind.
+- `A = π·d²/4` is the frontal area (the *diameter* parameter).
+- `Cd`, the **drag coefficient**, says how streamlined the shape is. The
+  *drag coefficient* parameter is its value below the speed of sound. Near
+  **Mach 1** shock waves form and Cd nearly doubles (the *transonic drag
+  rise*), then eases off as the rocket goes faster. We scale Cd by a typical
+  curve for slender rockets: ×1 up to Mach 0.8, ×1.8 at Mach 1.2, back to ×1
+  by Mach 5.
+
+**Dynamic pressure** `q = ½ρv²` is the push of the oncoming air. As the
+rocket climbs it speeds up while the air thins, so q rises to a peak,
+**max-Q**, and falls. That comes about a minute after liftoff, 10–15 km
+up, and is the hardest moment for the structure; real rockets throttle back
+through it. Most real launchers see 30–35 kPa. The default rocket sees about
+63 kPa, because it has far more thrust for its weight (1.9 times at liftoff,
+against a typical 1.2–1.5) and so is going faster while the air is thick.
+
+**Drag loss** is the speed taken away by drag on the way up, `∫ D/m dt`.
+Real launchers lose 100–200 m/s; the default rocket loses about 130. It is
+small next to the gravity loss (around a kilometre per second), but a
+blunt or fat rocket can lose far more: try the drag coefficient sweep.
+
+Some consequences you can see in the simulator:
+
+- **The best kick angle is lower with air.** A flatter climb spends longer in
+  thick air. The default kick is 20° (it was 25° in a vacuum), and kicks
+  that reach orbit in a vacuum now turn over into the ground.
+- **The orbit ends a few kilometres under the target.** The ascent stops
+  when the apoapsis reaches the target, at about 80 km, still in the upper
+  air; drag on the coast up trims a little off. Real rockets aim high to
+  allow for it.
+- **A pure gravity turn can't reach orbit at all.** The best it manages is
+  an orbit whose low point is inside the atmosphere, so the air brings it
+  down within one revolution.
+- **Low orbits decay.** Each revolution of a circular orbit loses
+  `Δa = −2π (Cd·A/m) ρ a²` of its semi-major axis: over a kilometre at
+  150 km, about 10 cm at 600 km for a typical satellite.
 
 ## The rocket (`rocket.hpp`)
 
@@ -79,8 +151,9 @@ the propellant can deliver:
     Δv = v_e · ln(m₀ / m_dry)
 
 In flight, part of that Δv is lost to fighting gravity while climbing
-("gravity losses"). That's why the simulator shows both *ideal Δv* and *Δv
-used*.
+("gravity losses") and some to pushing through the air ("drag losses"). That's
+why the simulator shows both *ideal Δv* and *Δv used*, and the drag loss on
+its own.
 
 **Thrust-to-weight ratio** on the pad, `F / (m₀·g)`, must exceed 1 to lift
 off. It also shapes the gravity turn: a low ratio turns more, a high one less.

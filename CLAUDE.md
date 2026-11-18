@@ -11,17 +11,18 @@ prototype settled the physics model and the UI ideas; this is the full version.
 ## Where we are (end of the first stretch, 2026-11-17)
 
 - Milestones M0–M6 are done and merged to `main`, and the Moon texture is in.
-  65 test suites pass (GCC, Clang, ASan/UBSan); clang-tidy is clean.
-- The app flies a single-stage rocket from any site and date to low orbit or
-  to the Moon (flyby, capture, impact), with sweeps, ghosts, scenario files,
-  eight-plus example scenarios, a textured Earth and Moon lit by the real Sun,
-  and an 11-step demo tour.
-- **Just done by the user:** the project folder was renamed from the typo
-  `OrbitSumulator` to `OrbitSimulator`. Old build folders hold absolute paths:
-  delete `build/` and reconfigure with the presets before building.
+- **Atmosphere + drag is done** and merged to `main`: 1976 US Standard
+  Atmosphere + exponential table, Mach-dependent drag, max-Q and drag loss
+  in the stats, a dynamic pressure graph, scenario format 2, two new
+  examples and a 12-step demo tour. 74 test suites pass (GCC, Clang,
+  ASan/UBSan); clang-tidy is clean.
+- The app flies a single-stage rocket from any site and date, through the
+  air, to low orbit or to the Moon (flyby, capture, impact), with sweeps,
+  ghosts, scenario files, a dozen example scenarios, a textured Earth and
+  Moon lit by the real Sun, and the demo tour.
 - **Next:** the user picks from the "Later" rows of the roadmap below
-  (atmosphere + drag, staging, scripting, natural bodies, solar system,
-  distribution / GitHub / ebuild). Ask which, don't assume.
+  (staging, scripting, natural bodies, solar system, distribution / GitHub /
+  ebuild, sweepable burn timing). Ask which, don't assume.
 - **Open questions:** see the end of `docs/decisions.md` (scripting
   language, how to specify natural bodies, app icon).
 
@@ -139,7 +140,9 @@ Each milestone ends with something that runs.
 | M4 | Sweeps + ghost paths in 3D, legend, scenario files (save/load, versioned). Design the scenario format so a demo can reuse it (M6) | done |
 | M5 | Moon: ephemeris, third-body gravity, Moon-relative orbit stats and sphere of influence, Moon in the 3D view. Generalise the hard-coded ascent → coast → circularize sequence into a **flight program** (a list of steps: burn/coast with a direction and an end condition) and use it for trans-lunar injection. Design it so scripting can drive it later | done |
 | M6 | Demo mode: a guided tour that plays scripted scenarios with captions and camera moves, e.g. east vs west launch, a kick-angle sweep, a polar orbit, a trip to the Moon. Each demo step is a scenario file plus caption, camera and timing | done |
-| Later | Atmosphere + drag, staging, full maneuver editor, other bodies | |
+| A1 | Atmosphere + drag: 1976 US Standard Atmosphere, Mach-dependent Cd, max-Q, drag loss, dynamic pressure graph, scenario format 2 | done |
+| Later | Staging, full maneuver editor, other bodies. Thrust that depends on air pressure (sea-level vs vacuum Isp) | |
+| Later | Sweepable burn timing: e.g. a TLI start offset in seconds, or any burn's start time, as a mission parameter so it can be swept (today `lead-angle-adjust` does this for TLI, in degrees). Fits the maneuver editor | |
 | Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |
 | Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
@@ -158,6 +161,15 @@ trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
 `qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
 Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
 series it finds through properties on `qml/Plots.qml`.
+
+### Core API in brief (atmosphere)
+
+`atmosphereAt(altitude)` → `Air` (T, P, ρ, speed of sound). `aerodynamicsAt(rocket,
+r, v)` → `Aerodynamics` (air velocity, Mach, q, Cd, drag force); also
+`aerodynamicsAt(result, sample)` for graphs. `Rocket` has `dragCoefficient`
+(subsonic, 0 = vacuum) and `diameter`. `SimResult` adds `dragLoss` and
+`maxDynamicPressure` (both counted while climbing only). Scenario files at
+format 1 get format 1's defaults (`defaultsForVersion()` in scenario.cpp).
 
 ### Core API in brief (M5)
 
@@ -188,6 +200,8 @@ evenly spaced `Sample`s (dense output), `FlightEvent`s, the final orbit's
 - Adding propellant at fixed thrust lowers thrust-to-weight, so the same kick
   over-rotates and crashes. Sweeps show this; it is physics, not a bug.
 - Defaults that worked: dry 4 t, propellant 60 t, thrust 1200 kN, Isp 340 s,
-  lat 28.5°, azimuth 90°, pitch start 10 s, kick 25° held 10 s, target 200 km.
+  lat 28.5°, azimuth 90°, pitch start 10 s, kick 20° held 10 s, target 200 km,
+  Cd 0.3, diameter 2.4 m. (In a vacuum the kick was 25°; with air, 25° flies
+  flat through thick air and 27° turns over: see decision 24.)
   The default launch time is Apollo 11's (1969-07-16 13:32 UTC); with Isp
   450 s the same rocket reaches lunar orbit (see scenarios/).
