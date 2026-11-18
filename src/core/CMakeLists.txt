@@ -28,6 +28,7 @@ add_library(orbit_core STATIC
     src/lunar_targeting.cpp
     src/mission_parameters.cpp
     src/orbit.cpp
+    src/parse.cpp
     src/rocket.cpp
     src/scenario.cpp
     src/simulation.cpp

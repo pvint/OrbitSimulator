@@ -198,6 +198,23 @@ TEST_CASE("Moving the launch site in longitude only turns the orbit", "[simulati
     REQUIRE_THAT(angleDiffDeg(rb.orbit.raan, ra.orbit.raan), WithinAbs(100.0, 1e-6));
 }
 
+// The pad is on the surface only to the last bit of rounding, which differs
+// between compilers' sin and cos; the impact check must not care which way.
+TEST_CASE("A rocket too weak to lift off lands back on the pad anywhere", "[simulation]") {
+    for (int lat = -90; lat <= 90; lat += 15) {
+        for (int lon = -180; lon < 180; lon += 20) {
+            Mission m = defaultMission();
+            m.rocket.stages[0].thrust = 100e3;
+            m.site.latitude = degToRad(lat);
+            m.site.longitude = degToRad(lon);
+            const SimResult r = simulate(m);
+            CAPTURE(lat, lon);
+            REQUIRE(r.endReason == EndReason::Impact);
+            REQUIRE(r.duration < 1.0);
+        }
+    }
+}
+
 TEST_CASE("Obvious failures are classified correctly", "[simulation]") {
     Mission m = defaultMission();
 

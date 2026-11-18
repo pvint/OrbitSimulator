@@ -60,6 +60,10 @@ namespace {
 
 constexpr double kInfinity = std::numeric_limits<double>::infinity();
 
+/// How far below the surface counts as hitting the ground (m); see
+/// Trigger::EarthImpact.
+constexpr double kImpactDepth = 1e-3;
+
 /// Things that can happen in the middle of a step. Each has a function g of
 /// time and state that goes from negative to positive at the moment it
 /// happens, so it can be pinned down by bisection.
@@ -454,7 +458,11 @@ double FlightSimulator::crossingDistance(const State& y) const {
 double FlightSimulator::gTrigger(Trigger trigger, double t, const State& y) const {
     switch (trigger) {
     case Trigger::EarthImpact:
-        return kRadiusEarth - norm(y.r);
+        // The ground, for impacts, is 1 mm below the surface. The launch pad
+        // is on the surface only to the last bit of rounding, and which side
+        // it lands on differs between compilers; this way a rocket on the pad
+        // is always clearly above ground.
+        return (kRadiusEarth - kImpactDepth) - norm(y.r);
     case Trigger::MoonImpact:
         return kRadiusMoon - norm(y.r - moonAt(t));
     case Trigger::EnterMoonSphere:
@@ -722,8 +730,8 @@ SimResult FlightSimulator::run() {
         for (const Trigger trigger : activeTriggers()) {
             const double g0 = gTrigger(trigger, m_t, m_y);
             const double g1 = gTrigger(trigger, m_t + hStep, result.y);
-            // Impact uses g0 ≤ 0 so that a rocket sinking off the pad (g = 0
-            // at the start) still counts.
+            // Impact also accepts g0 = 0, in case a step starts exactly at
+            // the impact depth.
             const bool crossed =
                 trigger == Trigger::EarthImpact ? (g0 <= 0.0 && g1 > 0.0) : (g0 < 0.0 && g1 >= 0.0);
             if (!crossed) continue;

@@ -13,13 +13,13 @@
 #include "orbit/core/earth.hpp"
 #include "orbit/core/lunar_targeting.hpp"
 #include "orbit/core/mission_parameters.hpp"
+#include "orbit/core/parse.hpp"
 #include "orbit/core/scenario.hpp"
 #include "orbit/core/simulation.hpp"
 #include "orbit/core/sweep.hpp"
 #include "orbit/core/version.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -69,11 +69,9 @@ void printUsage() {
 }
 
 bool parseNumber(std::string_view text, double& out) {
-    const char* begin =
-        text.data(); // NOLINT(bugprone-suspicious-stringview-data-usage): end is passed too
-    const char* end = begin + text.size();
-    const auto [ptr, ec] = std::from_chars(begin, end, out);
-    return ec == std::errc{} && ptr == end;
+    const std::optional<double> number = orbit::parseDouble(text);
+    if (number) out = *number;
+    return number.has_value();
 }
 
 /// Parses "kick-angle:5:45:9".
