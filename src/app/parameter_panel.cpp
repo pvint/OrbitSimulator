@@ -287,7 +287,9 @@ void ParameterPanel::refreshWidgets() {
         // Parameters only matter for some flight plans, and a swept parameter
         // is set by the sweep, not the slider.
         const bool locked = r.info->key == m_lockedKey;
-        const bool active = !locked && appliesToPlan(*r.info, m_mission.plan);
+        // A coast between stages needs more than one stage.
+        const bool staged = r.info->key != "stage-coast" || m_mission.rocket.stageCount > 1;
+        const bool active = !locked && staged && appliesToPlan(*r.info, m_mission.plan);
         r.label->setEnabled(active);
         r.slider->setEnabled(active);
         r.spinBox->setEnabled(active);
