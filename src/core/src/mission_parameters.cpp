@@ -85,6 +85,11 @@ constexpr std::array kParameters{
 
     // Stage 1 keeps the keys from before staging, so older files still mean
     // the same thing.
+    ParameterInfo{"stage-coast", "Coast between stages", "s", "Rocket",
+                  "Time between dropping an empty stage and lighting the next, so they drift "
+                  "apart first. The rocket falls a little meanwhile",
+                  0.0, 30.0, 0.5, [](const Mission& m) { return m.rocket.separationCoast; },
+                  [](Mission& m, double v) { m.rocket.separationCoast = v; }},
     ParameterInfo{"dry-mass", "Dry mass", "t", "Stage 1",
                   "Tanks, structure and engine, without propellant", 0.5, 50.0, 0.1,
                   stageDryMass<0>, setStageDryMass<0>},
