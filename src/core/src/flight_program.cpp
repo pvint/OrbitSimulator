@@ -135,11 +135,25 @@ FlightProgram flightProgramFor(const Mission& mission) {
     // ahead as the rocket will travel: then both get there together. (Aiming
     // at the Moon's *future* position keeps that point in the orbit plane,
     // when the launch was aimed with azimuthToMoon.)
-    FlightStep parking{"Parking orbit",           false,
-                       Steering::Prograde,        StepEnd::MoonAhead,
-                       lunarTravelAngle(mission), 2.0 * parkingPeriod};
+    //
+    // A delay is a timed coast after that moment. An early start can't go
+    // back in time, so instead the wait ends early: the angle to the Moon's
+    // arrival point shrinks at the rocket's angular speed less the Moon's,
+    // so ending it that much sooner, in angle, starts the burn that much
+    // sooner (to a fraction of a second).
+    const double delay = mission.lunar.injectionDelay;
+    const double closingRate = kTwoPi / parkingPeriod - kTwoPi / kSiderealMonth; // rad/s
+    FlightStep parking{"Parking orbit",
+                       false,
+                       Steering::Prograde,
+                       StepEnd::MoonAhead,
+                       lunarTravelAngle(mission) + closingRate * std::max(-delay, 0.0),
+                       2.0 * parkingPeriod};
     parking.lookAhead = lunarTransferTime(mission);
     program.push_back(parking);
+    if (delay > 0.0) {
+        program.push_back({"Delay", false, Steering::Prograde, StepEnd::Duration, delay});
+    }
     program.push_back({"Trans-lunar injection", true, Steering::Prograde, StepEnd::ApoapsisAltitude,
                        mission.lunar.tliApoapsisAltitude});
     program.push_back({"Coast to the Moon", false, Steering::Prograde, StepEnd::MoonClosestApproach,
