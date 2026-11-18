@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>pjvint@gmail.com</email>
+		<name>Paul Vint</name>
+	</maintainer>
+	<longdescription>
+		Orbit Simulator builds intuition for orbital mechanics. A rocket of one to
+		three stages launches from anywhere on a rotating 3D Earth, through the
+		atmosphere, to orbit or to the Moon. Any setting can be swept to compare a
+		family of trajectories side by side. Without USE=gui only the command-line
+		simulator, orbitsim-cli, is built.
+	</longdescription>
+	<upstream>
+		<remote-id type="github">pvint/OrbitSimulator</remote-id>
+		<bugs-to>https://github.com/pvint/OrbitSimulator/issues</bugs-to>
+	</upstream>
+</pkgmetadata>

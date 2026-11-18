@@ -185,4 +185,15 @@ if(ORBIT_DEPLOY_QT)
         OUTPUT_SCRIPT orbitsim_deploy_script
         NO_UNSUPPORTED_PLATFORM_ERROR)
     install(SCRIPT ${orbitsim_deploy_script})
+    if(APPLE)
+        # Deploying rewrites the binaries' library paths, which breaks their
+        # signatures, and Apple Silicon Macs refuse to run unsigned code.
+        # Sign again "ad hoc" (no identity): enough to run once the user has
+        # allowed it in System Settings.
+        install(CODE [[
+            execute_process(
+                COMMAND codesign --force --deep --sign - "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/orbitsim.app"
+                COMMAND_ERROR_IS_FATAL ANY)
+        ]])
+    endif()
 endif()
