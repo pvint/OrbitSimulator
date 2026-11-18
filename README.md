@@ -1,5 +1,7 @@
 # Orbit Simulator
 
+[![CI](https://github.com/pvint/OrbitSimulator/actions/workflows/ci.yml/badge.svg)](https://github.com/pvint/OrbitSimulator/actions/workflows/ci.yml)
+
 A desktop app for building intuition about orbital mechanics. Launch a rocket
 from anywhere on a rotating Earth, see where it goes, and sweep a parameter
 to compare a whole family of trajectories side by side.
@@ -14,6 +16,21 @@ drag and max-Q, and can have up to three stages. `orbitsim-cli` flies missions a
 line. See the roadmap in [CLAUDE.md](CLAUDE.md). The
 original 2D browser prototype, which already works, is in
 [prototype/web](prototype/web/README.md).
+
+![The main window: a flight to low orbit from Cape Canaveral](docs/images/main-window.png)
+
+## Installing
+
+Ready-made packages are on the
+[Releases](https://github.com/pvint/OrbitSimulator/releases) page. They aren't
+signed, so the first start needs one extra step:
+
+| Platform | Package | First start |
+|---|---|---|
+| Linux | `OrbitSimulator-…-x86_64.AppImage` | `chmod +x` it, then run it. Needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later) |
+| Windows | `OrbitSimulator-…-Windows.zip` | Unzip and run `bin\orbitsim.exe`. If SmartScreen warns, choose *More info ▸ Run anyway* |
+| macOS | `OrbitSimulator-…-Darwin.dmg` | Drag `orbitsim.app` to Applications and open it. macOS refuses the first time: open *System Settings ▸ Privacy & Security* and choose *Open Anyway* |
+| Gentoo | `dist/gentoo/` | A live ebuild: copy `dist/gentoo/sci-astronomy` into a local overlay, then `emerge orbitsimulator` |
 
 ## Building
 
@@ -157,7 +174,18 @@ cmake --build build/release --target package
 This produces a `.zip` on Windows, a `.dmg` on macOS and a `.tar.gz` on Linux
 in `build/release/`. On Windows and macOS the Qt runtime is bundled. On Linux
 it isn't by default, since a distribution's Qt can't be bundled reliably; see
-[docs/decisions.md](docs/decisions.md).
+[docs/decisions.md](docs/decisions.md). The Linux package to hand out is the
+AppImage, built with the official Qt (from qt.io or
+[aqtinstall](https://github.com/miurahr/aqtinstall)):
+
+```sh
+QMAKE=~/Qt/6.11.3/gcc_64/bin/qmake tools/make_appimage.sh build/release
+```
+
+CI (`.github/workflows/ci.yml`) builds and tests every push on Linux, Windows
+and macOS, builds all three packages, and starts each one to check that
+nothing is missing. Pushing a tag such as `v0.2.0` (matching the version in
+`CMakeLists.txt`) drafts a release with the packages attached.
 
 ## Project layout
 
@@ -167,8 +195,10 @@ src/cli/       orbitsim-cli: runs the physics without a GUI
 src/app/       the Qt desktop app (Widgets, plus QML for the 3D view and plots)
 scenarios/     example scenario files
 demos/         the guided demo tour
-tools/         helper scripts (rebuilding the Earth texture)
+tools/         helper scripts: textures, icons, the AppImage, CI's smoke test
 tests/         physics tests (Catch2)
+dist/          Linux desktop file and AppStream metadata; the Gentoo ebuild
+.github/       CI: build, test and package on Linux, Windows and macOS
 docs/          design decisions and physics notes
 prototype/web/ the original 2D browser prototype
 ```
