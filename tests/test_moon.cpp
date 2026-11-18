@@ -160,3 +160,29 @@ TEST_CASE("Flight plans build the expected programs", "[moon]") {
                                                "Coast to the Moon", "Lunar orbit insertion",
                                                "Lunar orbit"});
 }
+
+TEST_CASE("The TLI start delay moves the injection burn by that many seconds", "[moon]") {
+    Mission m = apolloMission();
+    m.guidance.azimuth = degToRad(72.33);
+    const auto injectionStart = [](const SimResult& r) {
+        for (const FlightEvent& e : r.events) {
+            if (e.description == "Trans-lunar injection: engine on") return e.sample.t;
+        }
+        return -1.0;
+    };
+    const double onTime = injectionStart(simulate(m));
+    REQUIRE(onTime > 0.0);
+
+    // Later: a timed coast after the planned moment, so exactly to the second.
+    m.lunar.injectionDelay = 90.0;
+    REQUIRE_THAT(injectionStart(simulate(m)) - onTime, WithinAbs(90.0, 1e-6));
+    // Earlier: the wait for the Moon ends early, which is exact to a
+    // fraction of a second.
+    m.lunar.injectionDelay = -90.0;
+    REQUIRE_THAT(injectionStart(simulate(m)) - onTime, WithinAbs(-90.0, 0.5));
+
+    // No delay: the same program as ever, with no extra step.
+    m.lunar.injectionDelay = 0.0;
+    const FlightProgram program = flightProgramFor(m);
+    REQUIRE(std::ranges::none_of(program, [](const FlightStep& s) { return s.name == "Delay"; }));
+}

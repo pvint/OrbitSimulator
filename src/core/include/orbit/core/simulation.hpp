@@ -63,6 +63,10 @@ struct LunarTransfer {
     /// Added to the automatically computed lead angle (radians). Sweep it to
     /// see how timing decides between hitting, orbiting and missing the Moon.
     double leadAngleAdjust = 0.0;
+    /// Start the injection burn this many seconds later than planned
+    /// (negative: earlier). The same idea as leadAngleAdjust, in time: about
+    /// 15 s per degree in a low parking orbit.
+    double injectionDelay = 0.0;
     /// Lunar orbit insertion brakes until the orbit round the Moon has its
     /// apoapsis no higher than this (m above the Moon's surface).
     double captureApoapsisAltitude = 10e6;

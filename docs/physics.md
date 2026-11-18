@@ -263,6 +263,12 @@ long that takes. The burn starts when the point where the Moon *will be* at
 that time is ν ahead of the rocket. The classic **lead angle** (how far
 ahead the Moon is at the moment of the burn) works out at about 110–130°.
 
+*TLI start delay* shifts the burn by seconds. A later start adds a timed
+coast; an earlier one ends the wait early, by the angle the rocket gains on
+the Moon's arrival point in that time (its angular speed, 2π/88 min, less
+the Moon's, 2π/27.3 days: about 4° a minute). Ten seconds moves the
+arrival point by about 2300 km, more than the Moon's radius.
+
 **Which way to launch.** The burn doesn't change the orbit's plane, so the
 Moon must be in that plane when the rocket arrives. The plane is fixed when
 the rocket leaves the pad, by the launch site's position at that moment

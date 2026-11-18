@@ -174,6 +174,12 @@ constexpr std::array kParameters{
                   -45.0, 45.0, 0.1,
                   [](const Mission& m) { return radToDeg(m.lunar.leadAngleAdjust); },
                   [](Mission& m, double v) { m.lunar.leadAngleAdjust = degToRad(v); }},
+    ParameterInfo{"tli-delay", "TLI start delay", "s", "Lunar transfer",
+                  "Start the trans-lunar injection burn this many seconds later than planned "
+                  "(negative: earlier). Sweep it to see how timing decides where the rocket "
+                  "meets the Moon: about 15 s per degree of lead angle",
+                  -600.0, 600.0, 1.0, [](const Mission& m) { return m.lunar.injectionDelay; },
+                  [](Mission& m, double v) { m.lunar.injectionDelay = v; }},
     ParameterInfo{"capture-apoapsis", "Capture apoapsis", "km", "Lunar transfer",
                   "Lunar orbit insertion brakes until the orbit round the Moon reaches "
                   "no higher than this above its surface",

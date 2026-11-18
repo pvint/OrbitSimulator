@@ -146,7 +146,7 @@ Each milestone ends with something that runs.
 | A1 | Atmosphere + drag: 1976 US Standard Atmosphere, Mach-dependent Cd, max-Q, drag loss, dynamic pressure graph, scenario format 2 | done |
 | A2 | Staging: up to three stages + payload, separation mid-burn, dropped stages flown and drawn, gravity compensation for weak upper stages | done |
 | Later | Full maneuver editor, other bodies. Thrust that depends on air pressure (sea-level vs vacuum Isp). A coast between stage separation and ignition | |
-| Later | Sweepable burn timing: e.g. a TLI start offset in seconds, or any burn's start time, as a mission parameter so it can be swept (today `lead-angle-adjust` does this for TLI, in degrees). Fits the maneuver editor | |
+| A3 | Sweepable burn timing: `tli-delay`, the injection burn's start in seconds (any burn's timing comes with the maneuver editor) | done |
 | Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |
 | Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
