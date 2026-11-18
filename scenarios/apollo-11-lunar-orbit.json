@@ -1,11 +1,11 @@
 {
   "format": "orbitsim-scenario",
-  "version": 1,
+  "version": 2,
   "name": "To the Moon (Apollo 11's launch)",
-  "description": "Launched at Apollo 11's liftoff time, 16 July 1969 13:32 UTC, on the azimuth that puts the parking orbit's plane through the Moon: 72.5°, close to Apollo's real 72.0°. After one parking orbit the trans-lunar injection burn sends it out; three and a half days later it brakes into orbit round the Moon.",
+  "description": "Launched at Apollo 11's liftoff time, 16 July 1969 13:32 UTC, on the azimuth that puts the parking orbit's plane through the Moon: 72.3°, close to Apollo's real 72.0°. After one parking orbit the trans-lunar injection burn sends it out; three and a half days later it brakes into orbit round the Moon.",
   "mission": {
     "launch-utc": "1969-07-16T13:32:00Z",
-    "azimuth": 72.52,
+    "azimuth": 72.33,
     "isp": 450,
     "plan": "lunar-orbit",
     "lead-angle-adjust": 2

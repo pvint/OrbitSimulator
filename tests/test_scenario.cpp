@@ -163,6 +163,34 @@ TEST_CASE("Older files with auto-circularize still load", "[scenario]") {
                         ContainsSubstring("mission.plan"));
 }
 
+TEST_CASE("Version 1 files fly as they always did: in a vacuum, with a 25° kick", "[scenario]") {
+    // Version 1 predates the atmosphere. Keys it leaves out take version 1's
+    // defaults, not today's.
+    const Mission old = scenarioFromJson(R"({"format": "orbitsim-scenario", "version": 1,
+                                             "mission": {"latitude": 5.2}})")
+                            .scenario.mission;
+    REQUIRE(old.rocket.dragCoefficient == 0.0);
+    REQUIRE_THAT(radToDeg(old.guidance.kickAngle), WithinAbs(25.0, 1e-12));
+    REQUIRE_THAT(radToDeg(old.site.latitude), WithinAbs(5.2, 1e-12));
+    // Also with no mission section at all.
+    const Mission bare =
+        scenarioFromJson(R"({"format": "orbitsim-scenario", "version": 1})").scenario.mission;
+    REQUIRE(bare.rocket.dragCoefficient == 0.0);
+
+    // Version 2 leaves today's defaults alone.
+    const Mission now =
+        scenarioFromJson(R"({"format": "orbitsim-scenario", "version": 2, "mission": {}})")
+            .scenario.mission;
+    REQUIRE(now.rocket.dragCoefficient == defaultMission().rocket.dragCoefficient);
+    REQUIRE(now.guidance.kickAngle == defaultMission().guidance.kickAngle);
+
+    // Saved files are always the current version, with drag written out.
+    const std::string json = scenarioToJson(Scenario{});
+    REQUIRE_THAT(json, ContainsSubstring("\"version\": 2"));
+    REQUIRE_THAT(json, ContainsSubstring("\"drag-coefficient\": 0.3"));
+    REQUIRE_THAT(json, ContainsSubstring("\"diameter\": 2.4"));
+}
+
 TEST_CASE("The bundled demo tour is valid and its scenarios exist", "[demo]") {
     std::ifstream in(std::filesystem::path(ORBIT_DEMO_DIR) / "tour.json");
     REQUIRE(in);

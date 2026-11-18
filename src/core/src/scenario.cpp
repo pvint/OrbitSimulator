@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "orbit/core/scenario.hpp"
 
+#include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/mission_parameters.hpp"
 
@@ -50,9 +51,23 @@ std::string optionalString(const json& object, const char* key) {
     return it->get<std::string>();
 }
 
-Mission readMission(const json& object, std::vector<std::string>& warnings) {
-    if (!object.is_object()) throw ScenarioError("\"mission\" must be an object");
+/// What a key left out of a file of this format version means: the
+/// defaults of the program that wrote it. That way an old file flies
+/// exactly as it always did.
+Mission defaultsForVersion(int version) {
     Mission mission = defaultMission();
+    if (version < 2) {
+        // Version 1 predates the atmosphere: no drag, and the 25° kick
+        // that was tuned for flying in a vacuum.
+        mission.rocket.dragCoefficient = 0.0;
+        mission.guidance.kickAngle = degToRad(25.0);
+    }
+    return mission;
+}
+
+Mission readMission(const json& object, int version, std::vector<std::string>& warnings) {
+    if (!object.is_object()) throw ScenarioError("\"mission\" must be an object");
+    Mission mission = defaultsForVersion(version);
 
     // The launch moment first, so a "launch-hour" given as well can adjust it.
     if (const auto it = object.find(std::string(kLaunchUtcKey)); it != object.end()) {
@@ -135,18 +150,21 @@ LoadedScenario scenarioFromJson(std::string_view text) {
     if (version == doc.end() || !version->is_number_integer()) {
         throw ScenarioError("\"version\" is missing or not a whole number");
     }
-    if (version->get<int>() > kScenarioFormatVersion) {
+    const int formatVersion = version->get<int>();
+    if (formatVersion > kScenarioFormatVersion) {
         throw ScenarioError("this scenario needs a newer version of Orbit Simulator (format " +
-                            std::to_string(version->get<int>()) + ")");
+                            std::to_string(formatVersion) + ")");
     }
-    // (Older versions would be upgraded here. There are none yet.)
+    // Older versions are upgraded as they are read: see defaultsForVersion().
 
     LoadedScenario loaded;
     Scenario& s = loaded.scenario;
     s.name = optionalString(doc, "name");
     s.description = optionalString(doc, "description");
     if (const auto it = doc.find("mission"); it != doc.end()) {
-        s.mission = readMission(*it, loaded.warnings);
+        s.mission = readMission(*it, formatVersion, loaded.warnings);
+    } else {
+        s.mission = defaultsForVersion(formatVersion);
     }
     if (const auto it = doc.find("sweep"); it != doc.end() && !it->is_null()) {
         s.sweep = readSweep(*it);
