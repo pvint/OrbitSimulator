@@ -70,6 +70,20 @@ FlightStatsPanel::FlightStatsPanel(QWidget* parent) : QWidget(parent) {
     m_moonPeriod = addMoonRow(tr("Period"), tr("Time for one orbit of the Moon"));
     layout->addWidget(m_moonGroup);
 
+    // Only shown when stages were dropped: where each one went.
+    m_stagesGroup = new QGroupBox(tr("Dropped stages"), this);
+    auto* stagesLayout = new QVBoxLayout(m_stagesGroup);
+    auto* stages = new QLabel(m_stagesGroup);
+    stages->setObjectName(QStringLiteral("stages"));
+    stages->setTextFormat(Qt::RichText);
+    stages->setWordWrap(true);
+    stages->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    stages->setToolTip(tr("Each empty stage falls back on its own (grey in the 3D view). "
+                          "Distances are along the ground from the launch site."));
+    stagesLayout->addWidget(stages);
+    m_stages = stages;
+    layout->addWidget(m_stagesGroup);
+
     auto* eventsGroup = new QGroupBox(tr("Events"), this);
     auto* eventsLayout = new QVBoxLayout(eventsGroup);
     m_events = new QLabel(eventsGroup);
@@ -127,6 +141,26 @@ void FlightStatsPanel::showResult(const orbit::SimResult& result) {
         m_moonOrbit->setText(QStringLiteral("—"));
         m_moonPeriod->setText(QStringLiteral("—"));
     }
+
+    m_stagesGroup->setVisible(!result.spentStages.empty());
+    QString stages = QStringLiteral("<table cellspacing='2'>");
+    for (const orbit::SpentStage& spent : result.spentStages) {
+        const orbit::Sample& separation = spent.samples.front();
+        const QString fate = spent.impactTime ? tr("came down %1 downrange, T+%2")
+                                                    .arg(display::distance(spent.impactDistance),
+                                                         display::duration(*spent.impactTime))
+                                              : tr("still flying at the end");
+        stages += QStringLiteral("<tr><td>%1</td><td>&nbsp;%2</td></tr>"
+                                 "<tr><td></td><td style='color:#8592ad'>&nbsp;%3</td></tr>"
+                                 "<tr><td></td><td style='color:#8592ad'>&nbsp;%4</td></tr>")
+                      .arg(tr("T+%1").arg(display::duration(separation.t)),
+                           tr("Stage %1 dropped").arg(spent.stage + 1),
+                           tr("at %1, %2")
+                               .arg(display::altitude(separation.altitude()),
+                                    display::speed(separation.speed())),
+                           fate);
+    }
+    m_stages->setText(stages + QStringLiteral("</table>"));
 
     if (result.events.empty()) {
         m_events->setText(tr("<i>None: the engine never shut down in flight.</i>"));

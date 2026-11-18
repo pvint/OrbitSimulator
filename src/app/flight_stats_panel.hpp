@@ -31,6 +31,8 @@ private:
     QLabel* m_dragLoss = nullptr;
     QLabel* m_duration = nullptr;
     QLabel* m_events = nullptr;
+    QGroupBox* m_stagesGroup = nullptr;
+    QLabel* m_stages = nullptr;
 
     QGroupBox* m_moonGroup = nullptr;
     QLabel* m_moonClosest = nullptr;

@@ -22,6 +22,8 @@ QString altitude(double metres) {
     return tr("%1 km").arg(number(km, std::abs(km) < 10.0 ? 2 : 1));
 }
 
+QString distance(double metres) { return tr("%1 km").arg(number(metres / 1000.0, 0)); }
+
 QString duration(double seconds) {
     if (!std::isfinite(seconds)) return QStringLiteral("—");
     if (seconds < 120.0) return tr("%1 s").arg(number(seconds, 1));

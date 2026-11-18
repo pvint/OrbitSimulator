@@ -6,6 +6,7 @@
 
 #include <QWidget>
 
+#include <array>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -63,10 +64,13 @@ private:
     std::string m_lockedKey;
     QComboBox* m_plan = nullptr;
     QGroupBox* m_lunarGroup = nullptr;
+    /// "Stage 1" ... "Stage 3": the upper ones are hidden until fitted.
+    std::array<QGroupBox*, orbit::kMaxStages> m_stageGroups{};
     QPushButton* m_aimButton = nullptr;
     QPushButton* m_bestTimeButton = nullptr;
     QDateEdit* m_launchDate = nullptr;
 
+    QLabel* m_liftoffMass = nullptr;
     QLabel* m_burnTime = nullptr;
     QLabel* m_massFlow = nullptr;
     QLabel* m_thrustToWeight = nullptr;

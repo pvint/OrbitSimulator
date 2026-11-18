@@ -20,6 +20,7 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QStringList>
 #include <QVBoxLayout>
 
 #include <cmath>
@@ -126,6 +127,12 @@ ParameterPanel::ParameterPanel(QWidget* parent)
                 m_lunarGroup = group;
                 buildLunarButtons(grid);
             }
+            for (int k = 0; k < orbit::kMaxStages; ++k) {
+                if (p.group == "Stage " + std::to_string(k + 1)) {
+                    m_stageGroups.at(static_cast<std::size_t>(k)) = group;
+                    group->setObjectName(QStringLiteral("stage-group-%1").arg(k + 1));
+                }
+            }
         }
 
         auto* label = new QLabel(toQString(p.label), group);
@@ -188,11 +195,15 @@ void ParameterPanel::buildDerivedSection(QBoxLayout* layout) {
         form->addRow(name, value);
         return value;
     };
-    m_burnTime = addRow(tr("Burn time"), tr("Propellant ÷ mass flow, at full thrust"));
+    m_liftoffMass = addRow(tr("Liftoff mass"), tr("Every stage, full, and the payload"));
+    m_burnTime = addRow(tr("Burn time"),
+                        tr("Propellant ÷ mass flow, at full thrust (each stage, bottom first)"));
     m_massFlow = addRow(tr("Mass flow"), tr("F / (Isp · g0)"));
     m_thrustToWeight =
         addRow(tr("Liftoff T/W"), tr("Thrust ÷ weight on the pad. Must be above 1 to lift off."));
-    m_idealDeltaV = addRow(tr("Ideal Δv"), tr("Tsiolkovsky: Isp · g0 · ln(m0 / m_dry)"));
+    m_idealDeltaV = addRow(tr("Ideal Δv"),
+                           tr("Tsiolkovsky, Isp · g0 · ln(m_full / m_empty), for each stage with "
+                              "everything above it as its load, added up"));
     m_rotationBoost = addRow(tr("Earth rotation boost"),
                              tr("Speed the launch pad already has along the launch direction"));
     layout->addWidget(group);
@@ -274,6 +285,11 @@ void ParameterPanel::refreshWidgets() {
     m_plan->setCurrentIndex(m_plan->findData(static_cast<int>(m_mission.plan)));
     const bool lunar = m_mission.plan == orbit::FlightPlan::LunarFlyby ||
                        m_mission.plan == orbit::FlightPlan::LunarOrbit;
+    for (int k = 1; k < orbit::kMaxStages; ++k) {
+        if (QGroupBox* stage = m_stageGroups.at(static_cast<std::size_t>(k))) {
+            stage->setVisible(k < m_mission.rocket.stageCount);
+        }
+    }
     m_aimButton->setEnabled(lunar);
     m_bestTimeButton->setEnabled(lunar);
     const orbit::CalendarTime launch = orbit::calendarFromEpoch(m_mission.launchEpoch);
@@ -284,15 +300,34 @@ void ParameterPanel::refreshWidgets() {
 
 void ParameterPanel::refreshDerived() {
     const orbit::Rocket& rocket = m_mission.rocket;
-    m_burnTime->setText(display::duration(orbit::burnTime(rocket)));
-    m_massFlow->setText(tr("%1 kg/s").arg(QLocale().toString(orbit::massFlowRate(rocket), 'f', 1)));
+    // One value per fitted stage, bottom first: "176 s + 280 s".
+    const auto perStage = [&](const auto& format) {
+        QStringList parts;
+        for (int k = 0; k < rocket.stageCount; ++k) {
+            parts.append(format(rocket.stages.at(static_cast<std::size_t>(k)), k));
+        }
+        return parts.join(QStringLiteral(" + "));
+    };
+    m_liftoffMass->setText(display::mass(orbit::liftoffMass(rocket)));
+    m_burnTime->setText(
+        perStage([](const orbit::Stage& s, int) { return display::duration(orbit::burnTime(s)); }));
+    m_massFlow->setText(tr("%1 kg/s").arg(perStage([](const orbit::Stage& s, int) {
+        return QLocale().toString(orbit::massFlowRate(s), 'f', 1);
+    })));
 
     const double twr = orbit::liftoffThrustToWeight(rocket);
     const QString twrText = QLocale().toString(twr, 'f', 2);
     m_thrustToWeight->setText(
         twr > 1.0 ? twrText
                   : tr("<span style='color:#f87171'>%1 (can't lift off)</span>").arg(twrText));
-    m_idealDeltaV->setText(display::speed(orbit::idealDeltaV(rocket)));
+    QString deltaV = display::speed(orbit::idealDeltaV(rocket));
+    if (rocket.stageCount > 1) {
+        deltaV += QStringLiteral("<br><span style='color:#8592ad'>%1</span>")
+                      .arg(perStage([&](const orbit::Stage&, int k) {
+                          return display::speed(orbit::stageDeltaV(rocket, k));
+                      }));
+    }
+    m_idealDeltaV->setText(deltaV);
 
     // The pad's velocity, projected onto the launch direction.
     const orbit::Vec3 pad = orbit::positionFromLatLon(

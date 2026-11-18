@@ -57,10 +57,10 @@ SweepPanel::SweepPanel(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
 
     for (const orbit::ParameterInfo& p : orbit::missionParameters()) {
+        const QString title = QString::fromStdString(orbit::parameterTitle(p));
         // Unitless numbers (the drag coefficient) get no empty "()".
         const QString name =
-            p.unit.empty() ? toQString(p.label)
-                           : QStringLiteral("%1 (%2)").arg(toQString(p.label), toQString(p.unit));
+            p.unit.empty() ? title : QStringLiteral("%1 (%2)").arg(title, toQString(p.unit));
         m_parameter->addItem(name, toQString(p.key));
     }
     m_parameter->setCurrentIndex(m_parameter->findData(QStringLiteral("kick-angle")));

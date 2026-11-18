@@ -11,6 +11,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QSignalSpy>
@@ -117,7 +118,7 @@ private slots:
         QVERIFY(slider && spin);
 
         slider->setValue(100); // propellant steps are 0.5 t from 0 → 50 t
-        QCOMPARE(panel.mission().rocket.propellantMass, 50000.0);
+        QCOMPARE(panel.mission().rocket.stages[0].propellantMass, 50000.0);
         QCOMPARE(spin->value(), 50.0);
     }
 
@@ -247,6 +248,37 @@ private slots:
         stats.showResult(orbit::simulate(vacuum));
         QCOMPARE(maxQ->text(), QStringLiteral("—"));
         QCOMPARE(dragLoss->text(), QStringLiteral("—"));
+    }
+
+    void stageCountShowsTheStagesInUse() {
+        ParameterPanel panel;
+        auto* stages = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-stages"));
+        auto* stage2 = panel.findChild<QGroupBox*>(QStringLiteral("stage-group-2"));
+        auto* stage3 = panel.findChild<QGroupBox*>(QStringLiteral("stage-group-3"));
+        QVERIFY(stages && stage2 && stage3);
+        QVERIFY(!stage2->isVisibleTo(&panel));
+
+        stages->setValue(2.0);
+        QCOMPARE(panel.mission().rocket.stageCount, 2);
+        QVERIFY(stage2->isVisibleTo(&panel));
+        QVERIFY(!stage3->isVisibleTo(&panel));
+        stages->setValue(3.0);
+        QVERIFY(stage3->isVisibleTo(&panel));
+    }
+
+    void statsPanelListsDroppedStages() {
+        FlightStatsPanel stats;
+        auto* list = stats.findChild<QLabel*>(QStringLiteral("stages"));
+        QVERIFY(list);
+        stats.showResult(orbit::simulate(orbit::defaultMission()));
+        QVERIFY(!list->isVisibleTo(&stats));
+
+        orbit::Mission twoStage = orbit::defaultMission();
+        twoStage.rocket.stageCount = 2;
+        stats.showResult(orbit::simulate(twoStage));
+        QVERIFY(list->isVisibleTo(&stats));
+        QVERIFY(list->text().contains(QStringLiteral("Stage 1 dropped")));
+        QVERIFY(list->text().contains(QStringLiteral("downrange")));
     }
 
     void dragControlsChangeTheMission() {
