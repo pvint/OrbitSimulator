@@ -10,6 +10,7 @@
 
 #include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
+#include "orbit/core/earth.hpp"
 #include "orbit/core/lunar_targeting.hpp"
 #include "orbit/core/mission_parameters.hpp"
 #include "orbit/core/scenario.hpp"
@@ -47,7 +48,9 @@ void printUsage() {
     for (const auto& p : orbit::missionParameters()) {
         std::cout << "  --" << padded(p.key, 17) << padded(p.unit, 4) << p.help << '\n';
     }
-    std::cout << "  --plan PLAN            orbit, burn-to-depletion, lunar-flyby or lunar-orbit\n"
+    std::cout << "  --plan PLAN            orbit, burn-to-depletion, lunar-flyby, lunar-orbit, or\n"
+                 "                         custom (needs a scenario with a program)\n"
+                 "  --show-program         list the flight program's steps before flying\n"
                  "  --no-circularize       same as --plan burn-to-depletion\n"
                  "  --best-launch-hour     pick the time of day that lets a lunar flight go east\n"
                  "  --aim-moon             set the azimuth so the orbit plane meets the Moon\n"
@@ -55,7 +58,8 @@ void printUsage() {
                  "  --scenario FILE        start from a scenario file (put it first; later\n"
                  "                         options change it)\n"
                  "  --sweep KEY:FROM:TO:STEPS  fly STEPS flights with parameter KEY from FROM\n"
-                 "                         to TO, e.g. --sweep kick-angle:5:45:9\n"
+                 "                         to TO, e.g. --sweep kick-angle:5:45:9. In a custom\n"
+                 "                         program, step-N-value is step N's value\n"
                  "  --no-sweep             ignore the scenario's sweep\n"
                  "  --save-scenario FILE   save the mission (and sweep) as a scenario file\n"
                  "\nOutput options:\n"
@@ -83,9 +87,9 @@ std::optional<orbit::SweepSpec> parseSweep(std::string_view text) {
     }
     orbit::SweepSpec spec;
     double steps = 0.0;
-    if (parts.size() != 4 || orbit::findParameter(parts[0]) == nullptr ||
-        !parseNumber(parts[1], spec.from) || !parseNumber(parts[2], spec.to) ||
-        !parseNumber(parts[3], steps) || steps < 1 || steps != std::floor(steps)) {
+    if (parts.size() != 4 || parts[0].empty() || !parseNumber(parts[1], spec.from) ||
+        !parseNumber(parts[2], spec.to) || !parseNumber(parts[3], steps) || steps < 1 ||
+        steps != std::floor(steps)) {
         return std::nullopt;
     }
     spec.parameter = std::string(parts[0]);
@@ -140,6 +144,16 @@ void printResult(const orbit::SimResult& r) {
                   << aero.mach << '\n'
                   << std::setprecision(0) << "Drag loss:        " << r.dragLoss << " m/s\n";
     }
+    if (r.endReason == orbit::EndReason::Impact) {
+        const orbit::Sample& last = r.samples.back();
+        const orbit::GeoPoint where = orbit::groundPoint(
+            last.state.r, orbit::earthRotationAngleAt(r.mission.launchEpoch + last.t));
+        std::cout << std::setprecision(2)
+                  << "Came down at:     " << std::abs(radToDeg(where.latitude))
+                  << (where.latitude >= 0.0 ? " N, " : " S, ")
+                  << std::abs(radToDeg(where.longitude)) << (where.longitude >= 0.0 ? " E" : " W")
+                  << '\n';
+    }
     for (const orbit::SpentStage& spent : r.spentStages) {
         const orbit::Sample& separation = spent.samples.front();
         std::cout << "Stage " << spent.stage + 1 << ":          dropped at T+"
@@ -191,12 +205,30 @@ bool writeCsv(const orbit::SimResult& result, const std::string& path) {
     return static_cast<bool>(out);
 }
 
-void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec) {
-    const orbit::ParameterInfo& p = *orbit::findParameter(spec.parameter);
+void printProgram(const orbit::FlightProgram& program) {
+    std::cout << "Flight program:\n";
+    for (std::size_t i = 0; i < program.size(); ++i) {
+        const orbit::FlightStep& s = program[i];
+        std::cout << "  " << i + 1 << ". " << std::left << std::setw(24) << s.name
+                  << (s.engineOn ? "burn  " : "coast ") << std::setw(34)
+                  << (s.engineOn ? orbit::steeringLabel(s.steering) : std::string_view{})
+                  << orbit::stepEndLabel(s.end);
+        if (orbit::stepEndHasValue(s.end)) {
+            const double value = orbit::stepValueToDisplay(s.end, s.value);
+            std::cout << ' ' << std::fixed << std::setprecision(std::abs(value) >= 100.0 ? 0 : 1)
+                      << value << ' ' << orbit::stepEndUnit(s.end);
+        }
+        std::cout << std::right << '\n';
+    }
+    std::cout << '\n';
+}
+
+void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec,
+                const orbit::SweepTarget& p) {
     const auto values = orbit::sweepValues(spec);
     const auto missions = orbit::sweepMissions(base, spec);
-    std::cout << "Sweep of " << orbit::parameterTitle(p)
-              << (p.unit.empty() ? std::string() : " (" + std::string(p.unit) + ")") << "\n\n"
+    std::cout << "Sweep of " << p.title << (p.unit.empty() ? std::string() : " (" + p.unit + ")")
+              << "\n\n"
               << std::right << std::setw(10) << "value" << "  " << std::left << std::setw(13)
               << "outcome" << std::right << std::setw(13) << "periapsis" << std::setw(13)
               << "apoapsis" << std::setw(9) << "incl." << std::setw(11) << "dv used"
@@ -228,6 +260,7 @@ int main(int argc, char* argv[]) {
     std::string savePath;
     bool aimMoon = false;
     bool bestHour = false;
+    bool showProgram = false;
 
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
@@ -249,6 +282,10 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--best-launch-hour") {
             bestHour = true;
+            continue;
+        }
+        if (arg == "--show-program") {
+            showProgram = true;
             continue;
         }
         if (arg == "--no-sweep") {
@@ -274,8 +311,8 @@ int main(int argc, char* argv[]) {
             csvPath = value;
         } else if (arg == "--plan") {
             if (!orbit::planFromKey(value, scenario.mission.plan)) {
-                std::cerr
-                    << "--plan must be orbit, burn-to-depletion, lunar-flyby or lunar-orbit\n";
+                std::cerr << "--plan must be orbit, burn-to-depletion, lunar-flyby, lunar-orbit or "
+                             "custom\n";
                 return 1;
             }
         } else if (arg == "--save-scenario") {
@@ -335,9 +372,18 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (showProgram) printProgram(orbit::flightProgramFor(scenario.mission));
     if (scenario.sweep) {
+        const std::optional<orbit::SweepTarget> target =
+            orbit::findSweepTarget(scenario.mission, scenario.sweep->parameter);
+        if (!target) {
+            std::cerr << "Can't sweep \"" << scenario.sweep->parameter
+                      << "\": not a parameter (see --help), nor a value of this mission's "
+                         "custom program (step-N-value)\n";
+            return 1;
+        }
         if (!csvPath.empty()) std::cerr << "note: --csv is ignored for sweeps\n";
-        printSweep(scenario.mission, *scenario.sweep);
+        printSweep(scenario.mission, *scenario.sweep, *target);
         return 0;
     }
 
