@@ -41,6 +41,7 @@ enum class Steering {
     Antinormal,     ///< the opposite way
     RadialOut,      ///< straight up, away from the Earth's centre
     RadialIn,       ///< straight down
+    OrbitInsertion, ///< closed-loop ascent into a circular orbit at the step's value (guidance.hpp)
 };
 
 enum class StepEnd {
@@ -51,6 +52,7 @@ enum class StepEnd {
     Apoapsis,            ///< until the rocket reaches apoapsis (stops climbing)
     Periapsis,           ///< until the rocket reaches periapsis (stops falling)
     Circular,            ///< until the orbit is circular (with Circularize steering)
+    OrbitAt,             ///< until in a circular orbit; OrbitInsertion aims for `value` m up
     MoonAhead,           ///< until the Moon, `lookAhead` s from now, is `value` radians ahead
     MoonClosestApproach, ///< until the closest point to the Moon (inside its sphere of influence)
     MoonCapture,         ///< until bound to the Moon with apoapsis ≤ `value` m above it
@@ -78,6 +80,7 @@ using FlightProgram = std::vector<FlightStep>;
 /// The kinds of flight a Mission can describe.
 enum class FlightPlan {
     Orbit,           ///< ascent, coast to apoapsis, circularize at the target altitude
+    GuidedOrbit,     ///< gravity turn through the air, then closed-loop guidance into orbit
     BurnToDepletion, ///< ascent until the propellant runs out (a pure gravity turn)
     LunarFlyby,      ///< parking orbit, trans-lunar injection, past the Moon
     LunarOrbit,      ///< as a flyby, then brake into orbit around the Moon
@@ -88,9 +91,9 @@ enum class FlightPlan {
 std::string_view planKey(FlightPlan plan);
 bool planFromKey(std::string_view key, FlightPlan& plan);
 std::string_view planLabel(FlightPlan plan); ///< for people: "Lunar flyby"
-inline constexpr std::array kAllPlans{FlightPlan::Orbit, FlightPlan::BurnToDepletion,
-                                      FlightPlan::LunarFlyby, FlightPlan::LunarOrbit,
-                                      FlightPlan::Custom};
+inline constexpr std::array kAllPlans{FlightPlan::Orbit,           FlightPlan::GuidedOrbit,
+                                      FlightPlan::BurnToDepletion, FlightPlan::LunarFlyby,
+                                      FlightPlan::LunarOrbit,      FlightPlan::Custom};
 
 // Names for steering modes and end conditions, for files and for people.
 // Step values are stored in SI units (m, radians, s) but shown and saved in

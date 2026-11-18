@@ -382,6 +382,31 @@ zero-length step; its "next step size" was then 0 too, and the flight
 stalled until the step limit. Zero-length steps are now skipped, and a step
 already at its time limit ends without integrating.
 
+### 28. Closed-loop ascent: apoapsis hold, paced by time to go (2026-11-17)
+
+**Decision:** a new plan, *Orbit (guided ascent)*: the pitch program to
+30 km, then `Steering::OrbitInsertion`, which picks the most level pitch
+(−30° to +80°) that moves the apoapsis towards the target at the rate
+`(target − apoapsis) / t_go`, with t_go from the rocket equation (clamped to
+15–120 s). The burn ends when the periapsis reaches the target (circular),
+or when the apoapsis can't be held (then the plan coasts up and
+circularizes). The existing plans are unchanged.
+
+**Why:** the open-loop plan missed the target badly whenever the rocket
+wasn't the one the kick was tuned for (heavy payloads, weak upper stages).
+Apoapsis hold never asks the engine for more than it has, and fails
+gracefully: short of propellant it still leaves the best orbit it could.
+
+**What didn't work first:** (1) a linear-acceleration law aiming to reach
+the target altitude at burnout ("E-guidance"-like): with the default
+rocket's short, hard burn it demanded a near-vertical climb and ran dry at
+5.6 km/s. (2) Apoapsis hold at a fixed 20 s pace: lofted the strong rocket;
+80 s: flew the strong rocket too flat at bigger kicks. Pacing by t_go
+suits both. (3) Predicting the apoapsis by stepping the position forward
+without gravity: overestimated every candidate and left weak stages 15 km
+short. Apoapsis is conserved while coasting, so the prediction is now an
+instantaneous push at the current point.
+
 ---
 
 ## Open questions

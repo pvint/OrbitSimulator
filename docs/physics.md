@@ -230,6 +230,27 @@ will take away before the burn ends, supplied in advance by tilting the
 nose up, as real upper stages do. For a short, hard burn it changes almost
 nothing.
 
+**Guided ascent** (the *Orbit (guided ascent)* plan). Everything above is
+*open-loop*: the pitch program settles the whole climb in the first
+seconds, and the rocket lives with the result. A heavy rocket flies flat
+and circularizes low; a light one lofts. Real launchers steer by
+*feedback* once they're out of the thick air. Ours, above 30 km, holds the
+**apoapsis**: each moment it picks the most nearly level direction that
+moves the apoapsis towards the target,
+
+    d(apoapsis)/dt = (target − apoapsis) / t_go,    t_go = (m/ṁ)(1 − e^(−Δv/v_e))
+
+(t_go: about how long the burn needs to reach orbital speed, from the rocket
+equation), and puts all the rest of the thrust into sideways speed, which
+raises the periapsis. When the periapsis reaches the target too, the orbit
+is circular and the burn ends. A gravity-free "kick" doesn't change the
+apoapsis, so the right pitch is found by bisection on the apoapsis that a
+one-second push would give. A rocket that gains speed faster than it can
+climb can't hold the apoapsis at all; it then stops, coasts up and
+circularizes like the open-loop plan. Results: the two-stage rocket reaches
+exactly 200 km with any payload up to 3 t and any kick from 12° to 24°; the
+single stage pays about 110 m/s for the steeper climb.
+
 ## Flight programs (`flight_program.hpp`)
 
 A flight is a list of **steps**, each burning or coasting, with a steering
@@ -238,6 +259,7 @@ mode and an end condition. The mission's **flight plan** builds the list:
 | Plan | Steps |
 |---|---|
 | Orbit | Ascent → Coast to apoapsis → Circularization → Coast (1 revolution) |
+| Orbit (guided ascent) | Ascent through the air (to 30 km) → Guided ascent → (Coast to apoapsis → Circularization, if needed) → Coast |
 | Burn until empty | Ascent (until the propellant runs out) → Coast |
 | Lunar flyby | as Orbit up to the parking orbit → wait for the Moon → Trans-lunar injection → Coast to the Moon → Coast |
 | Lunar orbit | as Lunar flyby, then Lunar orbit insertion (brake) → Coast round the Moon |
@@ -253,6 +275,7 @@ mode and an end condition. The mission's **flight plan** builds the list:
 | Retrograde, relative to the Moon | against the velocity relative to the Moon | being captured by it |
 | Normal / anti-normal | along / against `r × v` | turning the orbit's plane |
 | Radial out / in | straight up / down | changing the orbit's shape (a radial burn raises one side and lowers the other) |
+| Guided into orbit | apoapsis hold (above) | closed-loop ascent; pair with "In orbit at" |
 
 **End conditions**: the propellant runs out; the apoapsis, periapsis or
 altitude *reaches* a value (in whichever direction is needed: a retrograde

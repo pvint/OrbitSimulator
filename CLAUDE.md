@@ -17,16 +17,16 @@ prototype settled the physics model and the UI ideas; this is the full version.
 - **Staging is done**: up to three stages plus payload, dropped stages
   flown and drawn, gravity compensation while circularizing.
 - **Second stretch (user's list, in order):** burn timing (`tli-delay`),
-  night-side lighting (a mid-task request), the maneuver editor: done and
-  merged. Still to do, in order: better ascent guidance, thrust that
-  depends on air pressure, a coast between stage separation and ignition.
+  night-side lighting (a mid-task request), the maneuver editor, guided
+  ascent: done and merged. Still to do, in order: thrust that depends on
+  air pressure, a coast between stage separation and ignition.
   Then STOP: natural bodies are next on the roadmap but the user said not
   yet; ask what's next.
 - The app flies a rocket of one to three stages from any site and date,
   through the air, to low orbit or to the Moon, with built-in plans or a
   custom flight program, sweeps (of any parameter or program step),
-  ghosts, scenario files, 19 example scenarios, a textured Earth and Moon
-  lit by the real Sun, and a 14-step demo tour. 91 test suites pass (GCC,
+  ghosts, scenario files, 20 example scenarios, a textured Earth and Moon
+  lit by the real Sun, and a 14-step demo tour. 94 test suites pass (GCC,
   Clang, ASan/UBSan); clang-tidy is clean.
 - **Open questions:** see the end of `docs/decisions.md` (scripting
   language, how to specify natural bodies, app icon).
@@ -148,6 +148,7 @@ Each milestone ends with something that runs.
 | A1 | Atmosphere + drag: 1976 US Standard Atmosphere, Mach-dependent Cd, max-Q, drag loss, dynamic pressure graph, scenario format 2 | done |
 | A2 | Staging: up to three stages + payload, separation mid-burn, dropped stages flown and drawn, gravity compensation for weak upper stages | done |
 | A4 | Maneuver editor: Custom plan with an editable step list (Flight program panel), new steering and end conditions, step values as sweep targets, scenario format 3 | done |
+| A5 | Guided (closed-loop) ascent: apoapsis hold paced by time to go, as the *Orbit (guided ascent)* plan and as a steering mode | done |
 | Later | Other bodies. Thrust that depends on air pressure (sea-level vs vacuum Isp). A coast between stage separation and ignition | |
 | A3 | Sweepable burn timing: `tli-delay`, the injection burn's start in seconds (any burn's timing comes with the maneuver editor) | done |
 | Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |

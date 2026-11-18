@@ -47,6 +47,30 @@
 // away before the burn ends, so the rocket supplies it in advance, tilting
 // its nose up the way real upper stages do. For a short, hard burn t_go is
 // tiny and this changes almost nothing.
+//
+// ORBIT INSERTION (closed-loop ascent: "apoapsis hold")
+// The plans above are open-loop: the pitch program decides the whole climb
+// in the first seconds, and the rocket lives with the result (too flat, too
+// steep, an orbit below the target). Real launchers steer by feedback once
+// they are out of the thick air, re-planning every moment.
+//
+// Ours holds the apoapsis. Each moment it looks at pitch angles from 30°
+// below level to 80° above, and picks the one that makes the apoapsis
+// (the high point of the current path) move towards the target altitude,
+//     d(apoapsis)/dt = (target − apoapsis) / t_go
+// and then stay there. t_go is about how long the burn still needs to reach
+// orbital speed, from the rocket equation solved for time:
+//     t_go = (m/ṁ) · (1 − e^(−Δv/v_e))
+// so the apoapsis gets to the target about when the speed does: a powerful
+// engine climbs briskly, a weak one takes its time. Every bit of thrust not needed for that goes
+// into sideways speed, which raises the periapsis (the low point). When the periapsis has risen to
+// the target as well, the orbit is circular at the target altitude and the burn ends.
+//
+// Why it works for any rocket: it never asks for more than the engine can
+// do. A weak engine simply takes longer; one that runs out of propellant
+// still leaves the highest periapsis it could reach, often already an orbit.
+// The pitch for the wanted apoapsis is found by bisection (the apoapsis
+// rises steadily as the nose comes up).
 #pragma once
 
 #include "orbit/core/constants.hpp"
@@ -80,6 +104,14 @@ Vec3 downrangeDirection(const Vec3& r, const Vec3& launchPlaneNormal);
 /// "horizontal" if the rocket is moving straight up or down.
 Vec3 circularizationDeltaV(const Vec3& r, const Vec3& v, const Vec3& fallbackDirection,
                            double mu = kMuEarth);
+
+/// Closed-loop steering into a circular orbit of radius `targetRadius`
+/// (ORBIT INSERTION above), with thrust acceleration F/m. `timeToGo` is
+/// roughly how long the burn needs to reach orbital speed (s).
+/// `fallbackDirection` is "horizontal" if the rocket has no sideways speed.
+Vec3 orbitInsertionDirection(const Vec3& r, const Vec3& v, double targetRadius,
+                             double thrustAcceleration, double timeToGo,
+                             const Vec3& fallbackDirection, double mu = kMuEarth);
 
 /// Unit vector the engine points along.
 /// @param r, v              position and inertial velocity (ECI)

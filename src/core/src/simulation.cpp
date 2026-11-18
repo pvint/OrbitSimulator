@@ -130,6 +130,7 @@ private:
     Vec3 moonAt(double t) const { return moonPosition(m_mission.launchEpoch + t); }
     State derivative(double t, const State& y) const;
     Vec3 steeringDirection(double t, const State& y) const;
+    double insertionTimeToGo(const State& y, double targetRadius) const;
 
     // Steps
     void beginStep(std::size_t index);
@@ -214,8 +215,31 @@ Vec3 FlightSimulator::steeringDirection(double t, const State& y) const {
         return normalized(y.r);
     case Steering::RadialIn:
         return -normalized(y.r);
+    case Steering::OrbitInsertion: {
+        // The target altitude is the step's value when it ends "in orbit at";
+        // otherwise the mission's target altitude.
+        const double altitude =
+            step().end == StepEnd::OrbitAt ? step().value : m_mission.targetAltitude;
+        const double target = kRadiusEarth + altitude;
+        return orbitInsertionDirection(y.r, y.v, target, currentStage().thrust / y.m,
+                                       insertionTimeToGo(y, target),
+                                       downrangeDirection(y.r, m_launchPlaneNormal), m_opt.mu);
+    }
     }
     return normalized(y.v);
+}
+
+/// How long the firing stage needs to reach circular speed at the target
+/// (s): the rocket equation solved for time, t = (m/ṁ)(1 − e^(−Δv/v_e)),
+/// for the speed still missing.
+double FlightSimulator::insertionTimeToGo(const State& y, double targetRadius) const {
+    const Vec3 up = normalized(y.r);
+    const double radialSpeed = dot(y.v, up);
+    const double sidewaysSpeed = norm(y.v - radialSpeed * up);
+    const double missing =
+        std::hypot(std::sqrt(m_opt.mu / targetRadius) - sidewaysSpeed, radialSpeed);
+    const double ve = exhaustVelocity(currentStage().isp);
+    return (y.m / m_mdot) * (1.0 - std::exp(-missing / ve));
 }
 
 // --- Steps ----------------------------------------------------------------
@@ -368,6 +392,7 @@ bool FlightSimulator::endConditionHolds(double t, const State& y) const {
     case StepEnd::ApoapsisAltitude:
     case StepEnd::PeriapsisAltitude:
     case StepEnd::Altitude:
+    case StepEnd::OrbitAt:
     case StepEnd::MoonCapture:
         return gTrigger(Trigger::StepEnd, t, y) >= 0.0;
     case StepEnd::MoonAhead:
@@ -419,6 +444,16 @@ double FlightSimulator::gTrigger(Trigger trigger, double t, const State& y) cons
     case StepEnd::PeriapsisAltitude:
     case StepEnd::Altitude:
         return m_stepSign * (crossingDistance(y) - (kRadiusEarth + value));
+    case StepEnd::OrbitAt: {
+        // The apoapsis is held at the target; once the periapsis is within
+        // 500 m of it too, the orbit is circular there. A powerful engine
+        // can gain speed faster than the rocket climbs: then the apoapsis
+        // can't be held and creeps above the target, and the burn stops
+        // there (the rest is a coast up and a circularization).
+        const OrbitalElements el = elementsFromState(y.r, y.v, m_opt.mu);
+        const double target = kRadiusEarth + value;
+        return std::max(el.periapsis - (target - 500.0), el.apoapsis - (target + 200.0));
+    }
     case StepEnd::Apoapsis:
         return -dot(y.r, y.v); // climbing → falling
     case StepEnd::Periapsis:
@@ -470,6 +505,7 @@ std::vector<Trigger> FlightSimulator::activeTriggers() const {
     case StepEnd::ApoapsisAltitude:
     case StepEnd::PeriapsisAltitude:
     case StepEnd::Altitude:
+    case StepEnd::OrbitAt:
     case StepEnd::Apoapsis:
     case StepEnd::Periapsis:
     case StepEnd::MoonAhead:

@@ -84,6 +84,11 @@ stages fall back on their own, drawn in grey, and the Flight panel says
 where they came down. A heavier stack climbs off the pad more slowly, so it
 usually needs a smaller kick angle.
 
+**Guided ascent.** The *Orbit (guided ascent)* plan flies the pitch
+program through the thick air, then steers by feedback straight into the
+target orbit. Unlike the classic plan it copes with heavy payloads and weak
+upper stages without retuning the kick: compare the two payload sweeps.
+
 **Flight programs.** Every flight is a list of steps: burn or coast, which
 way to point, and when to stop. The *Flight program* panel (a tab next to
 the graphs) shows the steps the chosen plan makes. *Customize* turns them

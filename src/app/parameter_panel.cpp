@@ -111,6 +111,8 @@ ParameterPanel::ParameterPanel(QWidget* parent)
                 m_plan->setToolTip(
                     tr("Orbit: cut the engine when the apoapsis reaches the target altitude, "
                        "coast up, then burn to make the orbit circular.\n"
+                       "Orbit (guided ascent): above 30 km, steer by feedback into the "
+                       "target orbit; copes with heavy loads and weak upper stages.\n"
                        "Burn until empty: a pure gravity turn with no second burn.\n"
                        "Lunar flyby / orbit: from that circular parking orbit, a trans-lunar "
                        "injection burn towards the Moon, and for an orbit, braking there.\n"
