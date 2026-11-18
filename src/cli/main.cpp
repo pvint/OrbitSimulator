@@ -132,6 +132,14 @@ void printResult(const orbit::SimResult& r) {
               << "Max altitude:     " << km(r.maxAltitude) << '\n'
               << std::setprecision(0) << "Delta-v used:     " << r.deltaVUsed << " m/s\n"
               << "Propellant left:  " << r.propellantLeft << " kg\n";
+    if (r.maxDynamicPressure) {
+        const orbit::Sample& s = *r.maxDynamicPressure;
+        const orbit::Aerodynamics aero = orbit::aerodynamicsAt(r, s);
+        std::cout << std::setprecision(1) << "Max Q:            " << aero.dynamicPressure / 1000.0
+                  << " kPa at T+" << duration(s.t) << ", " << km(s.altitude()) << ", Mach "
+                  << aero.mach << '\n'
+                  << std::setprecision(0) << "Drag loss:        " << r.dragLoss << " m/s\n";
+    }
     const orbit::LunarSummary& moon = r.lunar;
     if (moon.enteredSphereOfInfluence || r.mission.plan == orbit::FlightPlan::LunarFlyby ||
         r.mission.plan == orbit::FlightPlan::LunarOrbit) {
@@ -158,12 +166,15 @@ void printResult(const orbit::SimResult& r) {
 bool writeCsv(const orbit::SimResult& result, const std::string& path) {
     std::ofstream out(path);
     if (!out) return false;
-    out << "t,x,y,z,vx,vy,vz,mass,altitude,speed,burning\n" << std::setprecision(10);
+    out << "t,x,y,z,vx,vy,vz,mass,altitude,speed,burning,mach,dynamic_pressure,drag\n"
+        << std::setprecision(10);
     for (const auto& s : result.samples) {
         const auto& y = s.state;
+        const orbit::Aerodynamics aero = orbit::aerodynamicsAt(result, s);
         out << s.t << ',' << y.r.x << ',' << y.r.y << ',' << y.r.z << ',' << y.v.x << ',' << y.v.y
             << ',' << y.v.z << ',' << y.m << ',' << s.altitude() << ',' << s.speed() << ','
-            << (s.burning ? 1 : 0) << '\n';
+            << (s.burning ? 1 : 0) << ',' << aero.mach << ',' << aero.dynamicPressure << ','
+            << orbit::norm(aero.drag) << '\n';
     }
     return static_cast<bool>(out);
 }
@@ -172,11 +183,13 @@ void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec) {
     const orbit::ParameterInfo& p = *orbit::findParameter(spec.parameter);
     const auto values = orbit::sweepValues(spec);
     const auto missions = orbit::sweepMissions(base, spec);
-    std::cout << "Sweep of " << p.label << " (" << p.unit << ")\n\n"
+    std::cout << "Sweep of " << p.label
+              << (p.unit.empty() ? std::string() : " (" + std::string(p.unit) + ")") << "\n\n"
               << std::right << std::setw(10) << "value" << "  " << std::left << std::setw(13)
               << "outcome" << std::right << std::setw(13) << "periapsis" << std::setw(13)
               << "apoapsis" << std::setw(9) << "incl." << std::setw(11) << "dv used"
-              << std::setw(16) << "nearest Moon" << '\n';
+              << std::setw(16) << "nearest Moon" << std::setw(10) << "max Q" << std::setw(11)
+              << "drag loss" << '\n';
     for (std::size_t i = 0; i < missions.size(); ++i) {
         const orbit::SimResult r = orbit::simulate(missions[i]);
         std::cout << std::fixed << std::setprecision(2) << std::setw(10) << values[i] << "  "
@@ -184,8 +197,13 @@ void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec) {
                   << std::setw(13) << km(r.orbit.periapsisAltitude) << std::setw(13)
                   << km(r.orbit.apoapsisAltitude) << std::setprecision(1) << std::setw(9)
                   << orbit::radToDeg(r.orbit.inclination) << std::setprecision(0) << std::setw(7)
-                  << r.deltaVUsed << " m/s" << std::setw(16) << km(r.lunar.closestApproachAltitude)
-                  << '\n';
+                  << r.deltaVUsed << " m/s" << std::setw(16) << km(r.lunar.closestApproachAltitude);
+        if (r.maxDynamicPressure) {
+            const double q = orbit::aerodynamicsAt(r, *r.maxDynamicPressure).dynamicPressure;
+            std::cout << std::setprecision(1) << std::setw(6) << q / 1000.0 << " kPa"
+                      << std::setprecision(0) << std::setw(7) << r.dragLoss << " m/s";
+        }
+        std::cout << '\n';
     }
 }
 
