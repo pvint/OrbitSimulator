@@ -1,0 +1,8 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 2,
+  "name": "Max-Q: thrust sweep",
+  "description": "More thrust gets the rocket moving faster while the air is still thick, so the dynamic pressure, the push of the oncoming air, peaks higher: from about 65 kPa at 1300 kN to nearly 120 kPa at 2100 kN. Watch the Dynamic pressure graph. That peak, max-Q, is the hardest moment for the rocket's structure, which is why real rockets throttle back through it.",
+  "mission": {},
+  "sweep": { "parameter": "thrust", "from": 1300, "to": 2100, "steps": 5 }
+}

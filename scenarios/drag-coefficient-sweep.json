@@ -1,0 +1,8 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 2,
+  "name": "Air resistance: drag coefficient sweep",
+  "description": "The same rocket with ever blunter shapes, from no drag at all (0, as in a vacuum) to 1.2 (about as bad as a flat-fronted cylinder). Each step loses more delta-v to the air: about 80 m/s at 0.2, nearly 500 m/s at 0.8 (Drag loss, under Flight stats). From about 1.0 it can't reach orbit. Oddly, the draggier rockets feel a lower max-Q: the air holds them back, so they are slower while it is thick.",
+  "mission": {},
+  "sweep": { "parameter": "drag-coefficient", "from": 0, "to": 1.2, "steps": 7 }
+}

@@ -19,8 +19,15 @@
       "seconds": 25
     },
     {
+      "title": "Pushing through the air",
+      "caption": "Rockets with blunter and blunter shapes. The air pushes back hardest about a minute after liftoff, around 10 km up, when the rocket is already fast but the air is still thick: that peak is max-Q (the pink graph). A blunt rocket loses hundreds of metres per second to the air, and the bluntest ones never reach orbit. That's why rockets are long and thin.",
+      "scenario": "drag-coefficient-sweep.json",
+      "view": "launch-site",
+      "seconds": 25
+    },
+    {
       "title": "A knife edge",
-      "caption": "The same rocket, but burning until its tank is empty, with no second burn. Now orbit is only reached in a thin band of tilt angles, and only just: the turn has to level off at the very moment orbital speed is reached. This is why real rockets coast up and burn again.",
+      "caption": "The same rocket, but burning until its tank is empty, with no second burn, and (to give it a chance) without air. Now orbit is only reached in a thin band of tilt angles, and only just: the turn has to level off at the very moment orbital speed is reached. With air, none of them make it. This is why real rockets coast up and burn again.",
       "scenario": "pure-gravity-turn.json",
       "seconds": 25
     },
@@ -46,13 +53,13 @@
     },
     {
       "title": "To the Moon",
-      "caption": "Launched at Apollo 11's time, on the direction that puts the orbit's plane through the Moon: 72.5°, close to Apollo's 72.0°. After a parking orbit, the trans-lunar injection burn stretches the orbit out to the Moon. Three and a half days later the rocket meets it. We're looking down on the plane of the journey.",
+      "caption": "Launched at Apollo 11's time, on the direction that puts the orbit's plane through the Moon: 72.3°, close to Apollo's 72.0°. After a parking orbit, the trans-lunar injection burn stretches the orbit out to the Moon. Three and a half days later the rocket meets it. We're looking down on the plane of the journey.",
       "scenario": "apollo-11-lunar-orbit.json",
       "seconds": 40
     },
     {
       "title": "Arriving at the Moon",
-      "caption": "Close up, centred on the Moon. The rocket swings in, fires its engine against its speed relative to the Moon, and is captured into an orbit about 530 by 10,000 km above the surface: an orbit lasting about 15 hours.",
+      "caption": "Close up, centred on the Moon. The rocket swings in, fires its engine against its speed relative to the Moon, and is captured into an orbit about 650 by 10,000 km above the surface: an orbit lasting about 15 hours.",
       "scenario": "apollo-11-lunar-orbit.json",
       "centre": "moon",
       "distance": 30000,
