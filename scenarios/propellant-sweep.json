@@ -1,6 +1,6 @@
 {
   "format": "orbitsim-scenario",
-  "version": 1,
+  "version": 2,
   "name": "Propellant sweep",
   "description": "More propellant gives more delta-v but a heavier rocket. With the thrust fixed, the thrust-to-weight ratio falls, and past a point the same pitch program tips the rocket into the ground.",
   "mission": {},

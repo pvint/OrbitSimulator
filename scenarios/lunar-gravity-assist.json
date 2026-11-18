@@ -1,13 +1,13 @@
 {
   "format": "orbitsim-scenario",
-  "version": 1,
+  "version": 2,
   "name": "Lunar gravity assist",
-  "description": "A lunar flyby that passes about 4000 km from the Moon, behind it in its orbit. The Moon's gravity swings the rocket round and adds energy, enough to escape the Earth altogether. Spacecraft use the same trick on planets.",
+  "description": "A lunar flyby that passes about 3300 km from the Moon, behind it in its orbit. The Moon's gravity swings the rocket round and adds energy, enough to escape the Earth altogether. Spacecraft use the same trick on planets.",
   "mission": {
     "launch-utc": "1969-07-16T13:32:00Z",
-    "azimuth": 72.52,
+    "azimuth": 72.33,
     "isp": 450,
     "plan": "lunar-flyby",
-    "lead-angle-adjust": 3
+    "lead-angle-adjust": 2.75
   }
 }

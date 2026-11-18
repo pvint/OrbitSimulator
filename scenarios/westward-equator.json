@@ -1,6 +1,6 @@
 {
   "format": "orbitsim-scenario",
-  "version": 1,
+  "version": 2,
   "name": "East versus west",
   "description": "From the equator, sweeping the launch direction from due east (90°) to due west (270°). Going west, the rocket first has to cancel the ground's 465 m/s eastward speed, so it needs about 930 m/s more delta-v. The Isp is raised so that both directions can reach orbit.",
   "mission": {

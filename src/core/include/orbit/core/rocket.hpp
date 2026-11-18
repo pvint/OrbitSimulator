@@ -2,7 +2,9 @@
 // Rocket engine and mass relationships.
 //
 // A single-stage rocket with one engine that burns at full, constant thrust
-// until the propellant is gone (or guidance shuts it down).
+// until the propellant is gone (or guidance shuts it down). Its shape, for
+// drag, is boiled down to two numbers: a drag coefficient and a diameter
+// (aerodynamics.hpp).
 #pragma once
 
 namespace orbit {
@@ -12,6 +14,10 @@ struct Rocket {
     double propellantMass = 0.0; ///< kg at liftoff
     double thrust = 0.0;         ///< N
     double isp = 0.0;            ///< s, specific impulse (engine efficiency)
+    /// Drag coefficient Cd below the speed of sound; it rises near Mach 1
+    /// (aerodynamics.hpp). 0 means no drag at all, as in a vacuum.
+    double dragCoefficient = 0.0;
+    double diameter = 0.0; ///< m, sets the frontal area that meets the air
 };
 
 /// Exhaust velocity v_e = Isp · g0 (m/s).

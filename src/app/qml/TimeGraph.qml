@@ -20,12 +20,16 @@ Item {
         id: heading
         anchors.left: parent.left
         anchors.leftMargin: 8
+        anchors.right: timeLabel.left
+        anchors.rightMargin: 8
         anchors.top: parent.top
+        elide: Text.ElideRight
         text: root.title
         color: "#c8d2e6"
         font.pixelSize: 12
     }
     Text {
+        id: timeLabel
         anchors.right: parent.right
         anchors.rightMargin: 12
         anchors.baseline: heading.baseline

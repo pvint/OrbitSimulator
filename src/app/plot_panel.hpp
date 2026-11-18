@@ -16,7 +16,7 @@ class QLineSeries;
 class QQuickWidget;
 class QValueAxis;
 
-/// Altitude, speed and mass against time, drawn with Qt Graphs (a QML scene
+/// Altitude, speed, mass and dynamic pressure against time, drawn with Qt Graphs (a QML scene
 /// in a QQuickWidget, see qml/Plots.qml). The selected flight is drawn
 /// bold; in a sweep, the other flights appear faintly behind it.
 class PlotPanel : public QWidget {
@@ -37,7 +37,8 @@ private:
         QColor defaultColor;
         QValueAxis* xAxis = nullptr;
         QValueAxis* yAxis = nullptr;
-        std::function<double(const orbit::Sample&)> value;
+        std::function<double(const orbit::SimResult&, const orbit::Sample&)> value;
+        bool airborneOnly = false; ///< time axis ends when the flights leave the air
     };
 
     void connectGraphs();
@@ -45,7 +46,7 @@ private:
 
     QCheckBox* m_poweredOnly = nullptr;
     QQuickWidget* m_view = nullptr;
-    std::array<Graph, 3> m_graphs;
+    std::array<Graph, 4> m_graphs;
     bool m_graphsFound = false;
     std::shared_ptr<const RunSet> m_runs;
     int m_selected = 0;

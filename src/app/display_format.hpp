@@ -14,6 +14,7 @@ QString duration(double seconds);      ///< "45.2 s", "88.3 min", "3 h 12 min", 
 QString speed(double metresPerSecond); ///< "7,789 m/s"
 QString mass(double kilograms);        ///< "1.2 t" or "850 kg"
 QString angle(double radians);         ///< "28.50°"
+QString pressure(double pascals);      ///< "63.0 kPa"
 
 QString outcomeLabel(orbit::Outcome outcome); ///< "Orbit", "Crashed", ...
 QColor outcomeColor(orbit::Outcome outcome);

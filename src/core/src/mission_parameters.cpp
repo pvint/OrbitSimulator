@@ -46,6 +46,16 @@ constexpr std::array kParameters{
         [](Mission& m, double v) { m.rocket.propellantMass = propellantForBurnTime(m.rocket, v); },
         true},
 
+    ParameterInfo{"drag-coefficient", "Drag coefficient", "", "Aerodynamics",
+                  "Cd below the speed of sound: how streamlined the rocket is. It nearly "
+                  "doubles around Mach 1. 0 = no drag, as in a vacuum",
+                  0.0, 1.5, 0.01, [](const Mission& m) { return m.rocket.dragCoefficient; },
+                  [](Mission& m, double v) { m.rocket.dragCoefficient = v; }},
+    ParameterInfo{"diameter", "Diameter", "m", "Aerodynamics",
+                  "Rocket body diameter. Drag grows with the frontal area, π·d²/4", 0.5, 10.0, 0.1,
+                  [](const Mission& m) { return m.rocket.diameter; },
+                  [](Mission& m, double v) { m.rocket.diameter = v; }},
+
     ParameterInfo{"latitude", "Latitude", "°", "Launch site", "North positive", -90.0, 90.0, 0.5,
                   [](const Mission& m) { return radToDeg(m.site.latitude); },
                   [](Mission& m, double v) { m.site.latitude = degToRad(v); }},

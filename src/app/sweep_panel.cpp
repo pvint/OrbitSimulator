@@ -57,8 +57,11 @@ SweepPanel::SweepPanel(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
 
     for (const orbit::ParameterInfo& p : orbit::missionParameters()) {
-        m_parameter->addItem(QStringLiteral("%1 (%2)").arg(toQString(p.label), toQString(p.unit)),
-                             toQString(p.key));
+        // Unitless numbers (the drag coefficient) get no empty "()".
+        const QString name =
+            p.unit.empty() ? toQString(p.label)
+                           : QStringLiteral("%1 (%2)").arg(toQString(p.label), toQString(p.unit));
+        m_parameter->addItem(name, toQString(p.key));
     }
     m_parameter->setCurrentIndex(m_parameter->findData(QStringLiteral("kick-angle")));
     m_parameter->setObjectName(QStringLiteral("sweepParameter"));
@@ -129,7 +132,7 @@ void SweepPanel::suggestRange() {
         box->setRange(p->min, p->max);
         box->setDecimals(decimalsFor(p->step));
         box->setSingleStep(p->step);
-        box->setSuffix(QLatin1Char(' ') + toQString(p->unit));
+        box->setSuffix(p->unit.empty() ? QString() : QLatin1Char(' ') + toQString(p->unit));
     }
     const double value = p->get(m_mission);
     if (std::abs(value) < p->step) {
@@ -176,8 +179,8 @@ void SweepPanel::showRunSet(const RunSet& runs, int selected) {
             return item;
         };
         setCell(ColorColumn, QString())->setBackground(run.color);
-        setCell(ValueColumn,
-                QLocale().toString(run.value, 'f', decimals) + QLatin1Char(' ') + unit);
+        setCell(ValueColumn, QLocale().toString(run.value, 'f', decimals) +
+                                 (unit.isEmpty() ? QString() : QLatin1Char(' ') + unit));
         setCell(OutcomeColumn, display::outcomeLabel(r.outcome))
             ->setForeground(display::outcomeColor(r.outcome));
         const bool hasOrbit =

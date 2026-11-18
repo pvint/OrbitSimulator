@@ -8,9 +8,10 @@ to compare a whole family of trajectories side by side.
 the guided tour: *Help ▸ Demo Tour* (F2), or `orbitsim --demo`. The desktop app shows
 flights on a textured 3D Earth (lit by the real Sun for the launch date), with
 the Moon, playback, live parameter sliders, results and graphs, parameter
-sweeps that compare a whole family of flights, and scenario files with
-built-in examples. `orbitsim-cli` flies missions and sweeps from the command
-line. Next: a guided demo mode. See the roadmap in [CLAUDE.md](CLAUDE.md). The
+sweeps that compare a whole family of flights, scenario files with built-in
+examples, and a guided tour. Rockets fly through a real atmosphere, with
+drag and max-Q. `orbitsim-cli` flies missions and sweeps from the command
+line. See the roadmap in [CLAUDE.md](CLAUDE.md). The
 original 2D browser prototype, which already works, is in
 [prototype/web](prototype/web/README.md).
 
@@ -68,14 +69,20 @@ The small arrows in the top-left corner of the 3D view show the axes: X
 towards the vernal equinox, Z towards celestial north (Earth's axis), and
 the dimmer arrow ecliptic north, the "up" of the solar system.
 
+**Air.** Below 1000 km the rocket flies through the atmosphere and feels
+drag, set by its *drag coefficient* and *diameter* (Aerodynamics). The
+Flight panel shows **max-Q**, the moment the air pushes hardest, and the
+**drag loss**, the speed the air took away; the pink graph shows the dynamic
+pressure. A drag coefficient of 0 flies in a vacuum.
+
 **Scenarios.** *File ▸ Examples* has ready-made scenarios (equatorial and
-polar launches, east vs west, kick-angle and propellant sweeps, a pure
-gravity turn...). *Save Scenario* writes the current setup to a JSON file
+polar launches, east vs west, kick-angle, propellant, drag and thrust
+sweeps, a pure gravity turn...). *Save Scenario* writes the current setup to a JSON file
 you can share or edit by hand; `orbitsim file.json` opens one directly. The
 examples live in [scenarios/](scenarios/).
 
-**Demo tour.** *Help ▸ Demo Tour* walks through eleven scenarios with
-captions: a first orbit, why rockets tilt over, latitude and launch
+**Demo tour.** *Help ▸ Demo Tour* walks through twelve scenarios with
+captions: a first orbit, why rockets tilt over, air resistance, latitude and launch
 direction, polar orbits, and a trip to the Moon with launch windows and a
 gravity assist. It moves on by itself; use the caption's buttons to go back,
 skip ahead or end it. `orbitsim --demo-step N` starts at step N.

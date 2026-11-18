@@ -14,8 +14,9 @@
 //            is itself pulled towards the body; only the *difference* in pull
 //            moves the rocket relative to the Earth.
 //   thrust   a = F/m along the steering direction, while the engine runs
+//   drag     a = −½ρ|v_air|·Cd·A·v_air / m, below 1000 km (aerodynamics.hpp)
 //   mass     dm/dt = −F / (Isp·g0)
-// No drag and no staging yet.
+// No staging yet.
 //
 // FLIGHT PROGRAM
 // The mission's flight plan becomes a list of burn and coast steps
@@ -28,6 +29,7 @@
 // an escaping rocket passes `escapeDistance`, or at `maxTime`.
 #pragma once
 
+#include "orbit/core/aerodynamics.hpp"
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/flight_program.hpp"
@@ -88,10 +90,12 @@ struct SimOptions {
     /// Include the Moon's and Sun's gravity. Off for idealised tests.
     bool thirdBodyGravity = true;
     Tolerances tolerances;
-    double initialStep = 0.1;        ///< s
-    double maxBurnStep = 2.0;        ///< s: keeps steering smooth during burns
-    double maxCoastStep = 300.0;     ///< s
-    double burnOutputInterval = 1.0; ///< s between output samples during burns
+    double initialStep = 0.1;    ///< s
+    double maxBurnStep = 2.0;    ///< s: keeps steering smooth during burns
+    double maxCoastStep = 300.0; ///< s
+    /// s between output samples during burns, and while coasting below
+    /// 100 km with drag (so the dynamic pressure graph stays smooth)
+    double burnOutputInterval = 1.0;
     /// While coasting, output samples are spaced by this fraction of √(r³/μ)
     /// (a circular period / 2π) around the Earth, or around the Moon when
     /// that is shorter, so each orbit gets about 1250 points.
@@ -172,8 +176,14 @@ struct SimResult {
     LunarSummary lunar;
     Outcome outcome = Outcome::Crashed;
     EndReason endReason = EndReason::MaxTime;
-    double maxAltitude = 0.0;    ///< m, highest sample
-    double deltaVUsed = 0.0;     ///< m/s, from the propellant actually burnt
+    double maxAltitude = 0.0; ///< m, highest sample
+    double deltaVUsed = 0.0;  ///< m/s, from the propellant actually burnt
+    /// m/s: speed taken away by drag on the way up, ∫ D/m dt while climbing
+    /// (summed over the samples, so accurate to a few per cent).
+    double dragLoss = 0.0;
+    /// The sample with the highest dynamic pressure q = ½ρv² while climbing
+    /// ("max-Q"), if the rocket felt any drag.
+    std::optional<Sample> maxDynamicPressure;
     double propellantLeft = 0.0; ///< kg
     double duration = 0.0;       ///< s of simulated time
 };
@@ -185,6 +195,10 @@ SimResult simulate(const Mission& mission, const SimOptions& options = {});
 /// pitch program and launch time). This is what scripting will call.
 SimResult simulateProgram(const Mission& mission, const FlightProgram& program,
                           const SimOptions& options = {});
+
+/// The air's effect on the rocket at this sample (aerodynamics.hpp): its
+/// Mach number, dynamic pressure, drag, ...
+Aerodynamics aerodynamicsAt(const SimResult& result, const Sample& sample);
 
 /// The rocket's state at time t, interpolated linearly between samples
 /// (clamped to the start and end of the flight). Samples are close enough

@@ -40,6 +40,13 @@ FlightStatsPanel::FlightStatsPanel(QWidget* parent) : QWidget(parent) {
     m_maxAltitude = addRow(tr("Max altitude"), tr("Highest point reached during the simulation"));
     m_deltaV = addRow(tr("Δv used"), tr("Isp · g0 · ln(m0 / m_final)"));
     m_propellantLeft = addRow(tr("Propellant left"), {});
+    m_maxQ =
+        addRow(tr("Max Q"), tr("Highest dynamic pressure on the way up, q = ½ρv²: the push of the "
+                               "oncoming air, and the hardest moment for the rocket's structure"));
+    m_maxQ->setObjectName(QStringLiteral("maxQ"));
+    m_dragLoss = addRow(tr("Drag loss"), tr("Speed taken away by air resistance on the way up: "
+                                            "Δv the engine spent pushing through the air"));
+    m_dragLoss->setObjectName(QStringLiteral("dragLoss"));
     m_duration = addRow(tr("Simulated time"), {});
     layout->addWidget(orbitGroup);
 
@@ -89,6 +96,18 @@ void FlightStatsPanel::showResult(const orbit::SimResult& result) {
     m_maxAltitude->setText(display::altitude(result.maxAltitude));
     m_deltaV->setText(display::speed(result.deltaVUsed));
     m_propellantLeft->setText(display::mass(result.propellantLeft));
+    if (result.maxDynamicPressure) {
+        const orbit::Sample& s = *result.maxDynamicPressure;
+        const orbit::Aerodynamics aero = orbit::aerodynamicsAt(result, s);
+        m_maxQ->setText(QStringLiteral("%1<br><span style='color:#8592ad'>T+%2, %3, Mach %4</span>")
+                            .arg(display::pressure(aero.dynamicPressure), display::duration(s.t),
+                                 display::altitude(s.altitude()),
+                                 QLocale().toString(aero.mach, 'f', 1)));
+        m_dragLoss->setText(display::speed(result.dragLoss));
+    } else {
+        m_maxQ->setText(QStringLiteral("—"));
+        m_dragLoss->setText(QStringLiteral("—"));
+    }
     m_duration->setText(display::duration(result.duration));
 
     const bool lunarPlan = result.mission.plan == orbit::FlightPlan::LunarFlyby ||

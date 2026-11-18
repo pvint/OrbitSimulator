@@ -230,6 +230,39 @@ private slots:
         QVERIFY(outcome);
         QVERIFY(outcome->text().contains(QStringLiteral("Orbit")));
     }
+
+    void statsPanelShowsDragOnlyWithAir() {
+        FlightStatsPanel stats;
+        auto* maxQ = stats.findChild<QLabel*>(QStringLiteral("maxQ"));
+        auto* dragLoss = stats.findChild<QLabel*>(QStringLiteral("dragLoss"));
+        QVERIFY(maxQ && dragLoss);
+
+        stats.showResult(orbit::simulate(orbit::defaultMission()));
+        QVERIFY(maxQ->text().contains(QStringLiteral("kPa")));
+        QVERIFY(maxQ->text().contains(QStringLiteral("Mach")));
+        QVERIFY(dragLoss->text().contains(QStringLiteral("m/s")));
+
+        orbit::Mission vacuum = orbit::defaultMission();
+        vacuum.rocket.dragCoefficient = 0.0;
+        stats.showResult(orbit::simulate(vacuum));
+        QCOMPARE(maxQ->text(), QStringLiteral("—"));
+        QCOMPARE(dragLoss->text(), QStringLiteral("—"));
+    }
+
+    void dragControlsChangeTheMission() {
+        ParameterPanel panel;
+        QSignalSpy spy(&panel, &ParameterPanel::missionChanged);
+        auto* cd = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-drag-coefficient"));
+        auto* diameter = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-diameter"));
+        QVERIFY(cd && diameter);
+        QCOMPARE(cd->value(), 0.3);
+
+        cd->setValue(0.0);
+        diameter->setValue(4.0);
+        QCOMPARE(spy.count(), 2);
+        QCOMPARE(panel.mission().rocket.dragCoefficient, 0.0);
+        QCOMPARE(panel.mission().rocket.diameter, 4.0);
+    }
 };
 
 QTEST_MAIN(UiTests)

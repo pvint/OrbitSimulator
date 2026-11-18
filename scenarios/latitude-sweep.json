@@ -1,6 +1,6 @@
 {
   "format": "orbitsim-scenario",
-  "version": 1,
+  "version": 2,
   "name": "Launch latitude sweep",
   "description": "Launching due east, the orbit's inclination equals the launch latitude, and the Earth's rotation helps less the further you are from the equator.",
   "mission": {},

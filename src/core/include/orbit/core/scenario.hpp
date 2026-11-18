@@ -4,7 +4,7 @@
 // Example:
 //   {
 //     "format": "orbitsim-scenario",
-//     "version": 1,
+//     "version": 2,
 //     "name": "Kick angle sweep",
 //     "description": "How far the rocket tilts at liftoff decides everything.",
 //     "mission": { "kick-angle": 25, "latitude": 28.5, "auto-circularize": true },
@@ -20,6 +20,10 @@
 // VERSIONING: "version" is the file format version. If the format changes,
 // bump kScenarioFormatVersion and teach scenarioFromJson() to upgrade older
 // files. Files from a newer version than we know are refused.
+//   1  the first format
+//   2  the atmosphere arrives: "drag-coefficient" and "diameter". Keys left
+//      out of a version 1 file take version 1's defaults: no drag, and a
+//      25° kick (the default is now 20°, which suits flying through air).
 #pragma once
 
 #include "orbit/core/simulation.hpp"
@@ -34,7 +38,7 @@
 
 namespace orbit {
 
-inline constexpr int kScenarioFormatVersion = 1;
+inline constexpr int kScenarioFormatVersion = 2;
 inline constexpr std::string_view kScenarioFormatName = "orbitsim-scenario";
 
 struct Scenario {

@@ -1,6 +1,6 @@
 {
   "format": "orbitsim-scenario",
-  "version": 1,
+  "version": 2,
   "name": "Near-equatorial launch from Kourou",
   "description": "French Guiana, 5.2° north: almost the full 465 m/s boost from the Earth's rotation, and an orbit inclined only 5°.",
   "mission": {
