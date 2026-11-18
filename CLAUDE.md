@@ -22,13 +22,14 @@ prototype settled the physics model and the UI ideas; this is the full version.
   between stages. All merged to `main`.
 - **Polish (2026-11-18):** graph time units under the axis, camera views
   (edge-on / above the orbit / north, also as demo views), release warning.
-- **Distribution (2026-11-18), on branch `distribution`:** app icon and id
+- **Distribution (2026-11-18) is done:** public repo
+  https://github.com/pvint/OrbitSimulator (remote `origin`). App icon and id
   (`io.github.pvint.OrbitSimulator`), Linux desktop file + AppStream,
-  GitHub Actions CI (Linux Qt 6.8 + 6.11, MSVC, macOS universal) with
-  packages (AppImage, ZIP, DMG) and smoke tests, live Gentoo ebuild (tested
-  locally). **No GitHub repository yet:** creating it and pushing is the
-  user's call. CI has never run, so expect MSVC / Apple Clang / GCC 12 fixes
-  on the first push.
+  GitHub Actions CI (Linux Qt 6.8 + 6.11, Windows MSVC Qt 6.10, macOS
+  universal Qt 6.11) with packages (AppImage, ZIP, DMG) that are started
+  and screenshotted on each platform, a live Gentoo ebuild (`dist/gentoo/`).
+  No release tagged yet: pushing `v0.1.0` drafts one. Work on a branch and
+  open a PR so CI runs before merging.
 - **Next:** natural bodies are next on the roadmap, but the user said not
   to start them yet. Ask what's next.
 - The app flies a rocket of one to three stages from any site and date,
@@ -168,7 +169,7 @@ Each milestone ends with something that runs.
 | Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |
 | Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
-| D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | built; waiting for the GitHub repo |
+| D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
 
 ### App structure in brief (M2–M4)
 
