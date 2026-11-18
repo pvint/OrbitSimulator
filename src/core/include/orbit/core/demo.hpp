@@ -16,7 +16,9 @@
 // Each step opens a scenario (a file name in scenarios/), sets up the
 // camera, plays the flight, and shows the caption. Optional per step:
 //   "view"      how to look at it: "auto" (default; fits the flight),
-//               "launch-site", "north" (down on the north pole) or "moon"
+//               "launch-site", "north" (down on the north pole), "moon",
+//               "edge-on" (along the orbit's plane, so its tilt to the
+//               equator shows) or "above-orbit" (down on the orbit's plane)
 //   "centre"    what the camera circles: "earth" (default), "rocket" or "moon"
 //   "distance"  camera distance in km (default: chosen by the view)
 //   "speed"     playback speed (default: shows the whole flight in ~90 s)
@@ -33,7 +35,7 @@ namespace orbit {
 
 inline constexpr int kDemoFormatVersion = 1;
 
-enum class DemoView { Auto, LaunchSite, North, Moon };
+enum class DemoView { Auto, LaunchSite, North, Moon, EdgeOn, AboveOrbit };
 enum class DemoCentre { Earth, Rocket, Moon };
 
 struct DemoStep {

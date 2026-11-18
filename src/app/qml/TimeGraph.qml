@@ -20,22 +20,13 @@ Item {
         id: heading
         anchors.left: parent.left
         anchors.leftMargin: 8
-        anchors.right: timeLabel.left
+        anchors.right: parent.right
         anchors.rightMargin: 8
         anchors.top: parent.top
         elide: Text.ElideRight
         text: root.title
         color: "#c8d2e6"
         font.pixelSize: 12
-    }
-    Text {
-        id: timeLabel
-        anchors.right: parent.right
-        anchors.rightMargin: 12
-        anchors.baseline: heading.baseline
-        text: qsTr("time (%1)").arg(root.timeUnit)
-        color: "#8592ad"
-        font.pixelSize: 11
     }
 
     GraphsView {
@@ -63,6 +54,9 @@ Item {
             max: 1
             subTickCount: 0
             labelFormat: "%.0f"
+            titleText: qsTr("time (%1)").arg(root.timeUnit)
+            titleColor: "#8592ad"
+            titleFont.pixelSize: 11
         }
         axisY: ValueAxis {
             id: yAxis

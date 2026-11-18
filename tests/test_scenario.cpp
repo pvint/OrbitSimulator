@@ -223,3 +223,11 @@ TEST_CASE("Broken demos are refused", "[demo]") {
     REQUIRE(ok.steps.front().centre == DemoCentre::Moon);
     REQUIRE(ok.steps.front().startTime == 7200.0);
 }
+
+TEST_CASE("Demo steps can look along or down on the orbit's plane", "[demo]") {
+    const Demo demo = demoFromJson(R"({"format": "orbitsim-demo", "version": 1,
+        "steps": [{"title": "t", "caption": "c", "scenario": "s.json", "view": "edge-on"},
+                  {"title": "t", "caption": "c", "scenario": "s.json", "view": "above-orbit"}]})");
+    REQUIRE(demo.steps.at(0).view == DemoView::EdgeOn);
+    REQUIRE(demo.steps.at(1).view == DemoView::AboveOrbit);
+}

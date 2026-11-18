@@ -50,9 +50,9 @@
     },
     {
       "title": "Latitude sets the tilt of the orbit",
-      "caption": "Launching due east from different latitudes. Each orbit is tilted (inclined) to the equator by exactly the launch latitude, and launches nearer the equator get more help from the Earth's 465 m/s spin. That is why many spaceports are as close to the equator as their country allows.",
+      "caption": "Launching due east from different latitudes, seen edge-on from where the orbits cross the equator. Each orbit is tilted (inclined) to the equator by exactly the launch latitude: blue, from the equator, lies flat; red, from 60°, is steepest. Launches nearer the equator also get more help from the Earth's 465 m/s spin, so many spaceports are as close to the equator as their country allows.",
       "scenario": "latitude-sweep.json",
-      "view": "launch-site",
+      "view": "edge-on",
       "seconds": 25
     },
     {
