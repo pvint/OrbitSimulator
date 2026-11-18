@@ -51,12 +51,25 @@ TEST_CASE("The default rocket reaches a low, circular orbit", "[simulation]") {
     REQUIRE(r.events[0].description == "Ascent: engine off");
     REQUIRE(r.events[1].description == "Circularization: engine on");
     REQUIRE(r.events[0].sample.t < r.events[1].sample.t);
-    // Circularization starts at apoapsis = the target altitude.
-    REQUIRE_THAT(r.events[1].sample.altitude(), WithinAbs(200e3, 1.0));
+    // Circularization starts at apoapsis = the target altitude, less a few
+    // metres taken by drag on the coast up from cutoff (at about 80 km).
+    REQUIRE(r.events[0].sample.altitude() < 100e3);
+    REQUIRE(r.events[1].sample.altitude() < 200e3);
+    REQUIRE(r.events[1].sample.altitude() > 200e3 - 50.0);
+
+    // In a vacuum the coast takes nothing away.
+    Mission vacuum = defaultMission();
+    vacuum.rocket.dragCoefficient = 0.0;
+    const SimResult v = simulate(vacuum);
+    REQUIRE_THAT(v.events[1].sample.altitude(), WithinAbs(200e3, 1.0));
 }
 
 TEST_CASE("Samples are in time order and the orbit closes", "[simulation]") {
-    const SimResult r = simulate(defaultMission());
+    // Without drag: even at 200 km the air would slow the rocket by a few
+    // centimetres per second per orbit, enough to put it ~100 m behind.
+    Mission m = defaultMission();
+    m.rocket.dragCoefficient = 0.0;
+    const SimResult r = simulate(m);
     for (std::size_t i = 1; i < r.samples.size(); ++i) {
         REQUIRE(r.samples[i].t >= r.samples[i - 1].t);
     }
@@ -70,9 +83,10 @@ TEST_CASE("Samples are in time order and the orbit closes", "[simulation]") {
 }
 
 TEST_CASE("Simulated burn matches the Tsiolkovsky rocket equation", "[simulation]") {
-    // No gravity, no ground velocity (launched from the pole) and no pitch-over,
-    // so all of the Δv goes into speed.
+    // No gravity, no air, no ground velocity (launched from the pole) and no
+    // pitch-over, so all of the Δv goes into speed.
     Mission m = defaultMission();
+    m.rocket.dragCoefficient = 0.0;
     m.site.latitude = degToRad(90.0);
     m.guidance.pitchStartTime = 1e9;
     m.plan = FlightPlan::BurnToDepletion;

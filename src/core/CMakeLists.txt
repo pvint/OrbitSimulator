@@ -16,7 +16,9 @@ FetchContent_MakeAvailable(nlohmann_json)
 configure_file(version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/orbit/core/version.hpp" @ONLY)
 
 add_library(orbit_core STATIC
+    src/aerodynamics.cpp
     src/astro_time.cpp
+    src/atmosphere.cpp
     src/demo.cpp
     src/ephemeris.cpp
     src/flight_program.cpp

@@ -19,11 +19,16 @@ double Sample::speed() const { return norm(state.v); }
 
 Mission defaultMission() {
     Mission m;
-    m.rocket = {.dryMass = 4000.0, .propellantMass = 60000.0, .thrust = 1.2e6, .isp = 340.0};
+    m.rocket = {.dryMass = 4000.0,
+                .propellantMass = 60000.0,
+                .thrust = 1.2e6,
+                .isp = 340.0,
+                .dragCoefficient = 0.3,
+                .diameter = 2.4};
     m.site = {.latitude = degToRad(28.5), .longitude = degToRad(-80.6)}; // Cape Canaveral
     m.guidance = {.azimuth = degToRad(90.0),
                   .pitchStartTime = 10.0,
-                  .kickAngle = degToRad(25.0),
+                  .kickAngle = degToRad(20.0),
                   .kickHoldTime = 10.0};
     m.plan = FlightPlan::Orbit;
     m.targetAltitude = 200e3;
@@ -60,7 +65,7 @@ class FlightSimulator {
 public:
     FlightSimulator(const Mission& mission, FlightProgram program, const SimOptions& options)
         : m_mission(mission), m_program(std::move(program)), m_opt(options),
-          m_mdot(massFlowRate(mission.rocket)),
+          m_mdot(massFlowRate(mission.rocket)), m_drag(hasDrag(mission.rocket)),
           m_stepper([this](double t, const State& y) { return derivative(t, y); },
                     options.tolerances) {}
 
@@ -71,6 +76,7 @@ private:
     FlightProgram m_program;
     SimOptions m_opt;
     double m_mdot;
+    bool m_drag; ///< does the rocket feel the air?
     DormandPrince45 m_stepper;
 
     // Read by derivative(); set before each integration step.
@@ -113,6 +119,7 @@ private:
     void record(EventType type, std::string description);
     void finish(EndReason reason);
     void summarise();
+    void summariseDrag();
 };
 
 // --- Physics -------------------------------------------------------------
@@ -134,6 +141,11 @@ State FlightSimulator::derivative(double t, const State& y) const {
         const double epoch = m_mission.launchEpoch + t;
         acceleration += pull(moonPosition(epoch), kMuMoon);
         acceleration += pull(sunPosition(epoch), kMuSun);
+    }
+
+    if (m_drag) {
+        // The air pushes back against the motion through it: a = D/m.
+        acceleration += aerodynamicsAt(m_mission.rocket, y.r, y.v).drag / y.m;
     }
 
     double massRate = 0.0;
@@ -339,11 +351,13 @@ double FlightSimulator::findCrossing(Trigger trigger, double t0, double t1) cons
 // --- Output ---------------------------------------------------------------
 
 /// Output samples are spaced to keep curves smooth: every second during
-/// burns, and a fixed fraction of the local orbital period while coasting,
-/// around the Earth or the Moon, whichever is nearer in that sense.
+/// burns and in the lower atmosphere (where drag changes quickly), and a
+/// fixed fraction of the local orbital period while coasting, around the
+/// Earth or the Moon, whichever is nearer in that sense.
 double FlightSimulator::outputInterval(double t, const State& y) const {
     if (m_engineOn) return m_opt.burnOutputInterval;
     const double r = norm(y.r);
+    if (m_drag && r - kRadiusEarth < kKarmanLine) return m_opt.burnOutputInterval;
     double interval = m_opt.coastOutputFraction * std::sqrt(r * r * r / m_opt.mu);
     if (m_opt.thirdBodyGravity) {
         const double d = norm(y.r - moonAt(t));
@@ -555,6 +569,7 @@ void FlightSimulator::summarise() {
     for (const Sample& s : m_result.samples) {
         m_result.maxAltitude = std::max(m_result.maxAltitude, s.altitude());
     }
+    if (m_drag) summariseDrag();
 
     // The orbit around the Earth: from the last engine shutdown, unless the
     // Moon has bent the path since, in which case from the end.
@@ -584,7 +599,33 @@ void FlightSimulator::summarise() {
     }
 }
 
+/// Max-Q, and the speed lost to drag: ∫ (D/m) dt, by the trapezoidal rule
+/// over the samples (a second apart wherever drag is strong). Both count
+/// only the way *up*, as is usual: falling back in, drag is a brake, not a
+/// loss, and the dynamic pressure of a re-entry would swamp the ascent's.
+void FlightSimulator::summariseDrag() {
+    const auto& samples = m_result.samples;
+    double maxQ = 0.0;
+    double previousDecel = 0.0;
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        const Sample& s = samples[i];
+        const bool climbing = dot(s.state.r, s.state.v) > 0.0;
+        const Aerodynamics aero = aerodynamicsAt(m_mission.rocket, s.state.r, s.state.v);
+        const double decel = climbing ? norm(aero.drag) / s.state.m : 0.0;
+        if (climbing && aero.dynamicPressure > maxQ) {
+            maxQ = aero.dynamicPressure;
+            m_result.maxDynamicPressure = s;
+        }
+        if (i > 0) m_result.dragLoss += 0.5 * (previousDecel + decel) * (s.t - samples[i - 1].t);
+        previousDecel = decel;
+    }
+}
+
 } // namespace
+
+Aerodynamics aerodynamicsAt(const SimResult& result, const Sample& sample) {
+    return aerodynamicsAt(result.mission.rocket, sample.state.r, sample.state.v);
+}
 
 SimResult simulate(const Mission& mission, const SimOptions& options) {
     return simulateProgram(mission, flightProgramFor(mission), options);
