@@ -123,9 +123,21 @@ void MainWindow::createDocks() {
 void MainWindow::connectPanels() {
     connect(m_parameters, &ParameterPanel::missionChanged, this,
             [this](const orbit::Mission& mission) {
+                // Rocket ↔ natural body: a new kind of flight, a fresh view.
+                const bool newVehicle = mission.vehicle != m_mission.vehicle;
                 m_mission = mission;
                 m_sweepPanel->setMission(mission);
                 m_programPanel->setMission(mission);
+                if (newVehicle) {
+                    m_globe->clearGhosts();
+                    m_globe->resetViewOnNextResult();
+                    // A rocket's sweep means nothing to a body, and the
+                    // other way round.
+                    if (m_sweep && !orbit::findSweepTarget(mission, m_sweep->parameter)) {
+                        stopSweep(); // runs the simulation
+                        return;
+                    }
+                }
                 requestSimulation();
             });
     connect(m_programPanel, &ProgramPanel::missionChanged, this,

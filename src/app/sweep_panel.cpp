@@ -145,9 +145,11 @@ void SweepPanel::fillParameterList() {
         const QSignalBlocker block(m_parameter);
         m_parameter->clear();
         for (qsizetype i = 0; i < keys.size(); ++i) m_parameter->addItem(names[i], keys[i]);
-        const int index = m_parameter->findData(chosen);
-        m_parameter->setCurrentIndex(
-            index >= 0 ? index : m_parameter->findData(QStringLiteral("kick-angle")));
+        // Keep the choice; otherwise the kick angle, or for a natural body
+        // (which has none) the first in the list.
+        int index = m_parameter->findData(chosen);
+        if (index < 0) index = m_parameter->findData(QStringLiteral("kick-angle"));
+        m_parameter->setCurrentIndex(std::max(index, 0));
     }
     if (m_parameter->currentData().toString() != chosen) suggestRange();
 }
@@ -200,6 +202,13 @@ void SweepPanel::showRunSet(const RunSet& runs, int selected) {
     const int decimals = p ? decimalsFor(p->step) + 1 : 2;
     const QString unit = p ? QString::fromStdString(p->unit) : QString();
 
+    // A natural body's sweep: its closest approach and its aim (the impact
+    // parameter) instead of an orbit and a Δv.
+    const bool body = m_mission.vehicle == orbit::Vehicle::NaturalBody;
+    m_legend->setHorizontalHeaderLabels(body ? QStringList{QString(), tr("Value"), tr("Outcome"),
+                                                           tr("Closest (km)"), tr("Aimed at (km)")}
+                                             : QStringList{QString(), tr("Value"), tr("Outcome"),
+                                                           tr("Orbit (km)"), tr("Δv (m/s)")});
     m_legend->setRowCount(static_cast<int>(runs.runs.size()));
     for (int row = 0; row < m_legend->rowCount(); ++row) {
         const FlightRun& run = runs.runs[static_cast<std::size_t>(row)];
@@ -215,6 +224,14 @@ void SweepPanel::showRunSet(const RunSet& runs, int selected) {
                                  (unit.isEmpty() ? QString() : QLatin1Char(' ') + unit));
         setCell(OutcomeColumn, display::outcomeLabel(r.outcome))
             ->setForeground(display::outcomeColor(r.outcome));
+        if (r.encounter) {
+            const double aim = r.encounter->impactParameter;
+            setCell(OrbitColumn,
+                    QLocale().toString(orbit::norm(r.encounter->closest.state.r) / 1000.0, 'f', 0));
+            setCell(DeltaVColumn, std::isfinite(aim) ? QLocale().toString(aim / 1000.0, 'f', 0)
+                                                     : QStringLiteral("—"));
+            continue;
+        }
         const bool hasOrbit =
             r.outcome == orbit::Outcome::Orbit || r.outcome == orbit::Outcome::Escape;
         // Periapsis × apoapsis altitude for orbits, otherwise the highest point.

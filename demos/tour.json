@@ -98,9 +98,32 @@
     },
     {
       "title": "A gravity assist",
-      "caption": "Passing close behind the Moon, the rocket is swung round and gains energy from the Moon's motion, enough to leave the Earth for good. Space probes use the same trick on the planets. That's the tour: every scenario is under File ▸ Examples, ready to change.",
+      "caption": "Passing close behind the Moon, the rocket is swung round and gains energy from the Moon's motion, enough to leave the Earth for good. Space probes use the same trick on the planets.",
       "scenario": "lunar-gravity-assist.json",
       "seconds": 30
+    },
+    {
+      "title": "A visitor from space",
+      "caption": "No rocket this time: asteroid Apophis, 340 m across, passing the Earth on 13 April 2029, closer than many satellites. Natural bodies have no engine; they are placed by their orbit (here from NASA's JPL) and simply fall past. Apophis comes from far away, swings round the Earth on a curve called a hyperbola, and leaves again. The yellow line marks where on the Earth it is overhead.",
+      "scenario": "apophis-2029-flyby.json",
+      "start-hours": 44,
+      "speed": 300,
+      "seconds": 30
+    },
+    {
+      "title": "Gravity pulls it in",
+      "caption": "Apophis again, aimed a little differently two days before it arrives: each path starts up to 80,000 km further over. The Earth's gravity bends every one inwards, so they all pass closer than they were aimed, and the last three hit the Earth although they were aimed to miss it. The Sweep tab shows where each was aimed and how close it came.",
+      "scenario": "apophis-aim-sweep.json",
+      "start-hours": 40,
+      "speed": 1000,
+      "seconds": 30
+    },
+    {
+      "title": "A second moon, for a while",
+      "caption": "The small asteroid 2024 PT5 drifted past so slowly that for two months in late 2024 the Earth held on to it: a 'mini-moon'. Seven months pass here, seen from far away (the small ellipse is the Moon's orbit). Watch the last graph: its energy dips below zero while it is bound, then the Sun's pull lets it go. That's the tour: every scenario is under File ▸ Examples, ready to change.",
+      "scenario": "minimoon-2024-pt5.json",
+      "speed": 500000,
+      "seconds": 35
     }
   ]
 }
