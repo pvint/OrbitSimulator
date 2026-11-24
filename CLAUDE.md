@@ -30,8 +30,8 @@ prototype settled the physics model and the UI ideas; this is the full version.
   and screenshotted on each platform, a live Gentoo ebuild (`dist/gentoo/`).
   No release tagged yet: pushing `v0.1.0` drafts one. Work on a branch and
   open a PR so CI runs before merging.
-- **Natural bodies, near the Earth (N1, 2026-11-24)** on branch
-  `natural-bodies`: an asteroid/comet/moon as the vehicle, placed by
+- **Natural bodies, near the Earth (N1, 2026-11-24)** is done and merged
+  to `main` (PR #2): an asteroid/comet/moon as the vehicle, placed by
   elements at closest approach (q, e, i, Ω, ω; any conic) or a state vector
   at an epoch (J2000, precessed), flown backwards and forwards from the
   epoch. Scenario format 6. Examples (Apophis 2029, its aim sweep, the 2024
@@ -181,6 +181,7 @@ Each milestone ends with something that runs.
 | N1 | Natural bodies near the Earth: an asteroid, comet or moon with no engine as the vehicle, placed by elements at closest approach (q, e, i, Ω, ω) or a state vector at an epoch (J2000), flown both ways from the epoch; impact parameter and capture; scenario format 6; real examples checked against JPL Horizons | done |
 | N2 | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, natural bodies placed by heliocentric elements (comets, 'Oumuamua, Ceres, Apophis changing class), a solar-system view | next |
 | Later | Interplanetary rocket transfers and gravity assists; importing a body from JPL by name | |
+| Later | Go to a point on a path (user's idea, 2026-11-24): click or right-click a point on any trajectory in 3D (e.g. one flight of a burn-time sweep) for "go there": select that flight, jump playback to that moment, and centre the camera on that point in space | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
 
