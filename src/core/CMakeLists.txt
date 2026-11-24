@@ -35,6 +35,7 @@ add_library(orbit_core STATIC
     src/rocket.cpp
     src/scenario.cpp
     src/simulation.cpp
+    src/solar_system.cpp
     src/sweep.cpp
     src/vec3.cpp
 )

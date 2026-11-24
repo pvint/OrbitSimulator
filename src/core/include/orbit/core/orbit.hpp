@@ -85,6 +85,13 @@ PositionVelocity stateFromPeriapsis(double periapsisDistance, double eccentricit
 double timeSincePeriapsis(double periapsisDistance, double eccentricity, double trueAnomaly,
                           double mu = kMuEarth);
 
+/// The reverse for an ellipse: the eccentric anomaly E from the mean anomaly
+/// M (radians), solving Kepler's equation M = E − e sin E by Newton's method,
+/// E ← E + (M − E + e sin E) / (1 − e cos E), starting from E₀ = M + e sin M.
+/// (There is no formula for E: this is the classic equation that has to be
+/// solved by iteration.) For e < 1.
+double eccentricAnomaly(double meanAnomaly, double eccentricity);
+
 /// Kepler's third law: T = 2π √(a³/μ).
 double orbitalPeriod(double semiMajorAxis, double mu = kMuEarth);
 

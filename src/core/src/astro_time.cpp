@@ -32,11 +32,12 @@ CalendarTime calendarFromJulianDate(double jd) {
     const double shifted = jd + 0.5;
     const double z = std::floor(shifted);
     const double f = shifted - z;
-    double a = z;
-    if (z >= 2299161.0) { // Gregorian calendar
-        const double alpha = std::floor((z - 1867216.25) / 36524.25);
-        a = z + 1.0 + alpha - std::floor(alpha / 4.0);
-    }
+    // Always the Gregorian calendar, extended back before its introduction
+    // in 1582 ("proleptic"), as ISO 8601 and julianDate() use. (Meeus switches
+    // to the Julian calendar before 15 October 1582, as historians and JPL
+    // Horizons do: dates from old sources are then some days earlier here.)
+    const double alpha = std::floor((z - 1867216.25) / 36524.25);
+    const double a = z + 1.0 + alpha - std::floor(alpha / 4.0);
     const double b = a + 1524.0;
     const double c = std::floor((b - 122.1) / 365.25);
     const double d = std::floor(365.25 * c);

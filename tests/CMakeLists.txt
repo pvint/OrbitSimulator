@@ -24,6 +24,7 @@ add_executable(orbit_core_tests
     test_orbit.cpp
     test_scenario.cpp
     test_simulation.cpp
+    test_solar_system.cpp
     test_staging.cpp
     test_vec3.cpp
 )
