@@ -92,6 +92,7 @@ build/dev/src/cli/orbitsim-cli        # CLI
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
 cmake --build build/release --target package   # archive in build/release/
 QMAKE=<official Qt>/bin/qmake tools/make_appimage.sh build/release   # AppImage
+tools/install_local.sh                # release build + tests + sudo install into /usr/local
 ```
 
 ## Layout
