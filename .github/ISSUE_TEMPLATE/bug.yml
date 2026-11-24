@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The form behind "New issue ▸ Something's wrong", and behind the app's
+# Help ▸ Report a Problem, which fills in the version and system fields.
+name: Something's wrong
+description: A crash, a wrong number, something that looks off or is hard to use
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A sentence is enough. Paste a screenshot straight in here if it helps (Ctrl+V).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to see it
+      description: >
+        Which example, which settings, what you clicked. Easiest of all: File ▸ Save Scenario,
+        then drag the .json file in here.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - 3D view or playback
+        - Panels (parameters, flight, sweep, flight program)
+        - Graphs
+        - The physics (a number or a path looks wrong)
+        - Demo tour or examples
+        - Command line (orbitsim-cli)
+        - Installing or starting
+        - Something else
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Filled in by Help ▸ Report a Problem; otherwise from Help ▸ About.
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system and Qt version (filled in by Help ▸ Report a Problem).

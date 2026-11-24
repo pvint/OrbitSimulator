@@ -13,6 +13,23 @@ FetchContent_Declare(nlohmann_json
     FIND_PACKAGE_ARGS 3.11)
 FetchContent_MakeAvailable(nlohmann_json)
 
+# The commit being built, for bug reports (Help ▸ Report a Problem). Read
+# when CMake configures, so a build without reconfiguring keeps the old one;
+# tools/install_local.sh always reconfigures. Packagers can set it instead.
+set(ORBIT_BUILD_ID "" CACHE STRING "Build identifier shown in the app (default: git describe)")
+set(ORBIT_BUILD_ID_RESOLVED "${ORBIT_BUILD_ID}")
+if(NOT ORBIT_BUILD_ID)
+    find_package(Git QUIET)
+    if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/.git")
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" describe --always --dirty --tags
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            OUTPUT_VARIABLE ORBIT_BUILD_ID_RESOLVED
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    endif()
+endif()
+set(ORBIT_BUILD_ID "${ORBIT_BUILD_ID_RESOLVED}")
 configure_file(version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/orbit/core/version.hpp" @ONLY)
 
 add_library(orbit_core STATIC

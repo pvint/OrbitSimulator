@@ -5,6 +5,7 @@
 #include "display_format.hpp"
 #include "flight_stats_panel.hpp"
 #include "globe_view.hpp"
+#include "issue_links.hpp"
 #include "orbit/core/mission_parameters.hpp"
 #include "orbit/core/scenario.hpp"
 #include "parameter_panel.hpp"
@@ -15,6 +16,7 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDockWidget>
 #include <QFile>
@@ -67,6 +69,12 @@ void MainWindow::createMenus() {
 
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
     helpMenu->addAction(tr("&Demo Tour"), QKeySequence(Qt::Key_F2), this, [this] { startDemo(); });
+    helpMenu->addSeparator();
+    // GitHub's issue forms, with the version and system already filled in.
+    helpMenu->addAction(tr("&Report a Problem…"), this,
+                        [] { QDesktopServices::openUrl(issues::reportProblemUrl()); });
+    helpMenu->addAction(tr("Suggest an &Idea…"), this,
+                        [] { QDesktopServices::openUrl(issues::suggestIdeaUrl()); });
     helpMenu->addSeparator();
     helpMenu->addAction(tr("&About"), this, &MainWindow::showAbout);
 }
@@ -410,16 +418,15 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 }
 
 void MainWindow::showAbout() {
-    QMessageBox::about(
-        this, tr("About %1").arg(QApplication::applicationName()),
-        tr("<h3>%1 %2</h3>"
-           "<p>A rocket launch and orbit simulator for building intuition "
-           "about orbital mechanics.</p>"
-           "<p>Free software under the GNU General Public License, "
-           "version 3 or later.</p>"
-           "<p>Earth imagery: Blue Marble Next Generation, "
-           "NASA Earth Observatory (Reto Stöckli).<br>"
-           "Moon imagery: CGI Moon Kit, NASA Scientific Visualization Studio, "
-           "from Lunar Reconnaissance Orbiter data.</p>")
-            .arg(QApplication::applicationName(), QApplication::applicationVersion()));
+    QMessageBox::about(this, tr("About %1").arg(QApplication::applicationName()),
+                       tr("<h3>%1 %2</h3>"
+                          "<p>A rocket launch and orbit simulator for building intuition "
+                          "about orbital mechanics.</p>"
+                          "<p>Free software under the GNU General Public License, "
+                          "version 3 or later.</p>"
+                          "<p>Earth imagery: Blue Marble Next Generation, "
+                          "NASA Earth Observatory (Reto Stöckli).<br>"
+                          "Moon imagery: CGI Moon Kit, NASA Scientific Visualization Studio, "
+                          "from Lunar Reconnaissance Orbiter data.</p>")
+                           .arg(QApplication::applicationName(), issues::buildDescription()));
 }
