@@ -175,12 +175,10 @@ PlanetOrbit planetOrbit(Planet planet, double epoch) {
 }
 
 Vec3 planetPosition(Planet planet, double epoch) {
-    const Vec3 r = tablePosition(planet, epoch);
-    if (planet != Planet::Earth) return r;
+    if (planet != Planet::Earth) return tablePosition(planet, epoch);
     // The table gives the Earth–Moon barycentre; the Earth is 1/82 of the
     // way from it to the Moon, on the other side.
-    const double moonShare = kMuMoonKm3 / (kMuKm3.at(index(Planet::Earth)) + kMuMoonKm3);
-    return r - moonShare * moonFromEarth(epoch);
+    return earthAndMoonHeliocentric(epoch).earth;
 }
 
 Vec3 planetVelocity(Planet planet, double epoch) {
@@ -188,8 +186,14 @@ Vec3 planetVelocity(Planet planet, double epoch) {
     return (planetPosition(planet, epoch + dt) - planetPosition(planet, epoch - dt)) / (2.0 * dt);
 }
 
-Vec3 moonHeliocentric(double epoch) {
-    return planetPosition(Planet::Earth, epoch) + moonFromEarth(epoch);
+Vec3 moonHeliocentric(double epoch) { return earthAndMoonHeliocentric(epoch).moon; }
+
+EarthMoon earthAndMoonHeliocentric(double epoch) {
+    const Vec3 barycentre = tablePosition(Planet::Earth, epoch);
+    const Vec3 moon = moonFromEarth(epoch);
+    const double moonShare = kMuMoonKm3 / (kMuKm3.at(index(Planet::Earth)) + kMuMoonKm3);
+    const Vec3 earth = barycentre - moonShare * moon;
+    return {earth, earth + moon};
 }
 
 Vec3 eclipticToEquatorial(const Vec3& v) { return rotateX(v, kObliquityJ2000); }

@@ -3,6 +3,7 @@
 
 #include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
+#include "orbit/core/ephemeris.hpp"
 #include "orbit/core/rocket.hpp"
 
 #include <algorithm>
@@ -296,21 +297,29 @@ constexpr std::array kParameters{
         1.0, 2000000.0, 1.0, [](const Mission& m) { return m.body.periapsisDistance / 1000.0; },
         [](Mission& m, double v) { m.body.periapsisDistance = v * 1000.0; }),
     bodyParameter(
+        "perihelion-distance", "Perihelion distance", "au", kElementsGroup,
+        "Closest approach to the Sun, at the epoch, in astronomical units (1 au = 149.6 "
+        "million km, the Earth's distance). Mercury: 0.31 au, Halley's comet: 0.59 au",
+        0.005, 100.0, 0.0001,
+        [](const Mission& m) { return m.body.periapsisDistance / kAstronomicalUnit; },
+        [](Mission& m, double v) { m.body.periapsisDistance = v * kAstronomicalUnit; }),
+    bodyParameter(
         "eccentricity", "Eccentricity", "", kElementsGroup,
-        "0 = a circle, below 1 = an ellipse (bound to the Earth), above 1 = a "
+        "0 = a circle, below 1 = an ellipse (bound: it comes back), above 1 = a "
         "hyperbola: it comes from far away and leaves again",
         0.0, 30.0, 0.001, [](const Mission& m) { return m.body.eccentricity; },
         [](Mission& m, double v) { m.body.eccentricity = v; }),
     bodyParameter(
         "inclination", "Inclination", "°", kElementsGroup,
-        "Tilt of the orbit against the equator (of J2000). Over 90° = moving "
-        "westward, against the Earth's turning",
+        "Tilt of the orbit against the equator of J2000 (around the Sun: against the "
+        "ecliptic, the plane of the Earth's orbit). Over 90° = going round the wrong "
+        "way, retrograde",
         0.0, 180.0, 0.01, [](const Mission& m) { return radToDeg(m.body.inclination); },
         [](Mission& m, double v) { m.body.inclination = degToRad(v); }),
     bodyParameter(
         "raan", "Ascending node (Ω)", "°", kElementsGroup,
-        "Where the orbit crosses the equator going north, measured eastward from "
-        "the vernal equinox (right ascension)",
+        "Where the orbit crosses the equator (around the Sun: the ecliptic) going "
+        "north, measured eastward from the vernal equinox",
         0.0, 360.0, 0.01, [](const Mission& m) { return radToDeg(m.body.raan); },
         [](Mission& m, double v) { m.body.raan = degToRad(v); }),
     bodyParameter(
@@ -321,20 +330,24 @@ constexpr std::array kParameters{
         [](Mission& m, double v) { m.body.argumentOfPeriapsis = degToRad(v); }),
 
     bodyParameter("body-x", "x", "km", kStateGroup,
-                  "Position at the epoch, towards the vernal equinox (J2000 equator, as JPL "
-                  "Horizons gives it)",
-                  -1e7, 1e7, 1.0, bodyPosition<0>, setBodyPosition<0>),
+                  "Position at the epoch, towards the vernal equinox, as JPL Horizons gives it: "
+                  "from the Earth's centre in the J2000 equatorial frame (ICRF), or from the "
+                  "Sun's in the J2000 ecliptic frame",
+                  -1e10, 1e10, 1.0, bodyPosition<0>, setBodyPosition<0>),
     bodyParameter("body-y", "y", "km", kStateGroup,
-                  "Position at the epoch, 90° east of x in the equator's plane", -1e7, 1e7, 1.0,
-                  bodyPosition<1>, setBodyPosition<1>),
-    bodyParameter("body-z", "z", "km", kStateGroup, "Position at the epoch, towards the north pole",
-                  -1e7, 1e7, 1.0, bodyPosition<2>, setBodyPosition<2>),
-    bodyParameter("body-vx", "vx", "km/s", kStateGroup, "Velocity at the epoch, along x", -50.0,
-                  50.0, 0.001, bodyVelocity<0>, setBodyVelocity<0>),
-    bodyParameter("body-vy", "vy", "km/s", kStateGroup, "Velocity at the epoch, along y", -50.0,
-                  50.0, 0.001, bodyVelocity<1>, setBodyVelocity<1>),
-    bodyParameter("body-vz", "vz", "km/s", kStateGroup, "Velocity at the epoch, along z", -50.0,
-                  50.0, 0.001, bodyVelocity<2>, setBodyVelocity<2>),
+                  "Position at the epoch, 90° east of x in the equator's (or the ecliptic's) "
+                  "plane",
+                  -1e10, 1e10, 1.0, bodyPosition<1>, setBodyPosition<1>),
+    bodyParameter("body-z", "z", "km", kStateGroup,
+                  "Position at the epoch, towards the north pole (of the equator, or of the "
+                  "ecliptic)",
+                  -1e10, 1e10, 1.0, bodyPosition<2>, setBodyPosition<2>),
+    bodyParameter("body-vx", "vx", "km/s", kStateGroup, "Velocity at the epoch, along x", -100.0,
+                  100.0, 0.001, bodyVelocity<0>, setBodyVelocity<0>),
+    bodyParameter("body-vy", "vy", "km/s", kStateGroup, "Velocity at the epoch, along y", -100.0,
+                  100.0, 0.001, bodyVelocity<1>, setBodyVelocity<1>),
+    bodyParameter("body-vz", "vz", "km/s", kStateGroup, "Velocity at the epoch, along z", -100.0,
+                  100.0, 0.001, bodyVelocity<2>, setBodyVelocity<2>),
 
     bodyParameter(
         "epoch-hour", "Epoch time", "h UTC", "Epoch and time span",
@@ -345,12 +358,12 @@ constexpr std::array kParameters{
         [](Mission& m, double v) { setBodyEpochHourOfDay(m, v); }, false),
     bodyParameter(
         "days-before", "Days before", "d", "Epoch and time span",
-        "How far back from the epoch to follow the body", 0.0, 365.0, 0.1,
+        "How far back from the epoch to follow the body (up to 200 years)", 0.0, 73050.0, 0.1,
         [](const Mission& m) { return m.body.timeBefore / 86400.0; },
         [](Mission& m, double v) { m.body.timeBefore = v * 86400.0; }),
     bodyParameter(
         "days-after", "Days after", "d", "Epoch and time span",
-        "How far on from the epoch to follow it", 0.0, 365.0, 0.1,
+        "How far on from the epoch to follow it (up to 200 years)", 0.0, 73050.0, 0.1,
         [](const Mission& m) { return m.body.timeAfter / 86400.0; },
         [](Mission& m, double v) { m.body.timeAfter = v * 86400.0; }),
 };
@@ -361,6 +374,10 @@ std::span<const ParameterInfo> missionParameters() { return kParameters; }
 
 bool parameterInUse(const ParameterInfo& parameter, const Mission& mission) {
     if (parameter.vehicle != mission.vehicle) return false;
+    // The closest approach in km around the Earth, in au around the Sun.
+    const bool sun = mission.body.centre == BodyCentre::Sun;
+    if (parameter.key == "periapsis-distance" && sun) return false;
+    if (parameter.key == "perihelion-distance" && !sun) return false;
     if (parameter.group == kElementsGroup) return mission.body.given == BodyGiven::Elements;
     if (parameter.group == kStateGroup) return mission.body.given == BodyGiven::StateVector;
     return true;

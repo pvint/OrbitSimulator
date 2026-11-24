@@ -1,0 +1,19 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 7,
+  "name": "Ceres, in the asteroid belt",
+  "description": "The largest body in the asteroid belt between Mars and Jupiter, 940 km across, followed for one orbit of 4.6 years from its perihelion in December 2022. Its orbit is nearly a circle, tilted 10.6° to the Earth's. Elements from JPL.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-centre": "sun",
+    "body-given": "elements",
+    "epoch-utc": "2022-12-07T07:08:10Z",
+    "perihelion-distance": 2.548637,
+    "eccentricity": 0.0789825,
+    "inclination": 10.58735,
+    "raan": 80.25362,
+    "argument-of-periapsis": 73.39056,
+    "days-before": 0,
+    "days-after": 1682
+  }
+}

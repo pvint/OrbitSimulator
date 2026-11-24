@@ -1,0 +1,19 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 7,
+  "name": "Halley's comet (1986)",
+  "description": "Halley's comet on one whole 76-year orbit around the Sun, from 1948 to 2024, centred on its last return, when it rounded the Sun on 9 February 1986. Its orbit is a long, thin ellipse (eccentricity 0.97) that reaches out beyond Neptune, and it goes round the wrong way, against the planets (inclination 162°). It moves fast near the Sun and crawls far out, as Kepler's second law says. Elements at perihelion from JPL.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-centre": "sun",
+    "body-given": "elements",
+    "epoch-utc": "1986-02-09T10:59:59Z",
+    "perihelion-distance": 0.5871034,
+    "eccentricity": 0.9672792,
+    "inclination": 162.2422,
+    "raan": 58.8599,
+    "argument-of-periapsis": 111.8655,
+    "days-before": 13880,
+    "days-after": 13880
+  }
+}

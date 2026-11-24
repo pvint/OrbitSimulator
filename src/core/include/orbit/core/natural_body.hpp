@@ -18,12 +18,16 @@
 // POSITION AND VELOCITY AT THE EPOCH
 // A state vector, as JPL Horizons prints it ("vector table").
 //
-// FRAME
-// Both are given in the Earth's equatorial frame of J2000 (ICRF), the frame
-// every catalogue uses: x towards the vernal equinox of 2000, z along the
-// Earth's axis in 2000. The simulation works in the equator and equinox of
-// *date*, so the body is turned through the precession of the Earth's axis
-// since 2000 (precessionFromJ2000): about 0.36° by 2029.
+// CENTRE AND FRAME
+// Around the Earth: in the Earth's equatorial frame of J2000 (ICRF), as JPL
+// Horizons gives geocentric values: x towards the vernal equinox of 2000, z
+// along the Earth's axis in 2000. The simulation works in the equator and
+// equinox of *date*, so the body is turned through the precession of the
+// Earth's axis since 2000 (precessionFromJ2000): about 0.36° by 2029.
+// Around the Sun: in the heliocentric ecliptic frame of J2000
+// (solar_system.hpp), as catalogues of asteroids and comets give them; the
+// simulation works in that frame too. The orbit is then the body's path
+// around the Sun, and q its perihelion distance.
 //
 // TIME SPAN
 // The simulation runs from timeBefore the epoch to timeAfter it: backwards
@@ -53,17 +57,25 @@ std::string_view bodyGivenKey(BodyGiven given); ///< "elements", "state-vector"
 std::string_view bodyGivenLabel(BodyGiven given);
 bool bodyGivenFromKey(std::string_view key, BodyGiven& given);
 
+/// What the body is placed around, and followed around.
+enum class BodyCentre { Earth, Sun };
+inline constexpr std::array kAllBodyCentres{BodyCentre::Earth, BodyCentre::Sun};
+std::string_view bodyCentreKey(BodyCentre centre); ///< "earth", "sun"
+std::string_view bodyCentreLabel(BodyCentre centre);
+bool bodyCentreFromKey(std::string_view key, BodyCentre& centre);
+
 struct NaturalBody {
+    BodyCentre centre = BodyCentre::Earth;
     BodyGiven given = BodyGiven::Elements;
 
-    // Orbital elements at periapsis (the epoch), J2000 equatorial frame.
-    double periapsisDistance = 3.8011e7; ///< q, m from the Earth's centre
+    // Orbital elements at periapsis (the epoch), in the centre's J2000 frame.
+    double periapsisDistance = 3.8011e7; ///< q, m from the centre
     double eccentricity = 4.2;           ///< e
     double inclination = 0.0;            ///< i, radians
     double raan = 0.0;                   ///< Ω, radians
     double argumentOfPeriapsis = 0.0;    ///< ω, radians
 
-    // Position and velocity at the epoch, J2000 equatorial frame.
+    // Position and velocity at the epoch, in the centre's J2000 frame.
     Vec3 position; ///< m
     Vec3 velocity; ///< m/s
 
@@ -78,12 +90,16 @@ struct NaturalBody {
 /// 21:45 UTC, from JPL Horizons). The default natural body.
 NaturalBody apophisFlyby();
 
-/// The body's position and velocity at the epoch, in the J2000 frame it is
-/// given in.
-PositionVelocity bodyStateJ2000(const NaturalBody& body, double mu = kMuEarth);
+/// μ of the body's centre: the Earth's or the Sun's (m³/s²).
+double centreMu(BodyCentre centre);
 
-/// The same, turned into the simulation's frame (equator of date).
-PositionVelocity bodyStateAtEpoch(const NaturalBody& body, double mu = kMuEarth);
+/// The body's position and velocity at the epoch, in the J2000 frame it is
+/// given in (relative to its centre).
+PositionVelocity bodyStateJ2000(const NaturalBody& body);
+
+/// The same, in the frame the simulation uses: around the Earth, turned to
+/// the equator of date; around the Sun, unchanged (ecliptic J2000).
+PositionVelocity bodyStateAtEpoch(const NaturalBody& body);
 
 /// Switch how the body is given, keeping the same path. Elements hold at
 /// periapsis, so going from a state vector to elements moves the epoch to
@@ -91,7 +107,18 @@ PositionVelocity bodyStateAtEpoch(const NaturalBody& body, double mu = kMuEarth)
 /// state, Kepler's equation); the time span moves with it so it still
 /// covers the same stretch of time, and grows to include the new epoch if
 /// it has to. Going to a state vector keeps the epoch.
-void setBodyGiven(NaturalBody& body, BodyGiven given, double mu = kMuEarth);
+void setBodyGiven(NaturalBody& body, BodyGiven given);
+
+/// Move the body to another centre, keeping the same path: its state at the
+/// epoch is shifted by the Earth's position and velocity then (and turned
+/// between the Earth's equator and the ecliptic). The body is then given by
+/// that position and velocity, which is exact. (Elements around the new
+/// centre would move the epoch to a periapsis found from a two-body orbit,
+/// which is wrong if the body is close to the Earth, where the Earth's pull
+/// dominates; setBodyGiven can still do that afterwards.) Around the Sun,
+/// the time span grows to a year either side if it was shorter; around the
+/// Earth it shrinks to 30 days.
+void setBodyCentre(NaturalBody& body, BodyCentre centre);
 
 /// Precession: the Earth's axis swings round a circle of 23.4° radius once
 /// in 26,000 years, dragging the equator and the equinox with it. Turns a

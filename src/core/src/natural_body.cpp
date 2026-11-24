@@ -3,6 +3,8 @@
 
 #include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
+#include "orbit/core/ephemeris.hpp"
+#include "orbit/core/solar_system.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -69,6 +71,38 @@ bool bodyGivenFromKey(std::string_view key, BodyGiven& given) {
     return false;
 }
 
+std::string_view bodyCentreKey(BodyCentre centre) {
+    switch (centre) {
+    case BodyCentre::Earth:
+        return "earth";
+    case BodyCentre::Sun:
+        return "sun";
+    }
+    return {};
+}
+
+std::string_view bodyCentreLabel(BodyCentre centre) {
+    switch (centre) {
+    case BodyCentre::Earth:
+        return "The Earth";
+    case BodyCentre::Sun:
+        return "The Sun";
+    }
+    return {};
+}
+
+bool bodyCentreFromKey(std::string_view key, BodyCentre& centre) {
+    for (const BodyCentre c : kAllBodyCentres) {
+        if (bodyCentreKey(c) == key) {
+            centre = c;
+            return true;
+        }
+    }
+    return false;
+}
+
+double centreMu(BodyCentre centre) { return centre == BodyCentre::Sun ? kMuSun : kMuEarth; }
+
 NaturalBody apophisFlyby() {
     // Osculating elements around the Earth at closest approach, worked out
     // from JPL Horizons' geocentric state vector (ICRF) at 21:45 UTC.
@@ -87,22 +121,24 @@ NaturalBody apophisFlyby() {
     return body;
 }
 
-PositionVelocity bodyStateJ2000(const NaturalBody& body, double mu) {
+PositionVelocity bodyStateJ2000(const NaturalBody& body) {
     if (body.given == BodyGiven::StateVector) return {body.position, body.velocity};
     return stateFromPeriapsis(body.periapsisDistance, body.eccentricity, body.inclination,
-                              body.raan, body.argumentOfPeriapsis, 0.0, mu);
+                              body.raan, body.argumentOfPeriapsis, 0.0, centreMu(body.centre));
 }
 
-PositionVelocity bodyStateAtEpoch(const NaturalBody& body, double mu) {
-    const PositionVelocity j2000 = bodyStateJ2000(body, mu);
+PositionVelocity bodyStateAtEpoch(const NaturalBody& body) {
+    const PositionVelocity j2000 = bodyStateJ2000(body);
+    if (body.centre == BodyCentre::Sun) return j2000; // the simulation's frame already
     // The frame turns by a few arcseconds a year: far too slowly for its
     // turning to change the velocity measurably, so both are simply rotated.
     return {precessionFromJ2000(j2000.r, body.epoch), precessionFromJ2000(j2000.v, body.epoch)};
 }
 
-void setBodyGiven(NaturalBody& body, BodyGiven given, double mu) {
+void setBodyGiven(NaturalBody& body, BodyGiven given) {
     if (given == body.given) return;
-    const PositionVelocity state = bodyStateJ2000(body, mu);
+    const double mu = centreMu(body.centre);
+    const PositionVelocity state = bodyStateJ2000(body);
     if (given == BodyGiven::StateVector) {
         body.position = state.r;
         body.velocity = state.v;
@@ -126,6 +162,28 @@ void setBodyGiven(NaturalBody& body, BodyGiven given, double mu) {
     body.raan = el.raan;
     body.argumentOfPeriapsis = el.argumentOfPeriapsis;
     body.given = given;
+}
+
+void setBodyCentre(NaturalBody& body, BodyCentre centre) {
+    if (centre == body.centre) return;
+    setBodyGiven(body, BodyGiven::StateVector);
+
+    // r_sun = r_earth + R_earth(t), with the geocentric part turned from the
+    // equator to the ecliptic; the same for the velocity.
+    const Vec3 earthR = planetPosition(Planet::Earth, body.epoch);
+    const Vec3 earthV = planetVelocity(Planet::Earth, body.epoch);
+    if (centre == BodyCentre::Sun) {
+        body.position = earthR + equatorialToEcliptic(body.position);
+        body.velocity = earthV + equatorialToEcliptic(body.velocity);
+        body.timeBefore = std::max(body.timeBefore, 365.25 * 86400.0);
+        body.timeAfter = std::max(body.timeAfter, 365.25 * 86400.0);
+    } else {
+        body.position = eclipticToEquatorial(body.position - earthR);
+        body.velocity = eclipticToEquatorial(body.velocity - earthV);
+        body.timeBefore = std::min(body.timeBefore, 30.0 * 86400.0);
+        body.timeAfter = std::min(body.timeAfter, 30.0 * 86400.0);
+    }
+    body.centre = centre;
 }
 
 namespace {

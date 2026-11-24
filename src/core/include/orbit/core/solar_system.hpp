@@ -69,6 +69,13 @@ Vec3 planetVelocity(Planet planet, double epoch);
 /// Heliocentric ecliptic J2000 position of the Moon (m).
 Vec3 moonHeliocentric(double epoch);
 
+/// Both at once (one evaluation of the Moon's series instead of three).
+struct EarthMoon {
+    Vec3 earth;
+    Vec3 moon;
+};
+EarthMoon earthAndMoonHeliocentric(double epoch);
+
 /// The planet's orbital elements at the epoch, from the tables (the
 /// Earth–Moon barycentre's for the Earth): for drawing its orbit.
 struct PlanetOrbit {

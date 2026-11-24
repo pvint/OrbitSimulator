@@ -17,6 +17,7 @@ add_executable(orbit_core_tests
     test_custom_program.cpp
     test_atmosphere.cpp
     test_earth.cpp
+    test_heliocentric.cpp
     test_integrator.cpp
     test_mission_parameters.cpp
     test_natural_body.cpp
