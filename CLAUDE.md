@@ -36,12 +36,18 @@ prototype settled the physics model and the UI ideas; this is the full version.
   at an epoch (J2000, precessed), flown backwards and forwards from the
   epoch. Scenario format 6. Examples (Apophis 2029, its aim sweep, the 2024
   PT5 mini-moon, Chelyabinsk) are checked against JPL Horizons by tests.
-- **Solar system (N2, 2026-11-24)** on branch `solar-system`: natural
+- **Solar system (N2, 2026-11-24)** is done and merged (PR #3): natural
   bodies around the Sun (heliocentric ecliptic J2000, planets from JPL's
   approximate elements, every planet and the Moon pulling), a second 3D
   scene for the solar system, scenario format 7. Examples (Halley,
   ʻOumuamua, Ceres, Apophis's orbit change, Kepler's third law) checked
   against JPL by tests. Decision 34.
+- **Testing and issues:** the user tests the installed app (in the KDE
+  menu and favourites; `tools/install_local.sh` after changes) and reports
+  on GitHub issues, through *Help ▸ Report a Problem* (bug form with the
+  version, `git describe` build id and system filled in) or *Suggest an
+  Idea*. Forms in `.github/ISSUE_TEMPLATE/`; labels bug, enhancement,
+  physics, ui. Read them with `gh issue list`; fix with "Fixes #N".
 - **Next:** ask the user. Candidates on the roadmap: "go to a point on a
   path", interplanetary rocket transfers, scripting, a first release.
 - The app flies a rocket of one to three stages from any site and date,

@@ -163,6 +163,11 @@ around the Sun. It moves on by itself; use the caption's buttons to go back,
 skip ahead or end it. `orbitsim --demo-step N` starts at step N.
 
 `orbitsim --screenshot FILE` saves an image of the window and quits.
+
+**Found a problem, or have an idea?** *Help ▸ Report a Problem* opens a
+GitHub issue form with the app's version and your system already filled in
+(*Suggest an Idea* is next to it). A screenshot can be pasted straight in,
+and a saved scenario file dragged in shows exactly what you were doing.
 ```
 
 ### Trying the physics from the command line

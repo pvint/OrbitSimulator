@@ -2,8 +2,10 @@
 // The app's panels and simulation controller, driven the way a user would.
 
 #include "flight_stats_panel.hpp"
+#include "issue_links.hpp"
 #include "orbit/core/angles.hpp"
 #include "orbit/core/ephemeris.hpp"
+#include "orbit/core/version.hpp"
 #include "parameter_panel.hpp"
 #include "program_panel.hpp"
 #include "scene_coordinates.hpp"
@@ -24,6 +26,7 @@
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTest>
+#include <QUrlQuery>
 
 #include <cmath>
 #include <memory>
@@ -480,6 +483,21 @@ private slots:
         QVERIFY(!passage->isVisibleTo(&stats));
         // Apophis's flyby, seen from the Sun: 38,011 km from the Earth.
         QVERIFY(nearestEarth->text().contains(QLocale().toString(38011.0, 'f', 0)));
+    }
+
+    // Help ▸ Report a Problem opens GitHub's form with the build filled in.
+    void reportProblemLinkFillsInTheForm() {
+        const QUrl url = issues::reportProblemUrl();
+        QCOMPARE(url.host(), QStringLiteral("github.com"));
+        QCOMPARE(url.path(), QStringLiteral("/pvint/OrbitSimulator/issues/new"));
+        const QUrlQuery query(url);
+        QCOMPARE(query.queryItemValue(QStringLiteral("template")), QStringLiteral("bug.yml"));
+        QVERIFY(query.queryItemValue(QStringLiteral("version"), QUrl::FullyDecoded)
+                    .startsWith(QString::fromUtf8(orbit::kVersion.data())));
+        QVERIFY(query.queryItemValue(QStringLiteral("system"), QUrl::FullyDecoded)
+                    .contains(QStringLiteral("Qt ")));
+        QCOMPARE(QUrlQuery(issues::suggestIdeaUrl()).queryItemValue(QStringLiteral("template")),
+                 QStringLiteral("idea.yml"));
     }
 
     void sweepPanelOffersABodysParameters() {

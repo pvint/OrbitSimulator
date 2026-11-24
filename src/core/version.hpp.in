@@ -8,5 +8,8 @@ namespace orbit {
 
 inline constexpr std::string_view kVersion = "@PROJECT_VERSION@";
 inline constexpr std::string_view kProjectName = "@PROJECT_NAME@";
+/// Which commit this was built from ("v0.1.0-12-g3e2d75d", "-dirty" with
+/// uncommitted changes), recorded when CMake configured; empty if unknown.
+inline constexpr std::string_view kBuildId = "@ORBIT_BUILD_ID@";
 
 } // namespace orbit
