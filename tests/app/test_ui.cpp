@@ -9,6 +9,7 @@
 #include "scene_coordinates.hpp"
 #include "simulation_controller.hpp"
 #include "sweep_panel.hpp"
+#include "wheel_guard.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -17,13 +18,17 @@
 #include <QDoubleSpinBox>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLocale>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QSlider>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTest>
+#include <QWheelEvent>
 
 #include <cmath>
 #include <memory>
@@ -480,6 +485,44 @@ private slots:
         QVERIFY(!passage->isVisibleTo(&stats));
         // Apophis's flyby, seen from the Sun: 38,011 km from the Earth.
         QVERIFY(nearestEarth->text().contains(QLocale().toString(38011.0, 'f', 0)));
+    }
+
+    // Scrolling the parameter panel over a spin box scrolls the panel; the
+    // value only changes with the wheel once the box has been clicked into.
+    void wheelScrollsThePanelNotTheValues() {
+        WheelGuard guard;
+        qApp->installEventFilter(&guard);
+        QScrollArea area;
+        auto* panel = new ParameterPanel;
+        area.setWidget(panel);
+        area.setWidgetResizable(true);
+        area.resize(320, 300);
+        area.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&area));
+        auto* spin = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin-kick-angle"));
+        auto* slider = panel->findChild<QSlider*>(QStringLiteral("slider-kick-angle"));
+        QVERIFY(spin && slider);
+        // No focus from the wheel any more: click or Tab instead.
+        QCOMPARE(spin->focusPolicy(), Qt::StrongFocus);
+
+        const auto wheelAt = [](QWidget* target) {
+            const QPointF pos = QRectF(target->rect()).center();
+            QWheelEvent wheel(pos, target->mapToGlobal(pos), QPoint(), QPoint(0, -120),
+                              Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+            QApplication::sendEvent(target, &wheel);
+        };
+        const double before = spin->value();
+        const int scrolled = area.verticalScrollBar()->value();
+        // A spin box's text field gets the wheel first.
+        auto* field = spin->findChild<QLineEdit*>();
+        QVERIFY(field);
+        wheelAt(field);
+        QCOMPARE(spin->value(), before);
+        wheelAt(slider); // the slider moves the same value
+        QCOMPARE(spin->value(), before);
+        QVERIFY(area.verticalScrollBar()->value() > scrolled);
+        QVERIFY(!spin->hasFocus());
+        qApp->removeEventFilter(&guard);
     }
 
     void sweepPanelOffersABodysParameters() {
