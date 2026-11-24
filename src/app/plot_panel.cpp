@@ -57,8 +57,9 @@ TimeUnit timeUnitFor(double duration) {
     if (duration <= 1200.0) return {1.0, QT_TRANSLATE_NOOP("PlotPanel", "s")};
     if (duration <= 5.0 * 3600.0) return {60.0, QT_TRANSLATE_NOOP("PlotPanel", "min")};
     if (duration <= 72.0 * 3600.0) return {3600.0, QT_TRANSLATE_NOOP("PlotPanel", "h")};
-    if (duration <= 3.0 * 365.25 * 86400.0)
+    if (duration <= 3.0 * 365.25 * 86400.0) {
         return {86400.0, QT_TRANSLATE_NOOP("PlotPanel", "days")};
+    }
     return {365.25 * 86400.0, QT_TRANSLATE_NOOP("PlotPanel", "years")};
 }
 
@@ -233,8 +234,17 @@ void PlotPanel::refresh() {
         const TimeUnit unit = timeUnitFor(tEnd);
         const double timeScale = 1.0 / unit.seconds;
         const NiceAxis xNice = niceAxis(tEnd * timeScale);
-        const Graph::Value& value = solar ? g.solarValue : body ? g.bodyValue : g.value;
-        g.item->setProperty("title", solar ? g.solarTitle : body ? g.bodyTitle : g.title);
+        // A rocket, a body around the Earth, or one around the Sun.
+        const Graph::Value* value = &g.value;
+        QString title = g.title;
+        if (solar) {
+            value = &g.solarValue;
+            title = g.solarTitle;
+        } else if (body) {
+            value = &g.bodyValue;
+            title = g.bodyTitle;
+        }
+        g.item->setProperty("title", title);
 
         double yMax = 0.0;
         double yMin = 0.0;
@@ -243,7 +253,7 @@ void PlotPanel::refresh() {
             points.reserve(static_cast<qsizetype>(result.samples.size()));
             for (const orbit::Sample& s : result.samples) {
                 if (s.t > tEnd) break;
-                const double y = value(result, s);
+                const double y = (*value)(result, s);
                 points.append({s.t * timeScale, y});
                 yMax = std::max(yMax, y);
                 yMin = std::min(yMin, y);

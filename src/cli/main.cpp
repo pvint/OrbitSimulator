@@ -379,10 +379,36 @@ void printBodySweep(const std::vector<double>& values,
     }
 }
 
+void printSolarSweep(const std::vector<double>& values,
+                     const std::vector<orbit::Mission>& missions) {
+    std::cout << std::right << std::setw(12) << "value" << "  " << std::left << std::setw(10)
+              << "outcome" << std::right << std::setw(14) << "perihelion" << std::setw(14)
+              << "aphelion" << std::setw(12) << "period" << std::setw(16) << "nearest Earth"
+              << '\n';
+    for (std::size_t i = 0; i < missions.size(); ++i) {
+        const orbit::SimResult r = orbit::simulate(missions[i]);
+        if (!r.solar) continue;
+        const orbit::OrbitalElements& o = r.solar->finalOrbit;
+        const auto& earth = r.solar->approaches.at(static_cast<std::size_t>(orbit::Planet::Earth));
+        std::cout << std::fixed << std::setprecision(3) << std::setw(12) << values[i] << "  "
+                  << std::left << std::setw(10) << orbit::toString(r.outcome) << std::right
+                  << std::setw(14) << au(o.periapsis) << std::setw(14)
+                  << (o.bound ? au(o.apoapsis) : std::string("-")) << std::setprecision(2)
+                  << std::setw(6) << (o.bound ? o.period / (365.25 * 86400.0) : 0.0) << " years"
+                  << std::setw(16) << au(earth.distance) << '\n';
+    }
+}
+
 void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec,
                 const orbit::SweepTarget& p) {
     const auto values = orbit::sweepValues(spec);
     const auto missions = orbit::sweepMissions(base, spec);
+    if (base.vehicle == orbit::Vehicle::NaturalBody && base.body.centre == orbit::BodyCentre::Sun) {
+        std::cout << "Sweep of " << p.title
+                  << (p.unit.empty() ? std::string() : " (" + p.unit + ")") << "\n\n";
+        printSolarSweep(values, missions);
+        return;
+    }
     if (base.vehicle == orbit::Vehicle::NaturalBody) {
         std::cout << "Sweep of " << p.title
                   << (p.unit.empty() ? std::string() : " (" + p.unit + ")") << "\n\n";

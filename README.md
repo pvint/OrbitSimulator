@@ -13,7 +13,8 @@ the Moon, playback, live parameter sliders, results and graphs, parameter
 sweeps that compare a whole family of flights, scenario files with built-in
 examples, and a guided tour. Rockets fly through a real atmosphere, with
 drag and max-Q, and can have up to three stages. Instead of a rocket you
-can follow a natural body, an asteroid or comet passing the Earth.
+can follow a natural body: an asteroid or comet passing the Earth, or going
+round the Sun among the planets.
 `orbitsim-cli` flies missions and sweeps from the command
 line. See the roadmap in [CLAUDE.md](CLAUDE.md). The
 original 2D browser prototype, which already works, is in
@@ -137,16 +138,28 @@ from the Earth and the Moon, and its energy, which dips below zero while it
 is captured. Try the *Apophis*, *mini-moon* and *Chelyabinsk* examples, and
 the sweep of Apophis's aim.
 
+**The solar system.** Set a natural body's *Going round* to *The Sun* to
+follow it around the Sun, with every planet pulling on it. Its orbit is
+then given as asteroid and comet catalogues give it (perihelion distance in
+au, angles to the ecliptic), and the 3D view shows the solar system: the
+Sun, the planets on their orbits, and the body's path, with the plane of
+the Earth's orbit level. The Flight panel shows its orbit at the start and
+end, and how close it came to the Earth and the other planets. Switching an
+Earth-centred body to the Sun keeps its path, so Apophis's flyby can be
+followed on round the Sun. Try *Halley's comet*, *ʻOumuamua*, *Ceres*,
+*Apophis changes its orbit* and the *Kepler's third law* sweep.
+
 **Scenarios.** *File ▸ Examples* has ready-made scenarios (equatorial and
 polar launches, east vs west, kick-angle, propellant, drag and thrust
-sweeps, a pure gravity turn, two-stage rockets, asteroids...). *Save Scenario* writes the current setup to a JSON file
+sweeps, a pure gravity turn, two-stage rockets, asteroids and comets...). *Save Scenario* writes the current setup to a JSON file
 you can share or edit by hand; `orbitsim file.json` opens one directly. The
 examples live in [scenarios/](scenarios/).
 
-**Demo tour.** *Help ▸ Demo Tour* walks through seventeen scenarios with
+**Demo tour.** *Help ▸ Demo Tour* walks through twenty scenarios with
 captions: a first orbit, why rockets tilt over, air resistance, staging, flight programs, latitude and launch
 direction, polar orbits, a trip to the Moon with launch windows and a
-gravity assist, and asteroids passing the Earth. It moves on by itself; use the caption's buttons to go back,
+gravity assist, asteroids passing the Earth, and comets and asteroids
+around the Sun. It moves on by itself; use the caption's buttons to go back,
 skip ahead or end it. `orbitsim --demo-step N` starts at step N.
 
 `orbitsim --screenshot FILE` saves an image of the window and quits.
@@ -165,6 +178,8 @@ build/dev/src/cli/orbitsim-cli --csv flight.csv       # every sample, for plotti
 build/dev/src/cli/orbitsim-cli --scenario scenarios/hohmann-transfer.json --show-program
 build/dev/src/cli/orbitsim-cli --vehicle natural-body # asteroid Apophis passing in 2029
 build/dev/src/cli/orbitsim-cli --scenario scenarios/minimoon-2024-pt5.json
+build/dev/src/cli/orbitsim-cli --scenario scenarios/halley-1986.json    # around the Sun
+build/dev/src/cli/orbitsim-cli --vehicle natural-body --body-given state-vector --body-centre sun
 ```
 
 How the physics works is explained in [docs/physics.md](docs/physics.md).

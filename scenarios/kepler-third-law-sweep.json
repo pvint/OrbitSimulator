@@ -1,0 +1,20 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 7,
+  "name": "Kepler's third law: further out, slower",
+  "description": "Seven bodies on circular orbits around the Sun, from 0.4 au (inside Mercury's orbit) out to 5.2 au (Jupiter's), all starting on the same line and followed for two years. The inner ones lap the Sun many times; the outer ones barely move. The Sweep tab lists each period: the square of the period grows with the cube of the distance (T² ∝ a³), so 13 times further out takes 47 times longer.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-centre": "sun",
+    "body-given": "elements",
+    "epoch-utc": "2030-01-01T00:00:00Z",
+    "perihelion-distance": 1.0,
+    "eccentricity": 0.0,
+    "inclination": 0.0,
+    "raan": 0.0,
+    "argument-of-periapsis": 0.0,
+    "days-before": 0,
+    "days-after": 730
+  },
+  "sweep": { "parameter": "perihelion-distance", "from": 0.4, "to": 5.2, "steps": 7 }
+}

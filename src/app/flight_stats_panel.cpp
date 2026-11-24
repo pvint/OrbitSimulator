@@ -338,10 +338,12 @@ void FlightStatsPanel::showResult(const orbit::SimResult& result) {
     for (const orbit::FlightEvent& e : result.events) {
         // A body's distance is from the Earth's centre, like its closest
         // approach; a rocket's is its altitude.
-        const QString where =
-            solar  ? tr("%1 from the Sun").arg(au(orbit::norm(e.sample.state.r)))
-            : body ? tr("%1 from the centre").arg(display::distance(orbit::norm(e.sample.state.r)))
-                   : display::altitude(e.sample.altitude());
+        QString where = display::altitude(e.sample.altitude());
+        if (solar) {
+            where = tr("%1 from the Sun").arg(au(orbit::norm(e.sample.state.r)));
+        } else if (body) {
+            where = tr("%1 from the centre").arg(display::distance(orbit::norm(e.sample.state.r)));
+        }
         html += QStringLiteral("<tr><td>%1</td><td>&nbsp;%2</td></tr>"
                                "<tr><td></td><td style='color:#8592ad'>&nbsp;%3, %4</td></tr>")
                     .arg(momentOf(result, e.sample.t), QString::fromStdString(e.description), where,

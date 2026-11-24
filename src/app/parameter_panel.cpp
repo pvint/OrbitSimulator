@@ -28,6 +28,7 @@
 #include <QStringList>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -439,13 +440,24 @@ void ParameterPanel::refreshWidgets() {
         r.label->setEnabled(active);
         r.slider->setEnabled(active);
         r.spinBox->setEnabled(active);
+        // A row the mission doesn't use at all is hidden (the closest
+        // approach in km around the Earth, in au around the Sun, share a group).
+        const bool inUse = orbit::parameterInUse(*r.info, m_mission);
+        for (QWidget* w :
+             {r.label, static_cast<QWidget*>(r.slider), static_cast<QWidget*>(r.spinBox)}) {
+            w->setVisible(inUse);
+        }
         r.label->setToolTip(locked ? tr("Being swept: see the Sweep panel")
                                    : toQString(r.info->help));
     }
     // Only the groups for what is flying: a rocket's, or a natural body's.
     const bool body = m_mission.vehicle == orbit::Vehicle::NaturalBody;
     for (const auto& [group, first] : m_groups) {
-        group->setVisible(orbit::parameterInUse(*first, m_mission));
+        // Shown if any of its parameters is in use.
+        const bool used = std::ranges::any_of(orbit::missionParameters(), [&](const auto& p) {
+            return p.group == first->group && orbit::parameterInUse(p, m_mission);
+        });
+        group->setVisible(used);
     }
     m_bodyGroup->setVisible(body);
     m_derived->setVisible(!body);
@@ -512,10 +524,11 @@ void ParameterPanel::refreshBodyDerived() {
     setName(m_bodyPeriapsisSpeed, sun ? tr("Speed at perihelion") : tr("Speed at periapsis"));
     setName(m_bodyFarSpeed, el.bound ? tr("Period") : tr("Speed far away"));
     setName(m_bodyAim, el.bound ? tr("Semi-major axis") : tr("Aimed at"));
-    const QString underground =
-        q < radius ? (sun ? tr(" <span style='color:#f87171'>(hits the Sun)</span>")
-                          : tr(" <span style='color:#f87171'>(hits the Earth)</span>"))
-                   : QString();
+    QString underground;
+    if (q < radius) {
+        underground = sun ? tr(" <span style='color:#f87171'>(hits the Sun)</span>")
+                          : tr(" <span style='color:#f87171'>(hits the Earth)</span>");
+    }
     m_bodyOrbitKind->setText((el.bound ? tr("bound (e = %1)") : tr("passing (e = %1)"))
                                  .arg(QLocale().toString(e, 'f', 3)) +
                              underground);
