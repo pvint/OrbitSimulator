@@ -22,4 +22,16 @@ inline QVector3D fromPhysics(const orbit::Vec3& v) {
             static_cast<float>(-v.y / kMetresPerUnit)};
 }
 
+/// The solar-system view (qml/SolarScene.qml) works in millions of km, so
+/// Neptune, 4500 units out, and the Earth's 150 still fit a float with
+/// room to spare. The same rotation: (x, z, −y), with the ecliptic's north
+/// (physics +z in the heliocentric frame) up.
+inline constexpr double kSolarMetresPerUnit = 1.0e9;
+
+inline QVector3D fromHeliocentric(const orbit::Vec3& v) {
+    return {static_cast<float>(v.x / kSolarMetresPerUnit),
+            static_cast<float>(v.z / kSolarMetresPerUnit),
+            static_cast<float>(-v.y / kSolarMetresPerUnit)};
+}
+
 } // namespace scene

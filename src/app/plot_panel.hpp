@@ -20,7 +20,9 @@ class QValueAxis;
 /// in a QQuickWidget, see qml/Plots.qml). The selected flight is drawn
 /// bold; in a sweep, the other flights appear faintly behind it. For a
 /// natural body: distance from the Earth, speed, distance from the Moon, and
-/// the energy relative to the Earth (below zero: captured).
+/// the energy relative to the Earth (below zero: captured); and for one
+/// going round the Sun, the same around the Sun, with the Earth in the
+/// Moon's place.
 class PlotPanel : public QWidget {
     Q_OBJECT
 
@@ -40,10 +42,12 @@ private:
         QValueAxis* xAxis = nullptr;
         QValueAxis* yAxis = nullptr;
         using Value = std::function<double(const orbit::SimResult&, const orbit::Sample&)>;
-        Value value;     ///< for a rocket
-        Value bodyValue; ///< for a natural body
+        Value value;      ///< for a rocket
+        Value bodyValue;  ///< for a natural body around the Earth
+        Value solarValue; ///< for one around the Sun
         QString title;
         QString bodyTitle;
+        QString solarTitle;
         bool airborneOnly = false; ///< time axis ends when the flights leave the air
     };
 

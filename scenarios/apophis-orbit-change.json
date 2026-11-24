@@ -1,0 +1,20 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 7,
+  "name": "Apophis changes its orbit (2029)",
+  "description": "Apophis seen around the Sun, a year either side of its 2029 flyby (JPL's state at closest approach, moved to the Sun). Before, its orbit lies mostly inside the Earth's (a = 0.92 au, a year of 0.89 Earth years); the Earth's pull during the flyby stretches it to a = 1.10 au, mostly outside. Compare the orbit at the start and at the end in the Flight panel: JPL's values agree to the third decimal.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-centre": "sun",
+    "body-given": "state-vector",
+    "epoch-utc": "2029-04-13T21:45:04Z",
+    "body-x": -137251309.935,
+    "body-y": -60603824.4387,
+    "body-z": 9649.05368094,
+    "body-vx": 17.893583795,
+    "body-vy": -23.9684193506,
+    "body-vz": 1.84600406709,
+    "days-before": 365,
+    "days-after": 365
+  }
+}

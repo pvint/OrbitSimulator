@@ -3,6 +3,7 @@
 
 #include "orbit/core/constants.hpp"
 #include "orbit/core/ephemeris.hpp"
+#include "orbit/core/solar_system.hpp"
 
 #include <QCheckBox>
 #include <QLineSeries>
@@ -56,7 +57,9 @@ TimeUnit timeUnitFor(double duration) {
     if (duration <= 1200.0) return {1.0, QT_TRANSLATE_NOOP("PlotPanel", "s")};
     if (duration <= 5.0 * 3600.0) return {60.0, QT_TRANSLATE_NOOP("PlotPanel", "min")};
     if (duration <= 72.0 * 3600.0) return {3600.0, QT_TRANSLATE_NOOP("PlotPanel", "h")};
-    return {86400.0, QT_TRANSLATE_NOOP("PlotPanel", "days")};
+    if (duration <= 3.0 * 365.25 * 86400.0)
+        return {86400.0, QT_TRANSLATE_NOOP("PlotPanel", "days")};
+    return {365.25 * 86400.0, QT_TRANSLATE_NOOP("PlotPanel", "years")};
 }
 
 QString labelFormatFor(double tick) {
@@ -127,6 +130,25 @@ PlotPanel::PlotPanel(QWidget* parent)
         return (orbit::normSquared(s.state.v) / 2.0 - orbit::kMuEarth / orbit::norm(s.state.r)) /
                1e6;
     };
+    // Around the Sun: distances in au, speeds in km/s.
+    constexpr double au = orbit::kAstronomicalUnit;
+    m_graphs[0].solarValue = [](const SimResult&, const Sample& s) {
+        return orbit::norm(s.state.r) / au;
+    };
+    m_graphs[1].solarValue = [](const SimResult&, const Sample& s) { return s.speed() / 1000.0; };
+    m_graphs[2].solarValue = [](const SimResult& r, const Sample& s) {
+        return orbit::norm(s.state.r -
+                           orbit::planetPosition(orbit::Planet::Earth, r.startEpoch + s.t)) /
+               au;
+    };
+    m_graphs[3].solarValue = [](const SimResult&, const Sample& s) {
+        return (orbit::normSquared(s.state.v) / 2.0 - orbit::kMuSun / orbit::norm(s.state.r)) / 1e6;
+    };
+    m_graphs[0].solarTitle = tr("From the Sun (au)");
+    m_graphs[1].solarTitle = tr("Speed around the Sun (km/s)");
+    m_graphs[2].solarTitle = tr("From the Earth (au)");
+    m_graphs[3].solarTitle = tr("Energy (MJ/kg; < 0: bound to the Sun)");
+
     m_graphs[0].bodyTitle = tr("From the Earth (1000 km)");
     m_graphs[1].bodyTitle = m_graphs[1].title;
     m_graphs[2].bodyTitle = tr("From the Moon (1000 km)");
@@ -176,6 +198,7 @@ void PlotPanel::refresh() {
     const orbit::SimResult& r = *selected.result;
     if (r.samples.empty()) return;
     const bool body = r.mission.vehicle == orbit::Vehicle::NaturalBody;
+    const bool solar = r.frame == orbit::ResultFrame::SunEclipticJ2000;
     m_poweredOnly->setVisible(!body);
 
     // Time range: the selected flight, or up to its last engine event plus a margin.
@@ -210,8 +233,8 @@ void PlotPanel::refresh() {
         const TimeUnit unit = timeUnitFor(tEnd);
         const double timeScale = 1.0 / unit.seconds;
         const NiceAxis xNice = niceAxis(tEnd * timeScale);
-        const Graph::Value& value = body ? g.bodyValue : g.value;
-        g.item->setProperty("title", body ? g.bodyTitle : g.title);
+        const Graph::Value& value = solar ? g.solarValue : body ? g.bodyValue : g.value;
+        g.item->setProperty("title", solar ? g.solarTitle : body ? g.bodyTitle : g.title);
 
         double yMax = 0.0;
         double yMin = 0.0;
