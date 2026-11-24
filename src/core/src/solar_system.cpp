@@ -51,7 +51,9 @@ constexpr std::array<ElementRow, 8> kTable1{{
      0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664},
 }};
 
-// Table 2a, for 3000 BC – 3000 AD.
+// Table 2a, for 3000 BC – 3000 AD. (JPL's numbers: one happens to be near
+// 1/π, which clang-tidy would like to "fix".)
+// NOLINTBEGIN(modernize-use-std-numbers)
 constexpr std::array<ElementRow, 8> kTable2a{{
     {0.38709843, 0.20563661, 7.00559432, 252.25166724, 77.45771895, 48.33961819, //
      0.00000000, 0.00002123, -0.00590158, 149472.67486623, 0.15940013, -0.12214182},
@@ -70,6 +72,7 @@ constexpr std::array<ElementRow, 8> kTable2a{{
     {30.06952752, 0.00895439, 1.77005520, 304.22289287, 46.68158724, 131.78635853, //
      0.00006447, 0.00000818, 0.00022400, 218.46515314, 0.01009938, -0.00606302},
 }};
+// NOLINTEND(modernize-use-std-numbers)
 
 // Table 2b (zero for Mercury to Mars).
 constexpr std::array<ExtraTerms, 8> kTable2b{{
