@@ -81,7 +81,8 @@ public:
 private:
     const NaturalBody* m_body;
     const SimOptions* m_opt;
-    double m_direction; ///< +1 forwards in time, −1 backwards
+    double m_direction;  ///< +1 forwards in time, −1 backwards
+    double m_tau0 = 0.0; ///< where the pass started
     DormandPrince45 m_stepper;
     Output m_out;
     double m_tau = 0.0;
@@ -158,6 +159,7 @@ void BodyPass::record(EventType type, std::string description) {
 BodyPass::Output BodyPass::run(const State& start, double tau0, double tauEnd) {
     m_y = start;
     m_tau = tau0;
+    m_tau0 = tau0;
     m_out.samples.push_back({tau0, m_y, false, 0});
     // Is a before b, in the direction of travel?
     const auto before = [&](double a, double b) { return m_direction * (a - b) < 0.0; };
@@ -200,6 +202,12 @@ BodyPass::Output BodyPass::run(const State& start, double tau0, double tauEnd) {
             const double gLate = forwards ? g1 : g0;
             if (gEarly >= 0.0 || gLate < 0.0) continue;
             const double crossing = findCrossing(trigger, m_tau, m_tau + hStep);
+            // A body placed at periapsis starts with r·v = 0, give or take
+            // rounding, which differs between compilers. That periapsis is
+            // recorded once, at the epoch (simulateNaturalBody), not here.
+            if (trigger == Trigger::EarthPeriapsis && std::abs(crossing - m_tau0) < 1e-3) {
+                continue;
+            }
             if (!fired || before(crossing, tauStop)) {
                 tauStop = crossing;
                 fired = trigger;
@@ -336,6 +344,14 @@ SimResult simulateNaturalBody(const Mission& mission, const SimOptions& options)
                                elements ? "Epoch: the orbital elements hold here"
                                         : "Epoch: the position and velocity hold here",
                                {0.0, start, false, 0}});
+        // Placed at its closest approach (always, for elements): that is an
+        // event too. The passes skip it, as rounding can put it either side.
+        const double radial = dot(start.r, start.v) / (norm(start.r) * norm(start.v));
+        if (std::abs(radial) < 1e-9) {
+            back.events.push_back({EventType::EarthClosestApproach,
+                                   "Closest approach to the Earth",
+                                   {0.0, start, false, 0}});
+        }
     }
     for (auto* events : {&back.events, &ahead.events}) {
         for (FlightEvent& e : *events) {

@@ -275,8 +275,10 @@ TEST_CASE("a moon bound to the Earth stays in orbit", "[body]") {
     CHECK_THAT(r.encounter->timeBound, WithinRel(r.duration, 1e-9));
     CHECK(r.encounter->arrivalSpeed == 0.0);
     // Period: 2π √(a³/μ) with a = q / (1 − e) ≈ 142,857 km: about 6.2 days,
-    // so three periapsis passes after the one it starts at.
-    CHECK(std::ranges::count(r.events, EventType::EarthClosestApproach, &FlightEvent::type) == 3);
+    // so the periapsis it starts at and three more. (The first is at the
+    // very start, where rounding once decided whether it was counted.)
+    CHECK(std::ranges::count(r.events, EventType::EarthClosestApproach, &FlightEvent::type) == 4);
+    CHECK(r.events.front().type == EventType::Epoch);
 }
 
 TEST_CASE("a natural body only offers its own parameters", "[body]") {
