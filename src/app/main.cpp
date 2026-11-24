@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "main_window.hpp"
 #include "orbit/core/version.hpp"
+#include "wheel_guard.hpp"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -12,6 +13,9 @@
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
+    // Scrolling a panel scrolls it, rather than changing whatever control
+    // passes under the pointer (wheel_guard.hpp).
+    app.installEventFilter(new WheelGuard(&app));
     QApplication::setApplicationName(QStringLiteral("Orbit Simulator"));
     QApplication::setOrganizationName(QStringLiteral("OrbitSim"));
     QApplication::setApplicationVersion(
