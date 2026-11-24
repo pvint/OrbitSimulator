@@ -129,7 +129,7 @@ double BodyPass::outputInterval(double tau, const State& y) const {
         const double d = norm(y.r - moonAt(tau));
         interval = std::min(interval, m_opt->coastOutputFraction * std::sqrt(d * d * d / kMuMoon));
     }
-    return std::clamp(interval, m_opt->burnOutputInterval, m_opt->maxCoastOutputInterval);
+    return std::clamp(interval, m_opt->burnOutputInterval, m_opt->maxBodyOutputInterval);
 }
 
 /// Where in [τ0, τ1] (either order) the trigger's g changes sign, by
@@ -386,6 +386,9 @@ SimResult simulateNaturalBody(const Mission& mission, const SimOptions& options)
     encounter.arrivalSpeed = excessSpeed(first);
     encounter.departureSpeed = excessSpeed(last);
     encounter.timeBound = boundTime;
+    if (encounter.arrivalSpeed > 0.0) {
+        encounter.impactParameter = norm(cross(first.r, first.v)) / encounter.arrivalSpeed;
+    }
     result.orbit = encounter.finalOrbit;
     if (options.thirdBodyGravity) {
         const double epoch = result.startEpoch + result.duration;

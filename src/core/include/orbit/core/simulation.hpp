@@ -123,6 +123,9 @@ struct SimOptions {
     /// about seven times the reach of the Earth's gravity against the Sun's
     /// (its Hill sphere). Further out, the path is better seen around the Sun.
     double bodyDistanceLimit = 1e10;
+    /// s: the most time between a natural body's samples. Far from the Earth
+    /// its path is nearly straight, so it can be longer than a rocket's.
+    double maxBodyOutputInterval = 3600.0;
     double maxTime = 30.0 * 86400.0; ///< s
     int maxSteps = 2'000'000;
     /// Start from this state instead of the launch pad (tests, and later
@@ -223,6 +226,14 @@ struct EncounterSummary {
     /// unbound (the hyperbolic excess speed; 0 if bound).
     double arrivalSpeed = 0.0;
     double departureSpeed = 0.0;
+    /// The impact parameter b (m): how far from the Earth's centre the body
+    /// would pass if the Earth's gravity didn't bend its path, b = h / v∞
+    /// (h, the angular momentum per kg, is r·v_sideways, and far away all
+    /// of v is v∞). Gravity pulls the path in, so the closest approach is
+    /// nearer than b: q = (μ/v∞²)(√(1 + (b v∞²/μ)²) − 1). And a body hits
+    /// the Earth if b < R √(1 + v_esc²/v∞²), more than the Earth's radius
+    /// R: gravitational focusing. Infinite if it arrived bound.
+    double impactParameter = std::numeric_limits<double>::infinity();
     /// s spent bound to the Earth (negative energy) within the span.
     double timeBound = 0.0;
 };

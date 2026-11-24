@@ -1,0 +1,18 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 6,
+  "name": "Apophis passes the Earth (2029)",
+  "description": "On Friday 13 April 2029 the 340 m asteroid Apophis will pass 31,600 km above the Earth, closer than the satellites that carry television, and bright enough to see with the naked eye from Europe and Africa. It comes from far away on a hyperbola around the Earth and leaves again. Its orbital elements at closest approach are from JPL Horizons; this simulation stays within 20 km of JPL's path two days either side.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-given": "elements",
+    "epoch-utc": "2029-04-13T21:45:04Z",
+    "periapsis-distance": 38011.3,
+    "eccentricity": 4.2539,
+    "inclination": 140.641,
+    "raan": 167.397,
+    "argument-of-periapsis": 49.692,
+    "days-before": 2,
+    "days-after": 2
+  }
+}

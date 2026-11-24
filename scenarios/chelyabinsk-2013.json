@@ -1,0 +1,19 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 6,
+  "name": "Chelyabinsk impactor (2013)",
+  "description": "On 15 February 2013 a 20 m asteroid nobody had seen coming struck the atmosphere over the Urals at 19 km/s. It is placed here at 97 km altitude, as reconstructed from videos (Popova et al., Science 2013), and followed back two days into space. The real one burst at 30 km, over 54.9° N 61.2° E at 03:20:33 UTC: within a few km of where and when this path passes 30 km. Natural bodies feel no air in this simulator, so this one flies on to the ground.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-given": "state-vector",
+    "epoch-utc": "2013-02-15T03:20:21Z",
+    "body-x": -670.88,
+    "body-y": -3699.041,
+    "body-z": 5263.272,
+    "body-vx": -15.879419,
+    "body-vy": 9.976846,
+    "body-vz": -2.405448,
+    "days-before": 2,
+    "days-after": 0.1
+  }
+}

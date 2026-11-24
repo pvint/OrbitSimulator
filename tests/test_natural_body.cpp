@@ -4,6 +4,7 @@
 
 #include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
+#include "orbit/core/earth.hpp"
 #include "orbit/core/integrator.hpp"
 #include "orbit/core/natural_body.hpp"
 #include "orbit/core/orbit.hpp"
@@ -16,6 +17,8 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
+#include <filesystem>
+#include <optional>
 #include <ranges>
 
 using namespace orbit;
@@ -340,5 +343,91 @@ TEST_CASE("natural body scenarios round-trip", "[body][scenario]") {
             scenarioFromJson(
                 R"({"format": "orbitsim-scenario", "version": 6, "mission": {"vehicle": "comet"}})"),
             ScenarioError);
+    }
+}
+
+// --- The example scenarios say what they show; check they do ---------------
+
+namespace {
+
+Scenario example(const char* name) {
+    return loadScenarioFile(std::filesystem::path(ORBIT_SCENARIO_DIR) / name).scenario;
+}
+
+/// When an event first happens, as an epoch.
+std::optional<double> eventEpoch(const SimResult& r, EventType type) {
+    const auto it = std::ranges::find(r.events, type, &FlightEvent::type);
+    if (it == r.events.end()) return std::nullopt;
+    return r.startEpoch + it->sample.t;
+}
+
+} // namespace
+
+TEST_CASE("2024 PT5 is a mini-moon from 29 September to 25 November 2024", "[body][example]") {
+    const SimResult r = simulate(example("minimoon-2024-pt5.json").mission);
+    CHECK(r.outcome == Outcome::TemporaryCapture);
+    // JPL: the energy relative to the Earth turns negative between 28 and 30
+    // September, and positive again between 25 and 27 November.
+    const std::optional<double> captured = eventEpoch(r, EventType::EarthCapture);
+    const std::optional<double> released = eventEpoch(r, EventType::EarthRelease);
+    REQUIRE(captured);
+    REQUIRE(released);
+    CHECK_THAT(*captured, WithinAbs(epochFromCalendar({2024, 9, 29, 12, 0, 0.0}), 86400.0));
+    CHECK_THAT(*released, WithinAbs(epochFromCalendar({2024, 11, 26, 0, 0, 0.0}), 86400.0));
+    // 567,149 km from the Earth on 9 August (JPL, 0h UTC), about the closest.
+    REQUIRE(r.encounter);
+    CHECK_THAT(norm(r.encounter->closest.state.r), WithinRel(567'000e3, 0.002));
+}
+
+TEST_CASE("The Chelyabinsk impactor passes 30 km where the real one burst", "[body][example]") {
+    const SimResult r = simulate(example("chelyabinsk-2013.json").mission);
+    CHECK(r.outcome == Outcome::Impact);
+    // The first sample below 30 km, and where it is over the ground.
+    const auto low =
+        std::ranges::find_if(r.samples, [](const Sample& s) { return s.altitude() < 30e3; });
+    REQUIRE(low != r.samples.end());
+    const double epoch = r.startEpoch + low->t;
+    const GeoPoint ground = groundPoint(low->state.r, earthRotationAngleAt(epoch));
+    CHECK_THAT(epoch, WithinAbs(epochFromCalendar({2013, 2, 15, 3, 20, 33.0}), 2.0));
+    CHECK_THAT(radToDeg(ground.latitude), WithinAbs(54.9, 0.15));
+    CHECK_THAT(radToDeg(ground.longitude), WithinAbs(61.2, 0.15));
+    // About 15 km/s far from the Earth (published: 15.1 km/s).
+    REQUIRE(r.encounter);
+    CHECK_THAT(r.encounter->arrivalSpeed, WithinAbs(15.2e3, 300.0));
+}
+
+TEST_CASE("Gravitational focusing: Apophis aimed to miss can still hit", "[body][example]") {
+    const Scenario s = example("apophis-aim-sweep.json");
+    REQUIRE(s.sweep);
+    std::vector<SimResult> results;
+    for (const Mission& m : sweepMissions(s.mission, *s.sweep)) results.push_back(simulate(m));
+    const auto closest = [](const SimResult& r) { return norm(r.encounter->closest.state.r); };
+
+    // The first is the real Apophis, aimed to miss by about 48,000 km and
+    // pulled in to 38,000.
+    CHECK_THAT(closest(results.front()), WithinAbs(38011e3, 30e3));
+    CHECK_THAT(results.front().encounter->impactParameter, WithinRel(48'000e3, 0.02));
+
+    // Gravity pulls every path in: the closest approach is nearer than the
+    // aim, by the hyperbola's formula q = (μ/v∞²)(√(1 + (b v∞²/μ)²) − 1).
+    // (Within 5 %: the Sun and Moon pull too, and b is measured a million
+    // km out, not infinitely far.)
+    for (const SimResult& r : results) {
+        const EncounterSummary& e = *r.encounter;
+        const double k = kMuEarth / (e.arrivalSpeed * e.arrivalSpeed);
+        const double q = k * (std::sqrt(1.0 + std::pow(e.impactParameter / k, 2.0)) - 1.0);
+        CHECK(e.impactParameter > closest(r));
+        if (r.outcome != Outcome::Impact) CHECK_THAT(closest(r), WithinRel(q, 0.05));
+    }
+
+    // The last three hit, though they were all aimed to miss the Earth:
+    // anything aimed within R √(1 + v_esc²/v∞²) ≈ 2.2 R is caught.
+    std::vector<Outcome> outcomes;
+    outcomes.reserve(results.size());
+    for (const SimResult& r : results) outcomes.push_back(r.outcome);
+    CHECK(std::ranges::count(outcomes, Outcome::Impact) == 3);
+    for (std::size_t i = outcomes.size() - 3; i < outcomes.size(); ++i) {
+        CHECK(outcomes[i] == Outcome::Impact);
+        CHECK(results[i].encounter->impactParameter > kRadiusEarth);
     }
 }

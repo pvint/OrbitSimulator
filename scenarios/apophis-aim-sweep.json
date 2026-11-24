@@ -1,0 +1,20 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 6,
+  "name": "Apophis: what if it were aimed differently?",
+  "description": "Apophis two days before its 2029 flyby, a million km out (its position and velocity from JPL Horizons). The sweep shifts its starting position by up to 80,000 km in x, towards where it would hit. The Earth's gravity bends every path inwards, so each passes closer than it was aimed (compare the aim, in the results, with the closest approach). The last three hit the Earth although they were aimed to miss it: at this speed, anything aimed within about 2.2 Earth radii is caught. That is gravitational focusing: the Earth catches more than its own width.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-given": "state-vector",
+    "epoch-utc": "2029-04-11T21:45:00Z",
+    "body-x": -774576.368,
+    "body-y": -471512.354,
+    "body-z": -515832.238,
+    "body-vx": 4.212241,
+    "body-vy": 2.843395,
+    "body-vz": 3.026426,
+    "days-before": 0,
+    "days-after": 4
+  },
+  "sweep": { "parameter": "body-x", "from": -774576, "to": -694576, "steps": 9 }
+}

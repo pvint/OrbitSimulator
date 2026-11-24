@@ -345,12 +345,12 @@ constexpr std::array kParameters{
         [](Mission& m, double v) { setBodyEpochHourOfDay(m, v); }, false),
     bodyParameter(
         "days-before", "Days before", "d", "Epoch and time span",
-        "How far back from the epoch to follow the body", 0.0, 60.0, 0.1,
+        "How far back from the epoch to follow the body", 0.0, 365.0, 0.1,
         [](const Mission& m) { return m.body.timeBefore / 86400.0; },
         [](Mission& m, double v) { m.body.timeBefore = v * 86400.0; }),
     bodyParameter(
         "days-after", "Days after", "d", "Epoch and time span",
-        "How far on from the epoch to follow it", 0.0, 60.0, 0.1,
+        "How far on from the epoch to follow it", 0.0, 365.0, 0.1,
         [](const Mission& m) { return m.body.timeAfter / 86400.0; },
         [](Mission& m, double v) { m.body.timeAfter = v * 86400.0; }),
 };
