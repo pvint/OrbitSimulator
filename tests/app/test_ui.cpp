@@ -3,6 +3,7 @@
 
 #include "flight_stats_panel.hpp"
 #include "orbit/core/angles.hpp"
+#include "orbit/core/ephemeris.hpp"
 #include "parameter_panel.hpp"
 #include "program_panel.hpp"
 #include "scene_coordinates.hpp"
@@ -430,6 +431,55 @@ private slots:
         QVERIFY(!panel.isEnabled());
         panel.setMission(orbit::defaultMission());
         QVERIFY(panel.isEnabled());
+    }
+
+    // Going round the Sun: switching the centre keeps the path (the values
+    // become a heliocentric state vector), and the perihelion is in au.
+    void centreChoiceMovesTheBodyToTheSun() {
+        ParameterPanel panel;
+        QSignalSpy spy(&panel, &ParameterPanel::missionChanged);
+        auto* vehicle = panel.findChild<QComboBox*>(QStringLiteral("vehicle"));
+        auto* centre = panel.findChild<QComboBox*>(QStringLiteral("bodyCentre"));
+        auto* given = panel.findChild<QComboBox*>(QStringLiteral("bodyGiven"));
+        auto* q = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-periapsis-distance"));
+        auto* perihelion =
+            panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-perihelion-distance"));
+        QVERIFY(vehicle && centre && given && q && perihelion);
+        vehicle->setCurrentIndex(vehicle->findData(static_cast<int>(orbit::Vehicle::NaturalBody)));
+        QVERIFY(!perihelion->isVisibleTo(&panel));
+
+        centre->setCurrentIndex(centre->findData(static_cast<int>(orbit::BodyCentre::Sun)));
+        QVERIFY(panel.mission().body.centre == orbit::BodyCentre::Sun);
+        QVERIFY(panel.mission().body.given == orbit::BodyGiven::StateVector);
+        QCOMPARE(given->currentData().toInt(), static_cast<int>(orbit::BodyGiven::StateVector));
+        // About 1 au from the Sun: Apophis is passing the Earth.
+        const orbit::Vec3 r = panel.mission().body.position;
+        QVERIFY(std::abs(orbit::norm(r) / orbit::kAstronomicalUnit - 1.0) < 0.02);
+
+        // As elements around the Sun: the perihelion in au, the km one hidden.
+        given->setCurrentIndex(given->findData(static_cast<int>(orbit::BodyGiven::Elements)));
+        QVERIFY(perihelion->isVisibleTo(&panel));
+        QVERIFY(!q->isVisibleTo(&panel));
+        QVERIFY(perihelion->value() > 0.5 && perihelion->value() < 1.0);
+    }
+
+    void statsPanelShowsAnOrbitAroundTheSun() {
+        FlightStatsPanel stats;
+        auto* sun = stats.findChild<QGroupBox*>(QStringLiteral("aroundTheSun"));
+        auto* passage = stats.findChild<QGroupBox*>(QStringLiteral("passage"));
+        auto* nearestEarth = stats.findChild<QLabel*>(QStringLiteral("nearestEarth"));
+        QVERIFY(sun && passage && nearestEarth);
+
+        orbit::Mission m = orbit::defaultMission();
+        m.vehicle = orbit::Vehicle::NaturalBody;
+        orbit::setBodyCentre(m.body, orbit::BodyCentre::Sun);
+        m.body.timeBefore = 30.0 * 86400.0;
+        m.body.timeAfter = 30.0 * 86400.0;
+        stats.showResult(orbit::simulate(m));
+        QVERIFY(sun->isVisibleTo(&stats));
+        QVERIFY(!passage->isVisibleTo(&stats));
+        // Apophis's flyby, seen from the Sun: 38,011 km from the Earth.
+        QVERIFY(nearestEarth->text().contains(QLocale().toString(38011.0, 'f', 0)));
     }
 
     void sweepPanelOffersABodysParameters() {

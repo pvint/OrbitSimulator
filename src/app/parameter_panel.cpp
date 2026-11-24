@@ -5,10 +5,12 @@
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/earth.hpp"
+#include "orbit/core/ephemeris.hpp"
 #include "orbit/core/lunar_targeting.hpp"
 #include "orbit/core/natural_body.hpp"
 #include "orbit/core/orbit.hpp"
 #include "orbit/core/rocket.hpp"
+#include "orbit/core/solar_system.hpp"
 
 #include <QComboBox>
 #include <QDateEdit>
@@ -26,6 +28,7 @@
 #include <QStringList>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -120,7 +123,9 @@ ParameterPanel::ParameterPanel(QWidget* parent)
                     group, QStringLiteral("epochDate"),
                     tr("Date (UTC) when the elements or the position and velocity hold. With "
                        "the time below it sets where the Earth has turned to, and where the "
-                       "Moon and the Sun are."));
+                       "Moon and the Sun are. (Gregorian calendar, also before 1582.)"));
+                // Comets and asteroids are followed for centuries.
+                m_epochDate->setDateRange(QDate(1000, 1, 1), QDate(3000, 12, 31));
                 const int row = grid->rowCount();
                 grid->addWidget(new QLabel(tr("Epoch date"), group), row, 0);
                 grid->addWidget(m_epochDate, row, 1);
@@ -284,8 +289,28 @@ void ParameterPanel::buildBodyChoice(QBoxLayout* layout) {
         refreshWidgets();
         emit missionChanged(m_mission);
     });
-    grid->addWidget(new QLabel(tr("Given as"), m_bodyGroup), 0, 0);
-    grid->addWidget(m_bodyGiven, 0, 1);
+    m_bodyCentre = new QComboBox(m_bodyGroup);
+    m_bodyCentre->setObjectName(QStringLiteral("bodyCentre"));
+    for (const orbit::BodyCentre c : orbit::kAllBodyCentres) {
+        m_bodyCentre->addItem(toQString(orbit::bodyCentreLabel(c)), static_cast<int>(c));
+    }
+    m_bodyCentre->setToolTip(
+        tr("What the body goes round, and what its orbit is measured from.\n"
+           "The Earth: a flyby, a mini-moon or an impact, seen around the Earth.\n"
+           "The Sun: an asteroid or comet on its orbit through the solar system, with every "
+           "planet pulling on it, seen in the solar-system view.\n"
+           "Switching keeps the same path: the values become its position and velocity "
+           "around the new centre."));
+    connect(m_bodyCentre, &QComboBox::currentIndexChanged, this, [this](int index) {
+        orbit::setBodyCentre(m_mission.body,
+                             static_cast<orbit::BodyCentre>(m_bodyCentre->itemData(index).toInt()));
+        refreshWidgets();
+        emit missionChanged(m_mission);
+    });
+    grid->addWidget(new QLabel(tr("Going round"), m_bodyGroup), 0, 0);
+    grid->addWidget(m_bodyCentre, 0, 1);
+    grid->addWidget(new QLabel(tr("Given as"), m_bodyGroup), 1, 0);
+    grid->addWidget(m_bodyGiven, 1, 1);
     layout->addWidget(m_bodyGroup);
 }
 
@@ -294,6 +319,7 @@ void ParameterPanel::buildBodyChoice(QBoxLayout* layout) {
 void ParameterPanel::buildBodyDerivedSection(QBoxLayout* layout) {
     m_bodyDerived = new QGroupBox(tr("Derived"), this);
     auto* form = new QFormLayout(m_bodyDerived);
+    m_bodyDerivedForm = form;
     const auto addRow = [&](const QString& name, const QString& tooltip) {
         auto* value = new QLabel(m_bodyDerived);
         value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -414,13 +440,24 @@ void ParameterPanel::refreshWidgets() {
         r.label->setEnabled(active);
         r.slider->setEnabled(active);
         r.spinBox->setEnabled(active);
+        // A row the mission doesn't use at all is hidden (the closest
+        // approach in km around the Earth, in au around the Sun, share a group).
+        const bool inUse = orbit::parameterInUse(*r.info, m_mission);
+        for (QWidget* w :
+             {r.label, static_cast<QWidget*>(r.slider), static_cast<QWidget*>(r.spinBox)}) {
+            w->setVisible(inUse);
+        }
         r.label->setToolTip(locked ? tr("Being swept: see the Sweep panel")
                                    : toQString(r.info->help));
     }
     // Only the groups for what is flying: a rocket's, or a natural body's.
     const bool body = m_mission.vehicle == orbit::Vehicle::NaturalBody;
     for (const auto& [group, first] : m_groups) {
-        group->setVisible(orbit::parameterInUse(*first, m_mission));
+        // Shown if any of its parameters is in use.
+        const bool used = std::ranges::any_of(orbit::missionParameters(), [&](const auto& p) {
+            return p.group == first->group && orbit::parameterInUse(p, m_mission);
+        });
+        group->setVisible(used);
     }
     m_bodyGroup->setVisible(body);
     m_derived->setVisible(!body);
@@ -428,6 +465,9 @@ void ParameterPanel::refreshWidgets() {
     {
         const QSignalBlocker blockVehicle(m_vehicle);
         const QSignalBlocker blockGiven(m_bodyGiven);
+        const QSignalBlocker blockCentre(m_bodyCentre);
+        m_bodyCentre->setCurrentIndex(
+            m_bodyCentre->findData(static_cast<int>(m_mission.body.centre)));
         const QSignalBlocker blockEpoch(m_epochDate);
         m_vehicle->setCurrentIndex(m_vehicle->findData(static_cast<int>(m_mission.vehicle)));
         m_bodyGiven->setCurrentIndex(m_bodyGiven->findData(static_cast<int>(m_mission.body.given)));
@@ -456,9 +496,16 @@ void ParameterPanel::refreshWidgets() {
 
 void ParameterPanel::refreshBodyDerived() {
     // The two-body orbit through the body's values at the epoch.
+    // Around the Sun, distances in au and times in years read better.
+    const bool sun = m_mission.body.centre == orbit::BodyCentre::Sun;
+    const double mu = orbit::centreMu(m_mission.body.centre);
+    const double radius = sun ? orbit::kRadiusSun : orbit::kRadiusEarth;
+    const auto distance = [sun](double metres) {
+        return sun ? tr("%1 au").arg(QLocale().toString(metres / orbit::kAstronomicalUnit, 'f', 3))
+                   : display::distance(metres);
+    };
     const orbit::PositionVelocity s = orbit::bodyStateJ2000(m_mission.body);
-    const orbit::OrbitalElements el = orbit::elementsFromState(s.r, s.v);
-    const double mu = orbit::kMuEarth;
+    const orbit::OrbitalElements el = orbit::elementsFromState(s.r, s.v, mu, radius);
     const double q = el.periapsis;
     const double e = el.eccentricity;
     if (!(q > 0.0) || !std::isfinite(el.energy)) {
@@ -467,22 +514,37 @@ void ParameterPanel::refreshBodyDerived() {
         }
         return;
     }
-    const QString underground = q < orbit::kRadiusEarth
-                                    ? tr(" <span style='color:#f87171'>(hits the Earth)</span>")
-                                    : QString();
+    // The rows' names follow the orbit: around the Sun or the Earth, bound
+    // or passing.
+    const auto setName = [this](QLabel* field, const QString& name) {
+        if (auto* label = qobject_cast<QLabel*>(m_bodyDerivedForm->labelForField(field))) {
+            label->setText(name);
+        }
+    };
+    setName(m_bodyPeriapsisSpeed, sun ? tr("Speed at perihelion") : tr("Speed at periapsis"));
+    setName(m_bodyFarSpeed, el.bound ? tr("Period") : tr("Speed far away"));
+    setName(m_bodyAim, el.bound ? tr("Semi-major axis") : tr("Aimed at"));
+    QString underground;
+    if (q < radius) {
+        underground = sun ? tr(" <span style='color:#f87171'>(hits the Sun)</span>")
+                          : tr(" <span style='color:#f87171'>(hits the Earth)</span>");
+    }
     m_bodyOrbitKind->setText((el.bound ? tr("bound (e = %1)") : tr("passing (e = %1)"))
                                  .arg(QLocale().toString(e, 'f', 3)) +
                              underground);
     m_bodyPeriapsisSpeed->setText(display::speed(std::sqrt(2.0 * (el.energy + mu / q))));
     if (el.bound) {
-        m_bodyFarSpeed->setText(tr("period %1").arg(display::duration(el.period)));
-        m_bodyAim->setText(QStringLiteral("—"));
+        const double years = el.period / (365.25 * 86400.0);
+        m_bodyFarSpeed->setText(
+            sun && years >= 1.0
+                ? tr("%1 years").arg(QLocale().toString(years, 'f', years < 10.0 ? 2 : 1))
+                : display::duration(el.period));
+        m_bodyAim->setText(distance(el.semiMajorAxis));
     } else {
         const double vInf = std::sqrt(2.0 * el.energy);
         m_bodyFarSpeed->setText(display::speed(vInf));
         // b from h = b v∞ (angular momentum far away).
-        m_bodyAim->setText(vInf > 0.0 ? display::distance(el.angularMomentum / vInf)
-                                      : QStringLiteral("∞"));
+        m_bodyAim->setText(vInf > 0.0 ? distance(el.angularMomentum / vInf) : QStringLiteral("∞"));
     }
 }
 

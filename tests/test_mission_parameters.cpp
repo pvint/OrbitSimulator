@@ -24,6 +24,34 @@ TEST_CASE("Every parameter writes and reads back the same display value", "[para
     }
 }
 
+namespace {
+
+/// The closest approach in km (around the Earth) and in au (around the
+/// Sun) are the same number in two units: setting one sets the other.
+bool sameQuantity(const ParameterInfo& a, const ParameterInfo& b) {
+    const auto isQ = [](const ParameterInfo& p) {
+        return p.key == "periapsis-distance" || p.key == "perihelion-distance";
+    };
+    return isQ(a) && isQ(b);
+}
+
+/// A mission that uses this parameter: the default rocket, or a natural
+/// body around the Earth (Apophis, by elements or by its state vector) or,
+/// for the perihelion, around the Sun.
+Mission homeMission(const ParameterInfo& p) {
+    Mission m = defaultMission();
+    if (p.vehicle == Vehicle::NaturalBody) m.vehicle = Vehicle::NaturalBody;
+    if (p.group == "Position and velocity") m.body.given = BodyGiven::StateVector;
+    if (p.key == "perihelion-distance") {
+        m.body.centre = BodyCentre::Sun;
+        m.body.periapsisDistance = 0.5 * 1.495978707e11;
+        m.body.eccentricity = 0.6;
+    }
+    return m;
+}
+
+} // namespace
+
 TEST_CASE("Setting one parameter leaves the others alone", "[parameters]") {
     for (const ParameterInfo& changed : missionParameters()) {
         if (changed.derived) continue; // derived ones change others on purpose
@@ -31,7 +59,9 @@ TEST_CASE("Setting one parameter leaves the others alone", "[parameters]") {
         Mission m = defaultMission();
         changed.set(m, changed.min);
         for (const ParameterInfo& other : missionParameters()) {
-            if (other.key == changed.key || other.derived) continue;
+            if (other.key == changed.key || other.derived || sameQuantity(changed, other)) {
+                continue;
+            }
             CAPTURE(other.key);
             REQUIRE(other.get(m) == other.get(defaultMission()));
         }
@@ -39,8 +69,9 @@ TEST_CASE("Setting one parameter leaves the others alone", "[parameters]") {
 }
 
 TEST_CASE("Defaults lie within the slider ranges", "[parameters]") {
-    const Mission m = defaultMission();
     for (const ParameterInfo& p : missionParameters()) {
+        const Mission m = homeMission(p);
+        REQUIRE(parameterInUse(p, m));
         CAPTURE(p.key, p.get(m));
         REQUIRE(p.min < p.max);
         REQUIRE(p.step > 0.0);

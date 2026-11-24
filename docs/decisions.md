@@ -539,6 +539,54 @@ bodies. Turning the Earth by sidereal time (GMST) instead would fix it, but
 it moves every launch site in space by that much and changes every rocket
 result a little; left for a deliberate change with its own tests.
 
+### 34. The solar system: planets from JPL's approximate elements (2026-11-24)
+
+**Decision:** a natural body can go round the Sun instead of the Earth
+(`BodyCentre::Sun`). It is then placed and flown in the heliocentric
+ecliptic J2000 frame (`solar_system.hpp`), pulled by the Sun, the eight
+planets and the Moon, with the planets from Standish & Williams'
+*approximate positions of the planets*: table 1 from 1800 to 2050, tables
+2a/2b outside it. The Earth sits off the Earth–Moon barycentre opposite the
+Moon (from the existing lunar series). Results carry their frame
+(`SimResult::frame`), and the app shows them in a second 3D scene,
+`SolarScene.qml`, in millions of km with ecliptic north up. One playback
+bar drives whichever scene the result needs.
+
+**Why:**
+- *No data files* (decision 18): the tables are 100 numbers, accurate to
+  20" for the inner planets and 6,000 km for the Earth between 1800 and
+  2050. That is far better than the drawing needs. It is also good enough
+  that real comets and asteroids come out right: Halley passes the Earth at
+  0.4173 au in 1986 (JPL: 0.4172), and Apophis's orbit changes from
+  a = 0.9224 to 1.1030 au in 2029, as JPL's does to the fourth decimal.
+- *Ecliptic J2000*: comet and asteroid catalogues give elements in it, so
+  they can be typed in as published.
+- *Switching the centre keeps a position and velocity*, which is exact.
+  Elements around the new centre would put the epoch at a periapsis found
+  from a two-body orbit, which is badly wrong next to a planet. Apophis's
+  flyby, converted that way, came out at 30,700 km instead of 38,011.
+- *A second scene*, rather than one scene that switches scale: the Earth's
+  scene works in km with a textured globe and a ground track; the solar
+  one in millions of km with markers for the Sun and planets (to scale
+  they would be invisible). The camera controls, the axis gizmo and the
+  demo caption are shared QML components.
+- *A one-day cap on the step size* around the Sun, so a step can never jump
+  clean over a close pass by a planet. Halley's 76 years take a second.
+
+**Found and fixed on the way:** `calendarFromJulianDate` switched to the
+Julian calendar before 1582 while `julianDate` stayed Gregorian, so dates
+before 1582 did not survive a round trip. Both are Gregorian now
+(proleptic, as in ISO 8601 and Qt). JPL Horizons uses the Julian calendar
+before 1582, so dates copied from it are some days earlier here.
+
+**Known approximation:** the tables want TDB and get UTC, about 69 s apart
+now and half an hour in 1066. In half an hour Mercury moves 270", which
+the test allows for. A ΔT model could fix it if old dates come to matter.
+
+**Not yet:** an Earth-centred close-up of a Sun-centred body's pass by
+the Earth (switch the body's centre to the Earth to see one); rockets
+flying between planets.
+
 ---
 
 ## Open questions
@@ -549,9 +597,8 @@ result a little; left for a deliberate change with its own tests.
   simulators) or Qt's QJSEngine (JavaScript, no new dependency). Either way
   the scripting layer lives outside `src/core`, which stays Qt-free.
 
-- **Natural bodies far from the Earth** (decision 33 covers those near
-  it). Next: the heliocentric frame and planets (the solar-system
-  milestone), with bodies placed by heliocentric elements. Later perhaps
-  importing a body from JPL by name (needs network access).
+- **Importing a body from JPL by name** (decisions 33 and 34 cover typing
+  one in). It needs network access, and a decision on how the app talks to
+  JPL's API.
 - **Code signing** for Windows and macOS packages (decision 31): needs
   paid certificates, so it is the user's decision.

@@ -2,6 +2,7 @@
 #include "sweep_panel.hpp"
 
 #include "display_format.hpp"
+#include "orbit/core/ephemeris.hpp"
 #include "orbit/core/mission_parameters.hpp"
 
 #include <QComboBox>
@@ -205,10 +206,16 @@ void SweepPanel::showRunSet(const RunSet& runs, int selected) {
     // A natural body's sweep: its closest approach and its aim (the impact
     // parameter) instead of an orbit and a Δv.
     const bool body = m_mission.vehicle == orbit::Vehicle::NaturalBody;
-    m_legend->setHorizontalHeaderLabels(body ? QStringList{QString(), tr("Value"), tr("Outcome"),
-                                                           tr("Closest (km)"), tr("Aimed at (km)")}
-                                             : QStringList{QString(), tr("Value"), tr("Outcome"),
-                                                           tr("Orbit (km)"), tr("Δv (m/s)")});
+    const bool solar = body && m_mission.body.centre == orbit::BodyCentre::Sun;
+    QStringList headers{QString(), tr("Value"), tr("Outcome")};
+    if (solar) {
+        headers << tr("Perihelion (au)") << tr("Period (years)");
+    } else if (body) {
+        headers << tr("Closest (km)") << tr("Aimed at (km)");
+    } else {
+        headers << tr("Orbit (km)") << tr("Δv (m/s)");
+    }
+    m_legend->setHorizontalHeaderLabels(headers);
     m_legend->setRowCount(static_cast<int>(runs.runs.size()));
     for (int row = 0; row < m_legend->rowCount(); ++row) {
         const FlightRun& run = runs.runs[static_cast<std::size_t>(row)];
@@ -224,6 +231,15 @@ void SweepPanel::showRunSet(const RunSet& runs, int selected) {
                                  (unit.isEmpty() ? QString() : QLatin1Char(' ') + unit));
         setCell(OutcomeColumn, display::outcomeLabel(r.outcome))
             ->setForeground(display::outcomeColor(r.outcome));
+        if (r.solar) {
+            const orbit::OrbitalElements& o = r.solar->finalOrbit;
+            setCell(OrbitColumn,
+                    QLocale().toString(o.periapsis / orbit::kAstronomicalUnit, 'f', 3));
+            setCell(DeltaVColumn, o.bound
+                                      ? QLocale().toString(o.period / (365.25 * 86400.0), 'f', 2)
+                                      : QStringLiteral("—"));
+            continue;
+        }
         if (r.encounter) {
             const double aim = r.encounter->impactParameter;
             setCell(OrbitColumn,

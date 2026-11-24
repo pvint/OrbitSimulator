@@ -14,6 +14,7 @@
 
 class QBoxLayout;
 class QComboBox;
+class QFormLayout;
 class QGridLayout;
 class QGroupBox;
 class QPushButton;
@@ -69,6 +70,7 @@ private:
     std::string m_lockedKey;
     QComboBox* m_vehicle = nullptr;
     QComboBox* m_bodyGiven = nullptr;
+    QComboBox* m_bodyCentre = nullptr;
     QGroupBox* m_bodyGroup = nullptr; ///< holds the "Given as" choice
     /// Every parameter group, and the parameters in it (for showing only
     /// those that the mission uses: a rocket's, or a natural body's).
@@ -83,6 +85,7 @@ private:
     QDateEdit* m_epochDate = nullptr;
     QGroupBox* m_derived = nullptr;
     QGroupBox* m_bodyDerived = nullptr;
+    QFormLayout* m_bodyDerivedForm = nullptr;
 
     QLabel* m_liftoffMass = nullptr;
     QLabel* m_liftoffThrust = nullptr;

@@ -43,6 +43,7 @@
 #include "orbit/core/rocket.hpp"
 #include "orbit/core/state.hpp"
 
+#include <array>
 #include <limits>
 #include <optional>
 #include <span>
@@ -126,7 +127,14 @@ struct SimOptions {
     /// s: the most time between a natural body's samples. Far from the Earth
     /// its path is nearly straight, so it can be longer than a rocket's.
     double maxBodyOutputInterval = 3600.0;
-    double maxTime = 30.0 * 86400.0; ///< s
+    // Around the Sun (a natural body centred on it):
+    double heliocentricDistanceLimit = 1000.0 * 1.495978707e11; ///< m: 1000 au
+    /// s: the longest integration step. The step size adapts anyway; the cap
+    /// makes sure a step never jumps clean over a close pass by a planet.
+    double maxHeliocentricStep = 86400.0;
+    double maxHeliocentricOutputInterval = 5.0 * 86400.0; ///< s
+    double minHeliocentricOutputInterval = 60.0;          ///< s, near planets
+    double maxTime = 30.0 * 86400.0;                      ///< s
     int maxSteps = 2'000'000;
     /// Start from this state instead of the launch pad (tests, and later
     /// scenarios that begin in orbit). Time 0 is still the launch epoch.
@@ -159,6 +167,20 @@ enum class EventType {
     EarthClosestApproach, ///< a periapsis: the closest point to the Earth on this pass
     EarthCapture,         ///< energy relative to the Earth turns negative: bound
     EarthRelease,         ///< and turns positive again: free
+    // Around the Sun
+    Perihelion,            ///< closest to the Sun on this orbit
+    Aphelion,              ///< furthest from it
+    PlanetClosestApproach, ///< closest to a planet, inside its sphere of influence
+};
+
+/// The frame a result's samples are in.
+enum class ResultFrame {
+    /// Earth-centred, equator and equinox of date: rockets, and natural
+    /// bodies around the Earth.
+    EarthEquatorOfDate,
+    /// Sun-centred, ecliptic and equinox of J2000 (solar_system.hpp): natural
+    /// bodies around the Sun.
+    SunEclipticJ2000,
 };
 
 enum class EndReason {
@@ -238,8 +260,33 @@ struct EncounterSummary {
     double timeBound = 0.0;
 };
 
+/// A natural body's path around the Sun.
+struct SolarSummary {
+    /// The closest point to the Sun over the whole time span.
+    Sample perihelion;
+    /// Time (as in the samples) of the epoch, where the body was placed.
+    double epochTime = 0.0;
+    /// The orbit around the Sun at the start and at the end of the span
+    /// (ecliptic J2000): the planets' pulls change it on the way.
+    OrbitalElements initialOrbit;
+    OrbitalElements finalOrbit;
+    /// How close it came to each planet (centre to centre, m) and when, in
+    /// the order of kAllPlanets.
+    struct Approach {
+        double distance = std::numeric_limits<double>::infinity();
+        double t = 0.0;
+    };
+    std::array<Approach, 8> approaches{};
+    /// What it hit, if it hit something: a planet's name, or "the Sun".
+    std::string impacted;
+};
+
 struct SimResult {
     Mission mission;
+    /// The frame of the samples (and of the events' samples).
+    ResultFrame frame = ResultFrame::EarthEquatorOfDate;
+    /// A natural body's path around the Sun (frame SunEclipticJ2000).
+    std::optional<SolarSummary> solar;
     /// The epoch at t = 0 (s since J2000): the launch, or the start of a
     /// natural body's time span.
     double startEpoch = 0.0;

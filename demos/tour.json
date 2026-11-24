@@ -120,10 +120,33 @@
     },
     {
       "title": "A second moon, for a while",
-      "caption": "The small asteroid 2024 PT5 drifted past so slowly that for two months in late 2024 the Earth held on to it: a 'mini-moon'. Seven months pass here, seen from far away (the small ellipse is the Moon's orbit). Watch the last graph: its energy dips below zero while it is bound, then the Sun's pull lets it go. That's the tour: every scenario is under File ▸ Examples, ready to change.",
+      "caption": "The small asteroid 2024 PT5 drifted past so slowly that for two months in late 2024 the Earth held on to it: a 'mini-moon'. Seven months pass here, seen from far away (the small ellipse is the Moon's orbit). Watch the last graph: its energy dips below zero while it is bound, then the Sun's pull lets it go.",
       "scenario": "minimoon-2024-pt5.json",
       "speed": 500000,
       "seconds": 35
+    },
+    {
+      "title": "Out into the solar system",
+      "caption": "Now the view is centred on the Sun, with the planets' orbits drawn in. Seven bodies start on circular orbits on the same line, from inside Mercury's orbit out to Jupiter's. The inner ones race round; the outer ones crawl. That is Kepler's third law: the further out, the longer the year, and faster than the distance grows. The Sweep tab lists each period.",
+      "scenario": "kepler-third-law-sweep.json",
+      "speed": 2000000,
+      "seconds": 30
+    },
+    {
+      "title": "Halley's comet",
+      "caption": "One full 76-year orbit of Halley's comet, from 1948 to 2024. Its orbit is a long, thin ellipse reaching beyond Neptune, and it goes round the wrong way, against the planets. It spends decades crawling far out, then whips round the Sun in a few months: at its last visit, in 1986, it passed the Earth at 0.42 au.",
+      "scenario": "halley-1986.json",
+      "speed": 50000000,
+      "seconds": 45
+    },
+    {
+      "title": "A visitor from another star",
+      "caption": "ʻOumuamua, found in 2017, came from outside the solar system. It fell in steeply from above the planets' plane, swung round the Sun inside Mercury's orbit, and left on a hyperbola: it was moving too fast for the Sun ever to hold on to it. Watch the last graph: its energy stays above zero all the time. That's the tour: every scenario is under File ▸ Examples, ready to change.",
+      "scenario": "oumuamua-2017.json",
+      "start-hours": 8760,
+      "speed": 2000000,
+      "seconds": 35,
+      "distance": 600000000
     }
   ]
 }

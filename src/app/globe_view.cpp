@@ -6,6 +6,8 @@
 #include "orbit/core/constants.hpp"
 #include "orbit/core/earth.hpp"
 #include "orbit/core/ephemeris.hpp"
+#include "orbit/core/orbit.hpp"
+#include "orbit/core/solar_system.hpp"
 #include "polyline_geometry.hpp"
 #include "scene_coordinates.hpp"
 
@@ -20,7 +22,9 @@
 #include <QQuaternion>
 #include <QQuickItem>
 #include <QQuickWidget>
+#include <QSignalBlocker>
 #include <QSlider>
+#include <QStackedWidget>
 #include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -39,7 +43,10 @@ constexpr int kSliderSteps = 2000;
 
 /// Playback speeds offered: simulated seconds per real second.
 /// (The fastest are for natural bodies, followed for months.)
-constexpr std::array kSpeeds{1, 10, 60, 300, 1000, 5000, 20000, 100000, 500000, 2000000};
+/// (The fastest are for natural bodies, followed for months, or around the
+/// Sun for decades: 50 million × shows Halley's 76-year orbit in 48 s.)
+constexpr std::array kSpeeds{1,     10,     60,     300,     1000,     5000,
+                             20000, 100000, 500000, 2000000, 10000000, 50000000};
 
 // Line colours: burns warm, coasting cool, the ground track yellow.
 const QColor kBurnColor(0xff, 0xb3, 0x47);
@@ -81,12 +88,26 @@ QQuaternion moonOrientation(double epoch) {
     return QQuaternion::fromAxes(x, y, QVector3D::crossProduct(x, y));
 }
 
-QList<QVector3D> trajectoryPoints(const std::vector<orbit::Sample>& samples) {
+/// A path's points in scene coordinates: the Earth's scene (km) or the
+/// solar system's (millions of km).
+QList<QVector3D> trajectoryPoints(const std::vector<orbit::Sample>& samples, bool solar) {
     QList<QVector3D> points;
     points.reserve(static_cast<qsizetype>(samples.size()));
-    for (const orbit::Sample& s : samples) points.append(scene::fromPhysics(s.state.r));
+    for (const orbit::Sample& s : samples) {
+        points.append(solar ? scene::fromHeliocentric(s.state.r) : scene::fromPhysics(s.state.r));
+    }
     return points;
 }
+
+bool isSolar(const orbit::SimResult& result) {
+    return result.frame == orbit::ResultFrame::SunEclipticJ2000;
+}
+
+/// Planet colours, as in SolarScene.qml (for their orbits).
+const std::array<QColor, 8> kPlanetColors{QColor(0xa8, 0xa2, 0x9e), QColor(0xe9, 0xc4, 0x6a),
+                                          QColor(0x4f, 0x9d, 0xe0), QColor(0xd9, 0x60, 0x3b),
+                                          QColor(0xd8, 0xa6, 0x6c), QColor(0xe3, 0xc9, 0x8f),
+                                          QColor(0x8f, 0xd3, 0xe0), QColor(0x5b, 0x7f, 0xe8)};
 
 QString formatMissionTime(double seconds) {
     const auto total = static_cast<long long>(std::floor(seconds));
@@ -115,16 +136,26 @@ bool isNaturalBody(const orbit::SimResult& result) {
 
 } // namespace
 
-GlobeView::GlobeView(QWidget* parent) : QWidget(parent), m_view(new QQuickWidget(this)) {
+GlobeView::GlobeView(QWidget* parent) : QWidget(parent), m_stack(new QStackedWidget(this)) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
-    m_view->setResizeMode(QQuickWidget::SizeRootObjectToView);
-    m_view->setSource(QUrl(QStringLiteral("qrc:/qt/qml/OrbitSim/qml/GlobeScene.qml")));
-    layout->addWidget(m_view, 1);
+    // Two scenes, one shown at a time: the Earth's, and the solar system's
+    // for natural bodies going round the Sun.
+    for (auto [scene, file] :
+         {std::pair{&m_globe, "GlobeScene.qml"}, std::pair{&m_solarSystem, "SolarScene.qml"}}) {
+        scene->widget = new QQuickWidget(m_stack);
+        scene->widget->setResizeMode(QQuickWidget::SizeRootObjectToView);
+        scene->widget->setSource(
+            QUrl(QStringLiteral("qrc:/qt/qml/OrbitSim/qml/") + QLatin1String(file)));
+        m_stack->addWidget(scene->widget);
+    }
+    layout->addWidget(m_stack, 1);
     buildPlaybackBar(layout);
     connectScene();
+    connectSolarScene();
+    useSolarScene(false);
 
     m_timer.setInterval(16); // ~60 frames per second
     connect(&m_timer, &QTimer::timeout, this, &GlobeView::onTick);
@@ -168,9 +199,12 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
         if (!m_scene) return;
         m_scene->setProperty("followTarget", index);
         m_scene->setProperty("panOffset", QVector3D());
+        // Earth / rocket / Moon: m; Sun / body / Earth: millions of km.
         const double earthView = std::max(4.0 * orbit::kRadiusEarth, 1.4 * farthestDistance());
-        const std::array<double, 3> distances{earthView, 2.0e6, 1.2e7}; // m
-        m_scene->setProperty("distance", distances.at(static_cast<std::size_t>(index)) / 1000.0);
+        const std::array<double, 3> distances =
+            m_solar ? std::array<double, 3>{solarViewDistance(), 20.0, 5.0}
+                    : std::array<double, 3>{earthView / 1000.0, 2.0e3, 1.2e4};
+        m_scene->setProperty("distance", distances.at(static_cast<std::size_t>(index)));
     });
 
     // Click for the starting view; the arrow offers the others. Each circles
@@ -192,9 +226,10 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
         m_centre->setCurrentIndex(0);
         lookAtOrbit(false, m_time, 0.0);
     });
-    views->addAction(tr("Above the North Pole"), this, [this] {
+    // (In the solar system, "north" is ecliptic north: the frame's z.)
+    views->addAction(tr("From the north"), this, [this] {
         m_centre->setCurrentIndex(0);
-        lookFromNorth(viewFromAboveDistanceKm());
+        lookFromNorth(viewFromAboveDistance());
     });
     reset->setMenu(views);
 
@@ -213,42 +248,89 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
     layout->addWidget(bar);
 }
 
-/// Find the two line geometries in the QML scene.
-void GlobeView::connectScene() {
-    m_scene = m_view->rootObject();
-    if (!m_scene) {
-        for (const QQmlError& error : m_view->errors()) qWarning().noquote() << error.toString();
+/// The parts every scene has: its root, the trajectory, the pool of extra
+/// paths, and the demo caption's buttons (QML signals, connected by name).
+void GlobeView::findSceneParts(Scene& scene) {
+    scene.root = scene.widget->rootObject();
+    if (!scene.root) {
+        for (const QQmlError& error : scene.widget->errors()) {
+            qWarning().noquote() << error.toString();
+        }
         return;
     }
-    m_trajectory =
-        qobject_cast<PolylineGeometry*>(m_scene->property("trajectory").value<QObject*>());
-    m_groundTrack =
-        qobject_cast<PolylineGeometry*>(m_scene->property("groundTrack").value<QObject*>());
-    m_moonOrbit = qobject_cast<PolylineGeometry*>(m_scene->property("moonOrbit").value<QObject*>());
-    // The demo caption's buttons (QML signals, so connected by name).
-    connect(m_scene, SIGNAL(demoPrevious()), this, SIGNAL(demoPreviousRequested()));
-    connect(m_scene, SIGNAL(demoNext()), this, SIGNAL(demoNextRequested()));
-    connect(m_scene, SIGNAL(demoEnd()), this, SIGNAL(demoEndRequested()));
-    // The Moon's colour map is optional (see src/app/CMakeLists.txt).
-    if (QFile::exists(QStringLiteral(":/textures/moon.jpg"))) {
-        m_scene->setProperty("moonTexture", QStringLiteral("qrc:/textures/moon.jpg"));
-    }
-    if (!m_trajectory || !m_groundTrack || !m_moonOrbit) {
-        qWarning() << "GlobeScene.qml: a line geometry was not found";
-    }
-
-    const int count = m_scene->property("extraPathCount").toInt();
+    scene.trajectory =
+        qobject_cast<PolylineGeometry*>(scene.root->property("trajectory").value<QObject*>());
+    const int count = scene.root->property("extraPathCount").toInt();
     for (int i = 0; i < count; ++i) {
         QVariant model;
-        QMetaObject::invokeMethod(m_scene, "extraPath", Q_RETURN_ARG(QVariant, model),
+        QMetaObject::invokeMethod(scene.root, "extraPath", Q_RETURN_ARG(QVariant, model),
                                   Q_ARG(QVariant, i));
         auto* object = model.value<QObject*>();
         auto* line =
             object ? qobject_cast<PolylineGeometry*>(object->property("line").value<QObject*>())
                    : nullptr;
         if (!line) break;
-        m_extraPaths.push_back({object, line});
+        scene.extraPaths.push_back({object, line});
     }
+}
+
+/// The Earth's scene: also the ground track, and the Moon's orbit.
+void GlobeView::connectScene() {
+    findSceneParts(m_globe);
+    QQuickItem* root = m_globe.root;
+    if (!root) return;
+    m_groundTrack =
+        qobject_cast<PolylineGeometry*>(root->property("groundTrack").value<QObject*>());
+    m_moonOrbit = qobject_cast<PolylineGeometry*>(root->property("moonOrbit").value<QObject*>());
+    connect(root, SIGNAL(demoPrevious()), this, SIGNAL(demoPreviousRequested()));
+    connect(root, SIGNAL(demoNext()), this, SIGNAL(demoNextRequested()));
+    connect(root, SIGNAL(demoEnd()), this, SIGNAL(demoEndRequested()));
+    // The Moon's colour map is optional (see src/app/CMakeLists.txt).
+    if (QFile::exists(QStringLiteral(":/textures/moon.jpg"))) {
+        root->setProperty("moonTexture", QStringLiteral("qrc:/textures/moon.jpg"));
+    }
+    if (!m_globe.trajectory || !m_groundTrack || !m_moonOrbit) {
+        qWarning() << "GlobeScene.qml: a line geometry was not found";
+    }
+}
+
+/// The solar system's scene: also the planets' orbits.
+void GlobeView::connectSolarScene() {
+    findSceneParts(m_solarSystem);
+    QQuickItem* root = m_solarSystem.root;
+    if (!root) return;
+    connect(root, SIGNAL(demoPrevious()), this, SIGNAL(demoPreviousRequested()));
+    connect(root, SIGNAL(demoNext()), this, SIGNAL(demoNextRequested()));
+    connect(root, SIGNAL(demoEnd()), this, SIGNAL(demoEndRequested()));
+    for (std::size_t i = 0; i < m_planetOrbits.size(); ++i) {
+        QVariant model;
+        QMetaObject::invokeMethod(root, "planetOrbit", Q_RETURN_ARG(QVariant, model),
+                                  Q_ARG(QVariant, static_cast<int>(i)));
+        auto* object = model.value<QObject*>();
+        m_planetOrbits.at(i) =
+            object ? qobject_cast<PolylineGeometry*>(object->property("line").value<QObject*>())
+                   : nullptr;
+    }
+    if (!m_solarSystem.trajectory || !m_planetOrbits.back()) {
+        qWarning() << "SolarScene.qml: a line geometry was not found";
+    }
+}
+
+void GlobeView::useSolarScene(bool solar) {
+    m_solar = solar;
+    Scene& scene = solar ? m_solarSystem : m_globe;
+    m_scene = scene.root;
+    m_trajectory = scene.trajectory;
+    m_extraPaths = &scene.extraPaths;
+    m_stack->setCurrentWidget(scene.widget);
+    const QSignalBlocker block(m_centre);
+    m_centre->setCurrentIndex(0);
+    m_centre->setItemText(0, solar ? tr("Centre: Sun") : tr("Centre: Earth"));
+    m_centre->setItemText(2, solar ? tr("Centre: Earth") : tr("Centre: Moon"));
+}
+
+QVector3D GlobeView::toScene(const orbit::Vec3& r) const {
+    return m_solar ? scene::fromHeliocentric(r) : scene::fromPhysics(r);
 }
 
 void GlobeView::showRunSet(std::shared_ptr<const RunSet> runs, int selected) {
@@ -268,6 +350,11 @@ void GlobeView::showRunSet(std::shared_ptr<const RunSet> runs, int selected) {
     m_runs = std::move(runs);
     m_selected = std::clamp(selected, 0, static_cast<int>(m_runs->runs.size()) - 1);
     m_result = m_runs->runs[static_cast<std::size_t>(m_selected)].result;
+    // Around the Sun: the solar system's scene; anything else: the Earth's.
+    if (isSolar(*m_result) != m_solar) {
+        useSolarScene(isSolar(*m_result));
+        m_resetPending = true;
+    }
 
     updateSelectedLines();
     updateExtraPaths();
@@ -289,15 +376,20 @@ void GlobeView::resetViewOnNextResult() { m_resetPending = true; }
 void GlobeView::applyDemoStepOnNextResult(const orbit::DemoStep& step) { m_pendingDemoStep = step; }
 
 void GlobeView::showCaption(const QString& title, const QString& text, int step, int count) {
-    if (!m_scene) return;
-    m_scene->setProperty("captionTitle", title);
-    m_scene->setProperty("captionText", text);
-    m_scene->setProperty("captionStep", QStringLiteral("%1 / %2").arg(step).arg(count));
-    m_scene->setProperty("captionVisible", true);
+    // On both scenes, so it stays when the next step switches between them.
+    for (QQuickItem* root : {m_globe.root, m_solarSystem.root}) {
+        if (!root) continue;
+        root->setProperty("captionTitle", title);
+        root->setProperty("captionText", text);
+        root->setProperty("captionStep", QStringLiteral("%1 / %2").arg(step).arg(count));
+        root->setProperty("captionVisible", true);
+    }
 }
 
 void GlobeView::hideCaption() {
-    if (m_scene) m_scene->setProperty("captionVisible", false);
+    for (QQuickItem* root : {m_globe.root, m_solarSystem.root}) {
+        if (root) root->setProperty("captionVisible", false);
+    }
 }
 
 /// Camera and playback for a demo step (after resetView() has fitted the
@@ -311,11 +403,12 @@ void GlobeView::applyDemoStep(const orbit::DemoStep& step) {
             Q_ARG(QVariant, distanceKm));
     };
     const double epoch = m_result->startEpoch + step.startTime;
+    // Demo distances are in km; the solar system's scene is in millions.
+    const double stepDistance = m_solar ? step.distance / 1e6 : step.distance;
 
     m_centre->setCurrentIndex(static_cast<int>(step.centre));
     switch (step.view) {
     case DemoView::Auto:
-        if (step.distance > 0.0) m_scene->setProperty("distance", step.distance);
         break;
     case DemoView::LaunchSite: {
         const orbit::LaunchSite& site = m_result->mission.site;
@@ -338,7 +431,7 @@ void GlobeView::applyDemoStep(const orbit::DemoStep& step) {
         break;
     }
     // The centre may have set its own distance; the step's wins.
-    if (step.distance > 0.0) m_scene->setProperty("distance", step.distance);
+    if (step.distance > 0.0) m_scene->setProperty("distance", stepDistance);
 
     if (step.speed > 0.0) {
         // The listed speed nearest to the one asked for.
@@ -391,6 +484,10 @@ void GlobeView::clearGhosts() {
 /// The selected flight: trajectory (inertial frame) and ground track
 /// (Earth-fixed frame).
 void GlobeView::updateSelectedLines() {
+    if (m_solar) {
+        updateSolarLines();
+        return;
+    }
     if (!m_trajectory || !m_groundTrack || !m_result) return;
     updateMoonOrbit();
     const auto& samples = m_result->samples;
@@ -406,7 +503,7 @@ void GlobeView::updateSelectedLines() {
     const QColor coastColor = sweep ? runColor : kCoastColor;
     m_scene->setProperty("trajectoryWidth", sweep ? 3.0 : 2.0);
 
-    const QList<QVector3D> path = trajectoryPoints(m_result->samples);
+    const QList<QVector3D> path = trajectoryPoints(m_result->samples, m_solar);
     QList<QColor> pathColors;
     QList<QVector3D> track;
     pathColors.reserve(path.size());
@@ -443,9 +540,9 @@ void GlobeView::updateExtraPaths() {
     std::size_t used = 0;
     const auto show = [&](const std::vector<orbit::Sample>& samples, const QColor& color,
                           double opacity) {
-        if (used >= m_extraPaths.size()) return;
-        const ExtraPath& path = m_extraPaths[used++];
-        const QList<QVector3D> points = trajectoryPoints(samples);
+        if (used >= m_extraPaths->size()) return;
+        const ExtraPath& path = (*m_extraPaths)[used++];
+        const QList<QVector3D> points = trajectoryPoints(samples, m_solar);
         path.line->setPoints(points, QList<QColor>(points.size(), color));
         path.model->setProperty("lineOpacity", opacity);
         path.model->setProperty("visible", true);
@@ -458,6 +555,8 @@ void GlobeView::updateExtraPaths() {
         }
     } else {
         for (std::size_t i = 0; i < m_ghosts.size(); ++i) {
+            // Only ghosts drawn in the same frame (around the Earth, or the Sun).
+            if (m_result && isSolar(*m_ghosts[i]) != isSolar(*m_result)) continue;
             // Newest ghost faintly visible, older ones fading out.
             const double age = static_cast<double>(i) / static_cast<double>(kMaxGhosts);
             show(m_ghosts[i]->samples, kGhostColor, 0.5 * (1.0 - age));
@@ -468,14 +567,18 @@ void GlobeView::updateExtraPaths() {
             show(spent.samples, kSpentStageColor, 0.8);
         }
     }
-    for (std::size_t i = used; i < m_extraPaths.size(); ++i) {
-        m_extraPaths[i].model->setProperty("visible", false);
+    for (std::size_t i = used; i < m_extraPaths->size(); ++i) {
+        (*m_extraPaths)[i].model->setProperty("visible", false);
     }
 }
 
 void GlobeView::setPlaybackTime(double t) {
     if (!m_result || !m_scene) return;
     m_time = std::clamp(t, 0.0, m_result->duration);
+    if (m_solar) {
+        setSolarPlaybackTime(m_result->startEpoch + m_time);
+        return;
+    }
 
     const orbit::State state = orbit::stateAt(*m_result, m_time);
     const double theta =
@@ -531,7 +634,8 @@ void GlobeView::onTick() {
 
 /// How far away to look from to see the whole flight (km): a few Earth
 /// radii, or further for long flights such as to the Moon.
-double GlobeView::viewDistanceKm() const {
+double GlobeView::viewDistance() const {
+    if (m_solar) return solarViewDistance();
     const double farthest = farthestDistance();
     if (m_result && m_result->encounter) {
         // A natural body: close enough to see its closest approach, which is
@@ -547,8 +651,87 @@ double GlobeView::viewDistanceKm() const {
 /// The same, but far enough to see a low orbit from above (km). From
 /// closer, the near side of the Earth bulges out past a low orbit and hides
 /// it: the Earth's outline is asin(R/d) across, the orbit only atan(a/d).
-double GlobeView::viewFromAboveDistanceKm() const {
-    return std::max(viewDistanceKm(), 6.0 * orbit::kRadiusEarth / 1000.0);
+double GlobeView::viewFromAboveDistance() const {
+    if (m_solar) return solarViewDistance();
+    return std::max(viewDistance(), 6.0 * orbit::kRadiusEarth / 1000.0);
+}
+
+// --- The solar system ---------------------------------------------------------
+
+/// Far enough (millions of km) to see the whole path, and at least the
+/// Earth's orbit, so there is always something to measure it against.
+double GlobeView::solarViewDistance() const {
+    const double reach = std::max(farthestDistance(), 1.2 * orbit::kAstronomicalUnit);
+    return 2.6 * reach / scene::kSolarMetresPerUnit;
+}
+
+/// The planets' orbits, from their elements at the middle of the flight
+/// (they change too slowly to matter over a few centuries).
+void GlobeView::updatePlanetOrbits() {
+    const double epoch = m_result->startEpoch + 0.5 * m_result->duration;
+    if (std::abs(epoch - m_planetOrbitEpoch) < 365.25 * 86400.0) return;
+    m_planetOrbitEpoch = epoch;
+    for (const orbit::Planet planet : orbit::kAllPlanets) {
+        PolylineGeometry* line = m_planetOrbits.at(static_cast<std::size_t>(planet));
+        if (!line) continue;
+        const orbit::PlanetOrbit o = orbit::planetOrbit(planet, epoch);
+        const double q = o.semiMajorAxis * (1.0 - o.eccentricity);
+        QList<QVector3D> points;
+        constexpr int kPoints = 360;
+        for (int i = 0; i <= kPoints; ++i) {
+            const double nu = 2.0 * std::numbers::pi * i / kPoints;
+            points.append(scene::fromHeliocentric(
+                orbit::stateFromPeriapsis(q, o.eccentricity, o.inclination, o.raan,
+                                          o.argumentOfPeriapsis, nu, orbit::kMuSun)
+                    .r));
+        }
+        line->setPoints(points, QList<QColor>(points.size(),
+                                              kPlanetColors.at(static_cast<std::size_t>(planet))));
+    }
+}
+
+/// A body going round the Sun: its path, in the sweep's colour or blue, and
+/// the planets' orbits.
+void GlobeView::updateSolarLines() {
+    if (!m_trajectory || !m_result) return;
+    updatePlanetOrbits();
+    const bool sweep = m_runs->isSweep();
+    const QColor color =
+        sweep ? m_runs->runs[static_cast<std::size_t>(m_selected)].color : kCoastColor;
+    m_scene->setProperty("trajectoryWidth", sweep ? 3.0 : 2.0);
+    const QList<QVector3D> path = trajectoryPoints(m_result->samples, true);
+    m_trajectory->setPoints(path, QList<QColor>(path.size(), color));
+    m_scene->setProperty("vehicleColor", kBodyColor);
+    m_centre->setItemText(1, tr("Centre: Body"));
+    m_timeSlider->setToolTip(tr("Time"));
+}
+
+void GlobeView::setSolarPlaybackTime(double epoch) {
+    m_scene->setProperty("bodyPosition",
+                         scene::fromHeliocentric(orbit::stateAt(*m_result, m_time).r));
+    QVariantList planets;
+    for (const orbit::Planet planet : orbit::kAllPlanets) {
+        planets.append(
+            QVariant::fromValue(scene::fromHeliocentric(orbit::planetPosition(planet, epoch))));
+    }
+    m_scene->setProperty("planetPositions", planets);
+    m_timeLabel->setText(formatUtc(epoch));
+    if (!m_timeSlider->isSliderDown() && m_result->duration > 0.0) {
+        m_timeSlider->setValue(
+            static_cast<int>(std::lround(m_time / m_result->duration * kSliderSteps)));
+    }
+}
+
+/// From ecliptic north, tilted a little so the orbits read as ellipses in
+/// space rather than a flat drawing, far enough to see the whole path.
+void GlobeView::resetSolarView() {
+    const orbit::Vec3 from{0.0, -0.55, 1.0}; // physics: mostly ecliptic north (z)
+    QMetaObject::invokeMethod(
+        m_scene, "lookAt",
+        // A direction: unscaled (the solar scaling would
+        // shrink it to nothing).
+        Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(from).normalized())),
+        Q_ARG(QVariant, solarViewDistance()));
 }
 
 /// The plane the selected flight is in at time t, as its unit normal (the
@@ -577,7 +760,7 @@ orbit::Vec3 GlobeView::orbitNormalAt(double t) const {
 /// angle between them is the inclination. A distance of 0 picks one.
 void GlobeView::lookAtOrbit(bool edgeOn, double t, double distanceKm) {
     if (!m_scene || !m_result) return;
-    if (distanceKm <= 0.0) distanceKm = edgeOn ? viewDistanceKm() : viewFromAboveDistanceKm();
+    if (distanceKm <= 0.0) distanceKm = edgeOn ? viewDistance() : viewFromAboveDistance();
     orbit::Vec3 from = orbitNormalAt(t);
     if (edgeOn) {
         from = orbit::cross(orbit::Vec3{0.0, 0.0, 1.0}, from);
@@ -615,7 +798,7 @@ void GlobeView::resetBodyView() {
     if (closestDistance < 4.0e8) {
         const orbit::Vec3 h = orbit::cross(closest.r, closest.v);
         lookFrom(orbit::norm(h) > 0.0 ? orbit::normalized(h) : orbit::Vec3{0.0, 0.0, 1.0},
-                 viewDistanceKm());
+                 viewDistance());
         m_scene->setProperty("panOffset", scene::fromPhysics(0.6 * closest.r));
         return;
     }
@@ -639,10 +822,12 @@ void GlobeView::resetBodyView() {
 /// shows all of it in about a minute and a half.
 void GlobeView::resetView() {
     if (!m_scene || !m_result) return;
-    m_centre->setCurrentIndex(0); // circle the Earth
+    m_centre->setCurrentIndex(0); // circle the Earth (or the Sun)
 
     const double farthest = farthestDistance();
-    if (m_result->encounter) {
+    if (m_solar) {
+        resetSolarView();
+    } else if (m_result->encounter) {
         resetBodyView();
     } else if (farthest > 5.0e7) {
         // A long flight (to the Moon): look down on the plane it flies in,
@@ -657,7 +842,7 @@ void GlobeView::resetView() {
         }
         QMetaObject::invokeMethod(m_scene, "lookAt",
                                   Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(normal))),
-                                  Q_ARG(QVariant, viewDistanceKm()));
+                                  Q_ARG(QVariant, viewDistance()));
     } else {
         // Look at the launch site, where it is at the current playback time.
         const orbit::LaunchSite& site = m_result->mission.site;
@@ -667,7 +852,7 @@ void GlobeView::resetView() {
             orbit::positionFromLatLon(site.latitude, site.longitude, orbit::kRadiusEarth), theta);
         QMetaObject::invokeMethod(m_scene, "lookAt",
                                   Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(siteEci))),
-                                  Q_ARG(QVariant, viewDistanceKm()));
+                                  Q_ARG(QVariant, viewDistance()));
     }
 
     // Slowest speed that plays the whole flight within about 90 seconds.

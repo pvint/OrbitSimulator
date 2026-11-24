@@ -20,6 +20,8 @@ public:
     void showResult(const orbit::SimResult& result);
 
 private:
+    void showSolar(const orbit::SimResult& result, const orbit::SolarSummary& sun);
+
     QFormLayout* m_resultForm = nullptr;
     QLabel* m_outcome = nullptr;
     QLabel* m_periapsis = nullptr;
@@ -52,4 +54,11 @@ private:
     QLabel* m_farSpeed = nullptr;
     QLabel* m_bound = nullptr;
     QLabel* m_finalOrbit = nullptr;
+
+    QGroupBox* m_solarGroup = nullptr;
+    QLabel* m_perihelion = nullptr;
+    QLabel* m_solarOrbitStart = nullptr;
+    QLabel* m_solarOrbitEnd = nullptr;
+    QLabel* m_nearestEarth = nullptr;
+    QLabel* m_nearestPlanet = nullptr;
 };

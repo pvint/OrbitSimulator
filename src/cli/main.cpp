@@ -12,11 +12,13 @@
 #include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/earth.hpp"
+#include "orbit/core/ephemeris.hpp"
 #include "orbit/core/lunar_targeting.hpp"
 #include "orbit/core/mission_parameters.hpp"
 #include "orbit/core/parse.hpp"
 #include "orbit/core/scenario.hpp"
 #include "orbit/core/simulation.hpp"
+#include "orbit/core/solar_system.hpp"
 #include "orbit/core/sweep.hpp"
 #include "orbit/core/version.hpp"
 
@@ -61,6 +63,8 @@ void printUsage() {
                  "  --aim-moon             set the azimuth so the orbit plane meets the Moon\n"
                  "\nNatural body options (default: asteroid Apophis passing the Earth in 2029):\n"
                  "  --vehicle VEHICLE      rocket (the default) or natural-body\n"
+                 "  --body-centre CENTRE   earth (the default) or sun, converting the body's\n"
+                 "                         values to keep its path\n"
                  "  --body-given HOW       elements (at closest approach) or state-vector,\n"
                  "                         converting the body's values to keep its path\n"
                  "  --epoch-utc TIME       when the elements or state hold, e.g.\n"
@@ -193,8 +197,59 @@ void printBodyResult(const orbit::SimResult& r, const orbit::EncounterSummary& e
     std::cout << r.samples.size() << " samples\n";
 }
 
+std::string au(double metres) {
+    std::ostringstream os;
+    os << std::fixed << std::setprecision(4) << metres / orbit::kAstronomicalUnit << " au";
+    return os.str();
+}
+
+void printSolarOrbit(const char* label, const orbit::OrbitalElements& o) {
+    std::cout << label << "perihelion " << au(o.periapsis) << ", e = " << std::setprecision(4)
+              << o.eccentricity << std::setprecision(2)
+              << ", i = " << orbit::radToDeg(o.inclination) << " deg";
+    if (o.bound) {
+        std::cout << ", a = " << au(o.semiMajorAxis) << std::setprecision(2) << ", period "
+                  << o.period / (365.25 * 86400.0) << " years";
+    }
+    std::cout << '\n';
+}
+
+void printSolarResult(const orbit::SimResult& r, const orbit::SolarSummary& s) {
+    std::cout << std::fixed << std::setprecision(1);
+    std::cout << "Outcome:          " << orbit::toString(r.outcome)
+              << (s.impacted.empty() ? std::string() : " (" + s.impacted + ")")
+              << "  (simulation ended: " << orbit::toString(r.endReason) << ")\n"
+              << "Time span:        " << utc(r, 0.0) << " to " << utc(r, r.duration) << " ("
+              << duration(r.duration) << ")\n"
+              << "Closest to Sun:   " << au(orbit::norm(s.perihelion.state.r)) << " at "
+              << utc(r, s.perihelion.t) << ", " << std::setprecision(0) << s.perihelion.speed()
+              << " m/s\n";
+    printSolarOrbit("Orbit at start:   ", s.initialOrbit);
+    printSolarOrbit("Orbit at end:     ", s.finalOrbit);
+    std::cout << "Nearest planets:\n";
+    for (const orbit::Planet planet : orbit::kAllPlanets) {
+        const auto& a = s.approaches.at(static_cast<std::size_t>(planet));
+        std::cout << "  " << std::left << std::setw(9) << orbit::planetName(planet) << std::right
+                  << std::setw(14) << au(a.distance) << std::setw(18) << km(a.distance) << "  "
+                  << utc(r, a.t) << '\n';
+    }
+    if (!r.events.empty()) {
+        std::cout << "Events:\n";
+        for (const auto& ev : r.events) {
+            std::cout << "  " << utc(r, ev.sample.t) << "  " << std::left << std::setw(42)
+                      << ev.description << std::right << ' ' << au(orbit::norm(ev.sample.state.r))
+                      << " from the Sun, " << std::setprecision(0) << ev.sample.speed() << " m/s\n";
+        }
+    }
+    std::cout << r.samples.size() << " samples\n";
+}
+
 void printResult(const orbit::SimResult& r) {
     using orbit::radToDeg;
+    if (r.solar) {
+        printSolarResult(r, *r.solar);
+        return;
+    }
     if (r.encounter) {
         printBodyResult(r, *r.encounter);
         return;
@@ -324,10 +379,36 @@ void printBodySweep(const std::vector<double>& values,
     }
 }
 
+void printSolarSweep(const std::vector<double>& values,
+                     const std::vector<orbit::Mission>& missions) {
+    std::cout << std::right << std::setw(12) << "value" << "  " << std::left << std::setw(10)
+              << "outcome" << std::right << std::setw(14) << "perihelion" << std::setw(14)
+              << "aphelion" << std::setw(12) << "period" << std::setw(16) << "nearest Earth"
+              << '\n';
+    for (std::size_t i = 0; i < missions.size(); ++i) {
+        const orbit::SimResult r = orbit::simulate(missions[i]);
+        if (!r.solar) continue;
+        const orbit::OrbitalElements& o = r.solar->finalOrbit;
+        const auto& earth = r.solar->approaches.at(static_cast<std::size_t>(orbit::Planet::Earth));
+        std::cout << std::fixed << std::setprecision(3) << std::setw(12) << values[i] << "  "
+                  << std::left << std::setw(10) << orbit::toString(r.outcome) << std::right
+                  << std::setw(14) << au(o.periapsis) << std::setw(14)
+                  << (o.bound ? au(o.apoapsis) : std::string("-")) << std::setprecision(2)
+                  << std::setw(6) << (o.bound ? o.period / (365.25 * 86400.0) : 0.0) << " years"
+                  << std::setw(16) << au(earth.distance) << '\n';
+    }
+}
+
 void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec,
                 const orbit::SweepTarget& p) {
     const auto values = orbit::sweepValues(spec);
     const auto missions = orbit::sweepMissions(base, spec);
+    if (base.vehicle == orbit::Vehicle::NaturalBody && base.body.centre == orbit::BodyCentre::Sun) {
+        std::cout << "Sweep of " << p.title
+                  << (p.unit.empty() ? std::string() : " (" + p.unit + ")") << "\n\n";
+        printSolarSweep(values, missions);
+        return;
+    }
     if (base.vehicle == orbit::Vehicle::NaturalBody) {
         std::cout << "Sweep of " << p.title
                   << (p.unit.empty() ? std::string() : " (" + p.unit + ")") << "\n\n";
@@ -401,7 +482,8 @@ int main(int argc, char* argv[]) {
         }
         const bool takesText = arg == "--csv" || arg == "--scenario" || arg == "--sweep" ||
                                arg == "--save-scenario" || arg == "--plan" || arg == "--vehicle" ||
-                               arg == "--body-given" || arg == "--epoch-utc";
+                               arg == "--body-given" || arg == "--epoch-utc" ||
+                               arg == "--body-centre";
         const orbit::ParameterInfo* param =
             arg.starts_with("--") ? orbit::findParameter(arg.substr(2)) : nullptr;
         if (!takesText && param == nullptr) {
@@ -428,6 +510,13 @@ int main(int argc, char* argv[]) {
                 std::cerr << "--vehicle must be rocket or natural-body\n";
                 return 1;
             }
+        } else if (arg == "--body-centre") {
+            orbit::BodyCentre centre{};
+            if (!orbit::bodyCentreFromKey(value, centre)) {
+                std::cerr << "--body-centre must be earth or sun\n";
+                return 1;
+            }
+            orbit::setBodyCentre(scenario.mission.body, centre);
         } else if (arg == "--body-given") {
             orbit::BodyGiven given{};
             if (!orbit::bodyGivenFromKey(value, given)) {

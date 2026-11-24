@@ -1,0 +1,19 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 7,
+  "name": "ʻOumuamua: a visitor from another star (2017)",
+  "description": "The first object known to come from outside the solar system. It fell in steeply from above the planets' plane, swung round the Sun on 9 September 2017 inside Mercury's orbit, and left again on a hyperbola (eccentricity 1.2): it was moving too fast for the Sun ever to hold it, 26 km/s even far away. It passed the Earth at 0.16 au a month later. Elements at perihelion from JPL.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-centre": "sun",
+    "body-given": "elements",
+    "epoch-utc": "2017-09-09T11:51:38Z",
+    "perihelion-distance": 0.2560498,
+    "eccentricity": 1.1994307,
+    "inclination": 122.7371,
+    "raan": 24.6005,
+    "argument-of-periapsis": 241.8454,
+    "days-before": 730,
+    "days-after": 730
+  }
+}

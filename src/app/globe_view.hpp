@@ -7,8 +7,10 @@
 
 #include <QElapsedTimer>
 #include <QTimer>
+#include <QVector3D>
 #include <QWidget>
 
+#include <array>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -21,10 +23,13 @@ class QLabel;
 class QQuickItem;
 class QQuickWidget;
 class QSlider;
+class QStackedWidget;
 class QToolButton;
 
-/// The 3D view (qml/GlobeScene.qml) plus a playback bar underneath:
-/// play/pause, a time slider, playback speed, and "follow rocket".
+/// The 3D view (qml/GlobeScene.qml, or for a natural body going round the
+/// Sun, the solar system in qml/SolarScene.qml) plus a playback bar
+/// underneath: play/pause, a time slider, playback speed, and what the camera
+/// circles.
 ///
 /// It shows the selected flight in full (trajectory, ground track, playback),
 /// and alongside it either the other flights of a sweep in their sweep
@@ -65,15 +70,35 @@ private:
         QObject* model = nullptr;
         PolylineGeometry* line = nullptr;
     };
+    /// One of the two QML scenes, and the parts of it C++ fills in.
+    struct Scene {
+        QQuickWidget* widget = nullptr;
+        QQuickItem* root = nullptr;
+        PolylineGeometry* trajectory = nullptr;
+        std::vector<ExtraPath> extraPaths;
+    };
 
     void buildPlaybackBar(QBoxLayout* layout);
     void connectScene();
+    void connectSolarScene();
+    static void findSceneParts(Scene& scene);
+    /// Show the Earth's scene or the solar system's, as the result needs.
+    void useSolarScene(bool solar);
+    /// Physics position (m) → scene coordinates of the scene in use.
+    QVector3D toScene(const orbit::Vec3& r) const;
+    void updateSolarLines();
+    void updatePlanetOrbits();
+    void setSolarPlaybackTime(double epoch);
+    void resetSolarView();
+    double solarViewDistance() const;
     void updateSelectedLines();
     void updateExtraPaths();
     void updateMoonOrbit();
     double farthestDistance() const;
-    double viewDistanceKm() const;
-    double viewFromAboveDistanceKm() const;
+    /// How far away to look from to see the whole flight, in the scene's
+    /// units (km in the Earth's scene, millions of km in the solar one).
+    double viewDistance() const;
+    double viewFromAboveDistance() const;
     orbit::Vec3 orbitNormalAt(double t) const;
     void lookAtOrbit(bool edgeOn, double t, double distanceKm);
     void lookFromNorth(double distanceKm);
@@ -85,13 +110,20 @@ private:
     void applyDemoStep(const orbit::DemoStep& step);
     void play();
 
-    QQuickWidget* m_view = nullptr;
+    QStackedWidget* m_stack = nullptr;
+    Scene m_globe;
+    Scene m_solarSystem;
+    bool m_solar = false; ///< showing the solar system
+    // The scene in use (m_globe's or m_solarSystem's parts).
     QQuickItem* m_scene = nullptr;
     PolylineGeometry* m_trajectory = nullptr;
+    std::vector<ExtraPath>* m_extraPaths = nullptr;
+
     PolylineGeometry* m_groundTrack = nullptr;
     PolylineGeometry* m_moonOrbit = nullptr;
     double m_moonOrbitEpoch = -1e30; ///< launch epoch the Moon's path was drawn for
-    std::vector<ExtraPath> m_extraPaths;
+    std::array<PolylineGeometry*, 8> m_planetOrbits{};
+    double m_planetOrbitEpoch = -1e30; ///< epoch the planets' orbits were drawn for
 
     QToolButton* m_playButton = nullptr;
     QSlider* m_timeSlider = nullptr;

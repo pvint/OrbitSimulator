@@ -26,6 +26,7 @@ constexpr std::string_view kLaunchUtcKey = "launch-utc";
 constexpr std::string_view kProgramKey = "program";
 constexpr std::string_view kVehicleKey = "vehicle";
 constexpr std::string_view kBodyGivenKey = "body-given";
+constexpr std::string_view kBodyCentreKey = "body-centre";
 constexpr std::string_view kEpochUtcKey = "epoch-utc";
 
 /// A moment written as text, like "1969-07-16T13:32:00Z".
@@ -139,6 +140,11 @@ Mission readMission(const json& object, int version, std::vector<std::string>& w
             throw ScenarioError(R"(mission.vehicle must be "rocket" or "natural-body")");
         }
     }
+    if (const auto it = object.find(std::string(kBodyCentreKey)); it != object.end()) {
+        if (!it->is_string() || !bodyCentreFromKey(it->get<std::string>(), mission.body.centre)) {
+            throw ScenarioError(R"(mission.body-centre must be "earth" or "sun")");
+        }
+    }
     if (const auto it = object.find(std::string(kBodyGivenKey)); it != object.end()) {
         if (!it->is_string() || !bodyGivenFromKey(it->get<std::string>(), mission.body.given)) {
             throw ScenarioError(R"(mission.body-given must be "elements" or "state-vector")");
@@ -187,7 +193,7 @@ Mission readMission(const json& object, int version, std::vector<std::string>& w
     for (const auto& [key, value] : object.items()) {
         if (key != kAutoCircularizeKey && key != kPlanKey && key != kLaunchUtcKey &&
             key != kProgramKey && key != kVehicleKey && key != kBodyGivenKey &&
-            key != kEpochUtcKey && findParameter(key) == nullptr) {
+            key != kBodyCentreKey && key != kEpochUtcKey && findParameter(key) == nullptr) {
             warnings.push_back("ignored unknown mission parameter \"" + key + "\"");
         }
     }
@@ -270,6 +276,7 @@ std::string scenarioToJson(const Scenario& scenario) {
     nlohmann::ordered_json mission = nlohmann::ordered_json::object();
     mission[std::string(kVehicleKey)] = vehicleKey(m.vehicle);
     if (m.vehicle == Vehicle::NaturalBody) {
+        mission[std::string(kBodyCentreKey)] = bodyCentreKey(m.body.centre);
         mission[std::string(kBodyGivenKey)] = bodyGivenKey(m.body.given);
         mission[std::string(kEpochUtcKey)] = formatIsoUtc(m.body.epoch);
     }

@@ -30,25 +30,30 @@ prototype settled the physics model and the UI ideas; this is the full version.
   and screenshotted on each platform, a live Gentoo ebuild (`dist/gentoo/`).
   No release tagged yet: pushing `v0.1.0` drafts one. Work on a branch and
   open a PR so CI runs before merging.
-- **Natural bodies, near the Earth (N1, 2026-11-24)** on branch
-  `natural-bodies`: an asteroid/comet/moon as the vehicle, placed by
+- **Natural bodies, near the Earth (N1, 2026-11-24)** is done and merged
+  to `main` (PR #2): an asteroid/comet/moon as the vehicle, placed by
   elements at closest approach (q, e, i, Ω, ω; any conic) or a state vector
   at an epoch (J2000, precessed), flown backwards and forwards from the
   epoch. Scenario format 6. Examples (Apophis 2029, its aim sweep, the 2024
   PT5 mini-moon, Chelyabinsk) are checked against JPL Horizons by tests.
-- **Next:** N2, the solar system: heliocentric ecliptic frame, planets from
-  JPL's approximate elements, bodies placed by heliocentric elements, a
-  solar-system view (see decision 33 and the roadmap). The user chose to
-  cover heliocentric bodies too, in that order.
+- **Solar system (N2, 2026-11-24)** on branch `solar-system`: natural
+  bodies around the Sun (heliocentric ecliptic J2000, planets from JPL's
+  approximate elements, every planet and the Moon pulling), a second 3D
+  scene for the solar system, scenario format 7. Examples (Halley,
+  ʻOumuamua, Ceres, Apophis's orbit change, Kepler's third law) checked
+  against JPL by tests. Decision 34.
+- **Next:** ask the user. Candidates on the roadmap: "go to a point on a
+  path", interplanetary rocket transfers, scripting, a first release.
 - The app flies a rocket of one to three stages from any site and date,
   through the air, to low orbit or to the Moon, with built-in plans or a
-  custom flight program, or follows a natural body past the Earth; sweeps
-  (of any parameter or program step), ghosts, scenario files, 25 example
-  scenarios, a textured Earth and Moon lit by the real Sun, and a 17-step
-  demo tour. 115 test suites pass (GCC, Clang, ASan/UBSan); clang-tidy is
-  clean.
+  custom flight program, or follows a natural body past the Earth or
+  around the Sun; sweeps
+  (of any parameter or program step), ghosts, scenario files, 30 example
+  scenarios, a textured Earth and Moon lit by the real Sun, a solar-system
+  view, and a 20-step demo tour. 129 test suites pass (GCC, Clang,
+  ASan/UBSan); clang-tidy is clean.
 - **Open questions:** see the end of `docs/decisions.md` (scripting
-  language, natural bodies far from the Earth, code signing). Decision 33
+  language, importing a body from JPL by name, code signing). Decision 33
   also notes a known 0.36° approximation: the Earth turns by the IERS
   rotation angle in an equinox-of-date frame (GMST would fix it).
 
@@ -87,6 +92,7 @@ build/dev/src/cli/orbitsim-cli        # CLI
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
 cmake --build build/release --target package   # archive in build/release/
 QMAKE=<official Qt>/bin/qmake tools/make_appimage.sh build/release   # AppImage
+tools/install_local.sh                # release build + tests + sudo install into /usr/local
 ```
 
 ## Layout
@@ -179,8 +185,9 @@ Each milestone ends with something that runs.
 | Later | Other bodies | |
 | A3 | Sweepable burn timing: `tli-delay`, the injection burn's start in seconds (any burn's timing comes with the maneuver editor) | done |
 | N1 | Natural bodies near the Earth: an asteroid, comet or moon with no engine as the vehicle, placed by elements at closest approach (q, e, i, Ω, ω) or a state vector at an epoch (J2000), flown both ways from the epoch; impact parameter and capture; scenario format 6; real examples checked against JPL Horizons | done |
-| N2 | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, natural bodies placed by heliocentric elements (comets, 'Oumuamua, Ceres, Apophis changing class), a solar-system view | next |
+| N2 | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, natural bodies placed by heliocentric elements (comets, 'Oumuamua, Ceres, Apophis changing class), a solar-system view, scenario format 7 | done |
 | Later | Interplanetary rocket transfers and gravity assists; importing a body from JPL by name | |
+| Later | Go to a point on a path (user's idea, 2026-11-24): click or right-click a point on any trajectory in 3D (e.g. one flight of a burn-time sweep) for "go there": select that flight, jump playback to that moment, and centre the camera on that point in space | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
 
@@ -212,6 +219,21 @@ approach, impact parameter, v∞ in/out, time bound, first/last orbit).
 `apophisFlyby()`. `gravity.hpp`: `gravityAcceleration` (Earth + Moon + Sun).
 Parameters carry their `vehicle`; `parameterInUse(p, mission)` filters
 panels, sweeps and saved files.
+
+### Core API in brief (solar system)
+
+`solar_system.hpp`: `Planet`, `kAllPlanets`, `planetPosition/Velocity`
+(heliocentric ecliptic J2000; the Earth, not the barycentre),
+`planetOrbit` (elements), `planetMu/Radius`, `earthAndMoonHeliocentric`,
+`eclipticToEquatorial`. `orbit.hpp`: `eccentricAnomaly` (Kepler).
+`NaturalBody::centre` (`BodyCentre::Earth`/`Sun`), `setBodyCentre`
+(converts, leaves a state vector), `centreMu`. `gravity.hpp`:
+`heliocentricGravity`. `SimResult::frame` (`ResultFrame`), `SimResult::solar`
+(`SolarSummary`: perihelion, first/last orbit, approaches per planet,
+`impacted`). App: `GlobeView` holds two scenes (GlobeScene.qml in km,
+SolarScene.qml in millions of km, `scene::fromHeliocentric`) and switches
+by the result's frame; shared QML: CameraControls, DemoCaption,
+OrientationGizmo.
 
 ### Core API in brief (maneuver editor)
 

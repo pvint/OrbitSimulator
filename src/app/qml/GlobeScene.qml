@@ -10,7 +10,6 @@
 // sunlight comes from the Sun's real direction at the playback time.
 
 import QtQuick
-import QtQuick.Controls
 import QtQuick3D
 
 Item {
@@ -260,161 +259,30 @@ Item {
     }
 
     // --- Mouse: drag to turn, wheel to zoom ---------------------------------
-    // Left drag turns the camera round the centre; right or middle drag (or
-    // Shift + left drag) slides the view; the wheel zooms.
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-        property point last
-        property bool panning: false
-        onPressed: mouse => {
-            last = Qt.point(mouse.x, mouse.y)
-            panning = mouse.button !== Qt.LeftButton || (mouse.modifiers & Qt.ShiftModifier)
-        }
-        onPositionChanged: mouse => {
-            const dx = mouse.x - last.x
-            const dy = mouse.y - last.y
-            last = Qt.point(mouse.x, mouse.y)
-            if (panning) {
-                // Scene units per pixel at the distance of the centre, so the
-                // point under the mouse follows it at any zoom.
-                const perPixel = 2 * root.distance * Math.tan(camera.fieldOfView * Math.PI / 360)
-                                 / view.height
-                root.panOffset = root.panOffset.minus(camera.right.times(dx * perPixel))
-                                                .plus(camera.up.times(dy * perPixel))
-            } else {
-                root.yaw -= dx * 0.3
-                root.pitch = Math.max(-89, Math.min(89, root.pitch - dy * 0.3))
-            }
-        }
-        // Each wheel notch zooms by the same factor, so it feels the same from
-        // low orbit out to the Moon.
-        onWheel: wheel => {
-            const factor = Math.pow(1.0015, -wheel.angleDelta.y)
-            root.distance = Math.max(root.minDistance,
-                                     Math.min(root.maxDistance, root.distance * factor))
-        }
+    CameraControls {
+        scene: root
+        camera: camera
+        view: view
     }
 
-    // --- Orientation gizmo ------------------------------------------------
-    // A small second view whose camera turns exactly like the main one, so its
-    // arrows show which way the frame's axes point:
-    //   X  towards the vernal equinox (♈), the direction of the Sun at the
-    //      March equinox: astronomy's zero of longitude in the sky
-    //   Z  celestial north: the Earth's spin axis
-    //   Y  completes the right-handed set
-    // and, dimmer, ecliptic north: the "up" of the solar system (the pole of
-    // the Earth's orbit), tilted 23.4° from celestial north. That tilt is
-    // what causes the seasons.
-    View3D {
-        id: gizmo
-        width: 120
-        height: 120
+    // --- Orientation gizmo (Z = the Earth's axis up) -----------------------
+    OrientationGizmo {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.margins: 6
-        camera: gizmoCamera
-        environment: SceneEnvironment {
-            backgroundMode: SceneEnvironment.Transparent
-            antialiasingMode: SceneEnvironment.MSAA
-            antialiasingQuality: SceneEnvironment.High
-        }
-        Node {
-            eulerRotation.y: root.yaw
-            Node {
-                eulerRotation.x: root.pitch
-                PerspectiveCamera {
-                    id: gizmoCamera
-                    z: 330
-                    fieldOfView: 45
-                    clipNear: 1
-                    clipFar: 1000
-                }
-            }
-        }
-        // Scene axes are physics (x, z, −y): physics X is scene +x, physics
-        // Y is scene −z, physics Z (north) is scene +y.
-        AxisArrow { color: "#ef4444"; eulerRotation.z: -90 }  // X
-        AxisArrow { color: "#22c55e"; eulerRotation.x: -90 }  // Y
-        AxisArrow { color: "#3b82f6" }                        // Z
-        AxisArrow { color: "#a08b2c"; eulerRotation.x: 23.44; scale: Qt.vector3d(0.8, 0.8, 0.8) }
-
-        // Labels at the arrow tips, placed by projecting each tip into the view.
-        Repeater {
-            model: [
-                // U+FE0E asks for the plain symbol: macOS otherwise draws ♈ as an emoji.
-                { text: "X ♈\uFE0E", tip: Qt.vector3d(112, 0, 0), color: "#ef4444" },
-                { text: "Y", tip: Qt.vector3d(0, 0, -112), color: "#22c55e" },
-                { text: "Z N", tip: Qt.vector3d(0, 112, 0), color: "#3b82f6" },
-                { text: "ecl", tip: Qt.vector3d(0, 92 * Math.cos(23.44 * Math.PI / 180),
-                                               92 * Math.sin(23.44 * Math.PI / 180)),
-                  color: "#c9a93a" }
-            ]
-            delegate: Text {
-                required property var modelData
-                // Mentioning yaw and pitch makes the binding update as the camera turns.
-                readonly property vector3d screen: {
-                    root.yaw; root.pitch
-                    return gizmo.mapFrom3DScene(modelData.tip)
-                }
-                x: screen.x - width / 2
-                y: screen.y - height / 2
-                text: modelData.text
-                color: modelData.color
-                font.pixelSize: 11
-                font.bold: true
-            }
-        }
+        yaw: root.yaw
+        pitch: root.pitch
     }
 
     // --- Demo tour caption --------------------------------------------------
-    Rectangle {
+    DemoCaption {
         visible: root.captionVisible
-        anchors.top: parent.top
-        anchors.topMargin: 10
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: Math.min(parent.width - 300, 680)
-        height: captionColumn.implicitHeight + 24
-        radius: 8
-        color: "#e60f1628"
-        border.color: "#334a6e"
-
-        Column {
-            id: captionColumn
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 12
-            spacing: 8
-
-            Text {
-                text: root.captionTitle
-                color: "#f1f5f9"
-                font.pixelSize: 17
-                font.bold: true
-            }
-            Text {
-                width: parent.width
-                text: root.captionText
-                color: "#d6deeb"
-                font.pixelSize: 13
-                wrapMode: Text.WordWrap
-                lineHeight: 1.15
-            }
-            Row {
-                spacing: 8
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.captionStep
-                    color: "#8592ad"
-                    font.pixelSize: 12
-                    rightPadding: 6
-                }
-                Button { text: qsTr("◀ Previous"); onClicked: root.demoPrevious() }
-                Button { text: qsTr("Next ▶"); onClicked: root.demoNext() }
-                Button { text: qsTr("End tour"); onClicked: root.demoEnd() }
-            }
-        }
+        title: root.captionTitle
+        text: root.captionText
+        step: root.captionStep
+        onPrevious: root.demoPrevious()
+        onNext: root.demoNext()
+        onEnd: root.demoEnd()
     }
 
     Text {

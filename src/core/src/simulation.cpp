@@ -959,6 +959,12 @@ std::string_view toString(EventType type) {
         return "captured by the Earth";
     case EventType::EarthRelease:
         return "released by the Earth";
+    case EventType::Perihelion:
+        return "perihelion";
+    case EventType::Aphelion:
+        return "aphelion";
+    case EventType::PlanetClosestApproach:
+        return "closest approach to a planet";
     }
     return "?";
 }

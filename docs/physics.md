@@ -443,6 +443,55 @@ again. 2024 PT5 was bound from 29 September to 25 November 2024, between
 ones of a few tens of metres break up high in the atmosphere (Chelyabinsk
 burst at 30 km).
 
+## The solar system (`solar_system.hpp`)
+
+Around the Sun the frame is **heliocentric ecliptic J2000**: the Sun at
+the origin, x towards the vernal equinox, z towards the north pole of the
+**ecliptic**, the plane of the Earth's orbit. The Earth's equator is
+tilted 23.44° to it (the obliquity, the cause of the seasons), so
+`r_equator = R_x(ε) · r_ecliptic`.
+
+**Where the planets are.** Each planet's orbit is described by six
+Keplerian elements that drift slowly: semi-major axis `a`, eccentricity
+`e`, inclination `I`, mean longitude `L`, longitude of perihelion `ϖ` and
+of the node `Ω`, each with a rate per century (JPL's *approximate
+positions of the planets*). For a date:
+1. Each element is `value + rate · T`, with T in centuries since 2000.
+2. The argument of perihelion is `ω = ϖ − Ω`, and the **mean anomaly**
+   `M = L − ϖ` is the angle the planet would have travelled at a steady
+   rate.
+3. **Kepler's equation** `M = E − e sin E` gives the eccentric anomaly E.
+   It can't be solved with a formula, so Newton's method does it:
+   `E ← E + (M − E + e sin E) / (1 − e cos E)`, a handful of steps.
+4. In the orbit's plane the planet is at `(a(cos E − e), a√(1 − e²) sin E)`,
+   then turned by ω, I and Ω into place.
+
+The tables describe the Earth–Moon barycentre. The Earth goes round that
+point once a month, 4,700 km from it, opposite the Moon.
+
+**Forces.** The Sun pulls with `−μ_sun r/|r|³`; each planet and the Moon
+pull with the same tidal formula as the Moon and Sun do around the Earth:
+the planet pulls the Sun as well as the body, and only the difference moves
+the body relative to the Sun.
+
+**Sphere of influence.** Near a planet its pull, not the Sun's, shapes the
+path. The boundary is roughly `r_SOI = a (m_planet / m_sun)^(2/5)`: 925,000 km
+for the Earth, 48 million km for Jupiter. Inside it the simulation watches
+for the closest approach to that planet.
+
+**Kepler's laws, seen in the examples.**
+- The orbits are ellipses with the Sun at one focus (Halley's is long and
+  thin, e = 0.967).
+- A body sweeps out equal areas in equal times, so it races round
+  perihelion and crawls far out: Halley spends decades beyond Saturn and a
+  few months inside the Earth's orbit.
+- The square of the period grows with the cube of the size: `T² ∝ a³`. In
+  years and au, `T = a^(3/2)`: Jupiter, at 5.2 au, takes 11.9 years.
+
+**Energy decides** whether the Sun holds on: `ε = v²/2 − μ_sun/r`. Below
+zero, an ellipse; above, a hyperbola. ʻOumuamua had ε > 0 all along: it came
+from another star and left again.
+
 ## Integration (`integrator.hpp`)
 
 The equations of motion are integrated with **Dormand–Prince 5(4)**, an

@@ -21,4 +21,11 @@ namespace orbit {
 /// only the Earth pulls.
 Vec3 gravityAcceleration(const Vec3& r, double epoch, bool thirdBodies, double mu = kMuEarth);
 
+/// The same around the Sun (solar_system.hpp), for r in the heliocentric
+/// ecliptic J2000 frame: the Sun, a = −μ_sun r/|r|³, plus the eight planets
+/// and the Moon, each pulling by the same tidal formula (the Sun is pulled
+/// by them too, and only the difference moves the body relative to it).
+/// Without third bodies, only the Sun pulls.
+Vec3 heliocentricGravity(const Vec3& r, double epoch, bool thirdBodies);
+
 } // namespace orbit

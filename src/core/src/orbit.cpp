@@ -148,6 +148,18 @@ double timeSincePeriapsis(double periapsisDistance, double eccentricity, double 
     return (e * std::sinh(hyperbolicAnomaly) - hyperbolicAnomaly) / meanMotion;
 }
 
+double eccentricAnomaly(double meanAnomaly, double eccentricity) {
+    const double m = meanAnomaly;
+    const double e = eccentricity;
+    double ecc = m + e * std::sin(m);
+    for (int i = 0; i < 50; ++i) {
+        const double step = (m - (ecc - e * std::sin(ecc))) / (1.0 - e * std::cos(ecc));
+        ecc += step;
+        if (std::abs(step) < 1e-14) break;
+    }
+    return ecc;
+}
+
 double orbitalPeriod(double semiMajorAxis, double mu) {
     return kTwoPi * std::sqrt(semiMajorAxis * semiMajorAxis * semiMajorAxis / mu);
 }

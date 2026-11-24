@@ -124,7 +124,15 @@ TEST_CASE("Every bundled example scenario loads cleanly and flies", "[scenario]"
         const auto missions = loaded.scenario.sweep
                                   ? sweepMissions(loaded.scenario.mission, *loaded.scenario.sweep)
                                   : std::vector{loaded.scenario.mission};
-        for (const Mission& m : missions) REQUIRE(simulate(m).maxAltitude > 100.0);
+        // (A body around the Sun has no altitude: it just has to get going.)
+        for (const Mission& m : missions) {
+            const SimResult r = simulate(m);
+            if (r.frame == ResultFrame::SunEclipticJ2000) {
+                REQUIRE(r.duration > 86400.0);
+            } else {
+                REQUIRE(r.maxAltitude > 100.0);
+            }
+        }
         ++count;
     }
     REQUIRE(count >= 5);

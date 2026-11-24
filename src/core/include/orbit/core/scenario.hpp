@@ -34,6 +34,8 @@
 //      "body-given" ("elements" or "state-vector"), "epoch-utc", its elements
 //      or state vector, and "days-before" / "days-after". Files only hold
 //      what their vehicle uses. Older files are all rockets.
+//   7  natural bodies around the Sun: "body-centre": "earth" or "sun", and
+//      "perihelion-distance" (au). Older files: around the Earth.
 #pragma once
 
 #include "orbit/core/simulation.hpp"
@@ -48,7 +50,7 @@
 
 namespace orbit {
 
-inline constexpr int kScenarioFormatVersion = 6;
+inline constexpr int kScenarioFormatVersion = 7;
 inline constexpr std::string_view kScenarioFormatName = "orbitsim-scenario";
 
 struct Scenario {

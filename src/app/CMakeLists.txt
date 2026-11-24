@@ -68,8 +68,12 @@ qt_add_qml_module(orbitsim
     VERSION 1.0
     QML_FILES
         qml/AxisArrow.qml
+        qml/CameraControls.qml
+        qml/DemoCaption.qml
         qml/GlobeScene.qml
+        qml/OrientationGizmo.qml
         qml/Plots.qml
+        qml/SolarScene.qml
         qml/TimeGraph.qml
 )
 
