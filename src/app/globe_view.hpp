@@ -81,6 +81,7 @@ private:
     void togglePlaying();
     void onTick();
     void resetView();
+    void resetBodyView();
     void applyDemoStep(const orbit::DemoStep& step);
     void play();
 

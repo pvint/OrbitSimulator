@@ -5,10 +5,12 @@
 
 #include <QWidget>
 
+class QFormLayout;
 class QGroupBox;
 class QLabel;
 
 /// Read-outs for one flight: outcome, the final orbit, and the engine events.
+/// For a natural body: its passage by the Earth instead of the engine's work.
 class FlightStatsPanel : public QWidget {
     Q_OBJECT
 
@@ -18,6 +20,7 @@ public:
     void showResult(const orbit::SimResult& result);
 
 private:
+    QFormLayout* m_resultForm = nullptr;
     QLabel* m_outcome = nullptr;
     QLabel* m_periapsis = nullptr;
     QLabel* m_apoapsis = nullptr;
@@ -40,4 +43,13 @@ private:
     QLabel* m_moonClosestTime = nullptr;
     QLabel* m_moonOrbit = nullptr;
     QLabel* m_moonPeriod = nullptr;
+
+    QGroupBox* m_passageGroup = nullptr;
+    QLabel* m_closest = nullptr;
+    QLabel* m_closestTime = nullptr;
+    QLabel* m_closestSpeed = nullptr;
+    QLabel* m_aim = nullptr;
+    QLabel* m_farSpeed = nullptr;
+    QLabel* m_bound = nullptr;
+    QLabel* m_finalOrbit = nullptr;
 };

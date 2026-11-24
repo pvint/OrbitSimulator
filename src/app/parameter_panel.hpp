@@ -9,6 +9,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 class QBoxLayout;
@@ -53,15 +54,25 @@ private:
         QDoubleSpinBox* spinBox;
     };
 
+    void buildVehicleChoice(QBoxLayout* layout);
+    void buildBodyChoice(QBoxLayout* layout);
     void buildDerivedSection(QBoxLayout* layout);
+    void buildBodyDerivedSection(QBoxLayout* layout);
     void buildLunarButtons(QGridLayout* grid);
     void onValueEdited(const Row& row, double value);
     void refreshWidgets();
     void refreshDerived();
+    void refreshBodyDerived();
 
     orbit::Mission m_mission;
     std::vector<Row> m_rows;
     std::string m_lockedKey;
+    QComboBox* m_vehicle = nullptr;
+    QComboBox* m_bodyGiven = nullptr;
+    QGroupBox* m_bodyGroup = nullptr; ///< holds the "Given as" choice
+    /// Every parameter group, and the parameters in it (for showing only
+    /// those that the mission uses: a rocket's, or a natural body's).
+    std::vector<std::pair<QGroupBox*, const orbit::ParameterInfo*>> m_groups;
     QComboBox* m_plan = nullptr;
     QGroupBox* m_lunarGroup = nullptr;
     /// "Stage 1" ... "Stage 3": the upper ones are hidden until fitted.
@@ -69,6 +80,9 @@ private:
     QPushButton* m_aimButton = nullptr;
     QPushButton* m_bestTimeButton = nullptr;
     QDateEdit* m_launchDate = nullptr;
+    QDateEdit* m_epochDate = nullptr;
+    QGroupBox* m_derived = nullptr;
+    QGroupBox* m_bodyDerived = nullptr;
 
     QLabel* m_liftoffMass = nullptr;
     QLabel* m_liftoffThrust = nullptr;
@@ -77,4 +91,9 @@ private:
     QLabel* m_thrustToWeight = nullptr;
     QLabel* m_idealDeltaV = nullptr;
     QLabel* m_rotationBoost = nullptr;
+
+    QLabel* m_bodyOrbitKind = nullptr;
+    QLabel* m_bodyPeriapsisSpeed = nullptr;
+    QLabel* m_bodyFarSpeed = nullptr;
+    QLabel* m_bodyAim = nullptr;
 };

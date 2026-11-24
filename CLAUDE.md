@@ -30,16 +30,27 @@ prototype settled the physics model and the UI ideas; this is the full version.
   and screenshotted on each platform, a live Gentoo ebuild (`dist/gentoo/`).
   No release tagged yet: pushing `v0.1.0` drafts one. Work on a branch and
   open a PR so CI runs before merging.
-- **Next:** natural bodies are next on the roadmap, but the user said not
-  to start them yet. Ask what's next.
+- **Natural bodies, near the Earth (N1, 2026-11-24)** on branch
+  `natural-bodies`: an asteroid/comet/moon as the vehicle, placed by
+  elements at closest approach (q, e, i, Ω, ω; any conic) or a state vector
+  at an epoch (J2000, precessed), flown backwards and forwards from the
+  epoch. Scenario format 6. Examples (Apophis 2029, its aim sweep, the 2024
+  PT5 mini-moon, Chelyabinsk) are checked against JPL Horizons by tests.
+- **Next:** N2, the solar system: heliocentric ecliptic frame, planets from
+  JPL's approximate elements, bodies placed by heliocentric elements, a
+  solar-system view (see decision 33 and the roadmap). The user chose to
+  cover heliocentric bodies too, in that order.
 - The app flies a rocket of one to three stages from any site and date,
   through the air, to low orbit or to the Moon, with built-in plans or a
-  custom flight program, sweeps (of any parameter or program step),
-  ghosts, scenario files, 21 example scenarios, a textured Earth and Moon
-  lit by the real Sun, and a 14-step demo tour. 98 test suites pass (GCC,
-  Clang, ASan/UBSan); clang-tidy is clean.
+  custom flight program, or follows a natural body past the Earth; sweeps
+  (of any parameter or program step), ghosts, scenario files, 25 example
+  scenarios, a textured Earth and Moon lit by the real Sun, and a 17-step
+  demo tour. 115 test suites pass (GCC, Clang, ASan/UBSan); clang-tidy is
+  clean.
 - **Open questions:** see the end of `docs/decisions.md` (scripting
-  language, how to specify natural bodies, code signing).
+  language, natural bodies far from the Earth, code signing). Decision 33
+  also notes a known 0.36° approximation: the Earth turns by the IERS
+  rotation angle in an equinox-of-date frame (GMST would fix it).
 
 ## Hard rules
 
@@ -71,6 +82,7 @@ build/dev/src/app/orbitsim --screenshot out.png   # render the window to a file 
 build/dev/src/app/orbitsim scenarios/kick-angle-sweep.json   # open a scenario
 build/dev/src/app/orbitsim --demo-step 8 --screenshot out.png  # check a demo step
 build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
+build/dev/src/cli/orbitsim-cli --vehicle natural-body        # Apophis 2029 flyby
 build/dev/src/cli/orbitsim-cli        # CLI
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
 cmake --build build/release --target package   # archive in build/release/
@@ -166,8 +178,9 @@ Each milestone ends with something that runs.
 | A7 | Coast between stage separation and ignition (`stage-coast`, default 5 s), scenario format 5 | done |
 | Later | Other bodies | |
 | A3 | Sweepable burn timing: `tli-delay`, the injection burn's start in seconds (any burn's timing comes with the maneuver editor) | done |
-| Later | Natural bodies as the "vehicle": an asteroid, comet or moon with no engine, placed by orbital elements or position/velocity at an epoch (later perhaps imported from JPL small-body data). How to specify and place it in the UI is still open | |
-| Later | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, interplanetary transfers and gravity assists | |
+| N1 | Natural bodies near the Earth: an asteroid, comet or moon with no engine as the vehicle, placed by elements at closest approach (q, e, i, Ω, ω) or a state vector at an epoch (J2000), flown both ways from the epoch; impact parameter and capture; scenario format 6; real examples checked against JPL Horizons | done |
+| N2 | Solar system: heliocentric ecliptic frame (scene "up" = ecliptic north), planets from JPL's approximate Keplerian elements, natural bodies placed by heliocentric elements (comets, 'Oumuamua, Ceres, Apophis changing class), a solar-system view | next |
+| Later | Interplanetary rocket transfers and gravity assists; importing a body from JPL by name | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
 
@@ -184,6 +197,21 @@ trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
 `qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
 Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
 series it finds through properties on `qml/Plots.qml`.
+
+### Core API in brief (natural bodies)
+
+`Mission::vehicle` (`Vehicle::Rocket` / `NaturalBody`) and `Mission::body`
+(`NaturalBody`: `given` = Elements / StateVector, q/e/i/Ω/ω or
+position/velocity in J2000, `epoch`, `timeBefore`/`timeAfter`).
+`simulate()` sends bodies to `simulateNaturalBody()`
+(natural_body_flight.cpp). `SimResult::startEpoch` is the epoch at t = 0
+(use it, not `mission.launchEpoch`); `SimResult::encounter` (closest
+approach, impact parameter, v∞ in/out, time bound, first/last orbit).
+`orbit.hpp`: `stateFromPeriapsis`, `timeSincePeriapsis` (Kepler).
+`natural_body.hpp`: `setBodyGiven` (converts), `precessionFromJ2000/ToJ2000`,
+`apophisFlyby()`. `gravity.hpp`: `gravityAcceleration` (Earth + Moon + Sun).
+Parameters carry their `vehicle`; `parameterInUse(p, mission)` filters
+panels, sweeps and saved files.
 
 ### Core API in brief (maneuver editor)
 

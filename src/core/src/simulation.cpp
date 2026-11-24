@@ -5,6 +5,7 @@
 #include "orbit/core/atmosphere.hpp"
 #include "orbit/core/earth.hpp"
 #include "orbit/core/ephemeris.hpp"
+#include "orbit/core/gravity.hpp"
 
 #include <algorithm>
 #include <array>
@@ -188,22 +189,9 @@ private:
 
 /// Equations of motion: the rate of change of {r, v, m}.
 State FlightSimulator::derivative(double t, const State& y) const {
-    const double r = norm(y.r);
-    Vec3 acceleration = (-m_opt.mu / (r * r * r)) * y.r;
-
-    if (m_opt.thirdBodyGravity) {
-        // A body at rb pulls the rocket towards it, and the Earth too; the
-        // difference is what moves the rocket relative to the Earth.
-        const auto pull = [&](const Vec3& rb, double mu) {
-            const Vec3 toBody = rb - y.r;
-            const double d = norm(toBody);
-            const double rbNorm = norm(rb);
-            return mu * (toBody / (d * d * d) - rb / (rbNorm * rbNorm * rbNorm));
-        };
-        const double epoch = m_mission.launchEpoch + t;
-        acceleration += pull(moonPosition(epoch), kMuMoon);
-        acceleration += pull(sunPosition(epoch), kMuSun);
-    }
+    // The Earth, Moon and Sun (gravity.hpp).
+    Vec3 acceleration =
+        gravityAcceleration(y.r, m_mission.launchEpoch + t, m_opt.thirdBodyGravity, m_opt.mu);
 
     if (m_drag) {
         // The air pushes back against the motion through it: a = D/m.
@@ -643,6 +631,7 @@ SimResult FlightSimulator::run() {
     m_y = m_opt.initialState.value_or(State{pad, groundVelocity(pad), m0});
     m_launchPlaneNormal = launchPlaneNormal(pad, m_mission.guidance.azimuth);
     m_result.mission = m_mission;
+    m_result.startEpoch = m_mission.launchEpoch;
     m_result.program = m_program;
     m_insideMoonSphere =
         m_opt.thirdBodyGravity && norm(m_y.r - moonAt(0.0)) < kMoonSphereOfInfluence;
@@ -898,6 +887,7 @@ Aerodynamics aerodynamicsAt(const SimResult& result, const Sample& sample) {
 }
 
 SimResult simulate(const Mission& mission, const SimOptions& options) {
+    if (mission.vehicle == Vehicle::NaturalBody) return simulateNaturalBody(mission, options);
     return simulateProgram(mission, flightProgramFor(mission), options);
 }
 
@@ -935,6 +925,12 @@ std::string_view toString(Outcome outcome) {
         return "lunar impact";
     case Outcome::LunarOrbit:
         return "lunar orbit";
+    case Outcome::Impact:
+        return "impact";
+    case Outcome::Flyby:
+        return "flyby";
+    case Outcome::TemporaryCapture:
+        return "temporary capture";
     }
     return "?";
 }
@@ -955,6 +951,14 @@ std::string_view toString(EventType type) {
         return "left the Moon's sphere of influence";
     case EventType::MoonClosestApproach:
         return "closest approach to the Moon";
+    case EventType::Epoch:
+        return "epoch";
+    case EventType::EarthClosestApproach:
+        return "closest approach to the Earth";
+    case EventType::EarthCapture:
+        return "captured by the Earth";
+    case EventType::EarthRelease:
+        return "released by the Earth";
     }
     return "?";
 }
@@ -973,6 +977,10 @@ std::string_view toString(EndReason reason) {
         return "time limit";
     case EndReason::MaxSteps:
         return "step limit";
+    case EndReason::SpanEnd:
+        return "end of the time span";
+    case EndReason::DistanceLimit:
+        return "far from the Earth";
     }
     return "?";
 }

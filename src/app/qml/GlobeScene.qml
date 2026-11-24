@@ -21,6 +21,8 @@ Item {
     property vector3d rocketPosition: Qt.vector3d(0, 0, 0)
     property var stagePositions: [] // of vector3d: dropped stages still falling
     property vector3d launchSitePosition: Qt.vector3d(0, 0, 0) // Earth-fixed
+    property bool launchSiteVisible: true // not for natural bodies
+    property color vehicleColor: "#ffffff" // the rocket white, a natural body rock-coloured
     property vector3d moonPosition: Qt.vector3d(384400, 0, 0)
     /// Turns the Moon so its near side faces the Earth (tidal locking).
     property quaternion moonRotation: Qt.quaternion(1, 0, 0, 0)
@@ -67,7 +69,9 @@ Item {
     readonly property real minDistance: followTarget === 1 ? 20
                                       : followTarget === 2 ? moonRadius + 50
                                       : earthRadius + 50
-    readonly property real maxDistance: 2.0e6
+    // Far enough to see a natural body 10 million km out (the furthest one
+    // is followed). Floats still place things to within a km out there.
+    readonly property real maxDistance: 3.0e7
 
     /// Look from direction `p` (scene coordinates) at the current target,
     /// from `fromDistance` km away.
@@ -161,6 +165,7 @@ Item {
 
             Model {
                 source: "#Sphere"
+                visible: root.launchSiteVisible
                 position: root.launchSitePosition
                 scale: Qt.vector3d(root.markerScale, root.markerScale, root.markerScale)
                 materials: PrincipledMaterial {
@@ -249,7 +254,7 @@ Item {
             scale: Qt.vector3d(root.markerScale, root.markerScale, root.markerScale)
             materials: PrincipledMaterial {
                 lighting: PrincipledMaterial.NoLighting
-                baseColor: "#ffffff"
+                baseColor: root.vehicleColor
             }
         }
     }

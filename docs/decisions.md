@@ -489,6 +489,56 @@ on the Earth and read as Saturn's rings; the Earth at a focus is what makes
 it an orbit. The settings keep their old organisation and app names, so
 saved layouts survive.
 
+### 33. Natural bodies: placed at an epoch, flown both ways (2026-11-24)
+
+**Decision:** a mission's *vehicle* is a rocket or a natural body
+(`natural_body.hpp`). A body is placed at an epoch either by orbital
+elements around the Earth at closest approach (q, e, i, Ω, ω, with the
+epoch as the time of periapsis) or by a geocentric state vector. Both are
+in the J2000 equatorial frame (ICRF) and are precessed (IAU 1976) to the
+simulation's frame of date. The body coasts under the Earth, Moon and Sun
+(`gravity.cpp`, shared with the rocket) in its own propagator
+(`natural_body_flight.cpp`), integrated *backwards* from the epoch over the
+span before it, then forwards. It stops on impact, beyond 10 million km
+(`SimOptions::bodyDistanceLimit`) or at the end of the span. Scenario
+format 6 adds `vehicle`, `body-given` and `epoch-utc`, and a file holds
+only its vehicle's parameters.
+
+**Why:**
+- *q rather than a*: the semi-major axis is infinite for a parabola and
+  negative for a hyperbola; q describes every conic and is how comets are
+  catalogued (with the time of periapsis), so the heliocentric bodies of
+  the solar-system milestone can be given the same way.
+- *Both ways from the epoch*: what is known about a real body is its state
+  at one moment (JPL gives elements or vectors at an epoch). Integrating
+  only forwards from the start of the span would need that state carried
+  back first, and the given values would no longer hold exactly where they
+  were given.
+- *J2000 input*: every catalogue (JPL Horizons, the MPC) uses it, so values
+  can be pasted in as they are. Without precession Apophis would be 0.36°
+  off by 2029.
+- *Its own propagator*: the rocket's simulator is a flight-program
+  machine (steps, staging, guidance); a body only coasts. Both return a
+  `SimResult`, so the app's views, graphs and sweeps work unchanged.
+- *No air*: a body that reaches the ground simply stops there. Real small
+  bodies break up in the air (Chelyabinsk at 30 km); modelling ablation and
+  breakup is a project of its own, and the example says so.
+
+**Checked against JPL Horizons:** Apophis's 2029 flyby stays within 20 km
+of JPL's positions two days either side. 2024 PT5's temporary capture
+(energy relative to the Earth below zero, at 3.5 to 4 million km) starts and
+ends within a day of JPL's dates over a 210-day span, though out there the
+Sun's pull is stronger than the Earth's.
+
+**Known approximation, found while checking:** the frame is the equator
+and equinox of date, but the Earth turns by the IERS rotation angle, which
+is measured from the CIO, not the equinox. The two differ by the equation
+of the origins, about 0.36° by 2029 (−0.43° in 1969), so where things are
+over the ground is that much off in longitude relative to the Sun, Moon and
+bodies. Turning the Earth by sidereal time (GMST) instead would fix it, but
+it moves every launch site in space by that much and changes every rocket
+result a little; left for a deliberate change with its own tests.
+
 ---
 
 ## Open questions
@@ -499,9 +549,9 @@ saved layouts survive.
   simulators) or Qt's QJSEngine (JavaScript, no new dependency). Either way
   the scripting layer lives outside `src/core`, which stays Qt-free.
 
-- **Natural bodies as the "vehicle"** (asteroids, comets, ...). The core can
-  already start from any state (`SimOptions::initialState`) and coast with no
-  engine. Open: how the user specifies one: orbital elements, position and
-  velocity, or an imported real object, and how to place it in the UI.
+- **Natural bodies far from the Earth** (decision 33 covers those near
+  it). Next: the heliocentric frame and planets (the solar-system
+  milestone), with bodies placed by heliocentric elements. Later perhaps
+  importing a body from JPL by name (needs network access).
 - **Code signing** for Windows and macOS packages (decision 31): needs
   paid certificates, so it is the user's decision.

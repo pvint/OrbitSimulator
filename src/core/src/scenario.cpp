@@ -24,6 +24,20 @@ constexpr std::string_view kPlanKey = "plan";
 constexpr std::string_view kAutoCircularizeKey = "auto-circularize";
 constexpr std::string_view kLaunchUtcKey = "launch-utc";
 constexpr std::string_view kProgramKey = "program";
+constexpr std::string_view kVehicleKey = "vehicle";
+constexpr std::string_view kBodyGivenKey = "body-given";
+constexpr std::string_view kEpochUtcKey = "epoch-utc";
+
+/// A moment written as text, like "1969-07-16T13:32:00Z".
+double readUtc(const json& value, std::string_view key) {
+    const std::optional<double> epoch =
+        value.is_string() ? parseIsoUtc(value.get<std::string>()) : std::nullopt;
+    if (!epoch) {
+        throw ScenarioError("mission." + std::string(key) +
+                            R"( must be a time like "1969-07-16T13:32:00Z")");
+    }
+    return *epoch;
+}
 
 /// Rounds to 12 significant figures, so values that went through a unit
 /// conversion are saved as 28.5 rather than 28.500000000000004.
@@ -120,14 +134,24 @@ Mission readMission(const json& object, int version, std::vector<std::string>& w
     if (!object.is_object()) throw ScenarioError("\"mission\" must be an object");
     Mission mission = defaultsForVersion(version);
 
-    // The launch moment first, so a "launch-hour" given as well can adjust it.
-    if (const auto it = object.find(std::string(kLaunchUtcKey)); it != object.end()) {
-        const std::optional<double> epoch =
-            it->is_string() ? parseIsoUtc(it->get<std::string>()) : std::nullopt;
-        if (!epoch) {
-            throw ScenarioError(R"(mission.launch-utc must be a time like "1969-07-16T13:32:00Z")");
+    if (const auto it = object.find(std::string(kVehicleKey)); it != object.end()) {
+        if (!it->is_string() || !vehicleFromKey(it->get<std::string>(), mission.vehicle)) {
+            throw ScenarioError(R"(mission.vehicle must be "rocket" or "natural-body")");
         }
-        mission.launchEpoch = *epoch;
+    }
+    if (const auto it = object.find(std::string(kBodyGivenKey)); it != object.end()) {
+        if (!it->is_string() || !bodyGivenFromKey(it->get<std::string>(), mission.body.given)) {
+            throw ScenarioError(R"(mission.body-given must be "elements" or "state-vector")");
+        }
+    }
+
+    // The launch moment (and the body's epoch) first, so a "launch-hour"
+    // given as well can adjust it.
+    if (const auto it = object.find(std::string(kLaunchUtcKey)); it != object.end()) {
+        mission.launchEpoch = readUtc(*it, kLaunchUtcKey);
+    }
+    if (const auto it = object.find(std::string(kEpochUtcKey)); it != object.end()) {
+        mission.body.epoch = readUtc(*it, kEpochUtcKey);
     }
 
     // Ordinary parameters first, then derived ones (burn time), which are
@@ -162,7 +186,8 @@ Mission readMission(const json& object, int version, std::vector<std::string>& w
 
     for (const auto& [key, value] : object.items()) {
         if (key != kAutoCircularizeKey && key != kPlanKey && key != kLaunchUtcKey &&
-            key != kProgramKey && findParameter(key) == nullptr) {
+            key != kProgramKey && key != kVehicleKey && key != kBodyGivenKey &&
+            key != kEpochUtcKey && findParameter(key) == nullptr) {
             warnings.push_back("ignored unknown mission parameter \"" + key + "\"");
         }
     }
@@ -239,14 +264,25 @@ LoadedScenario scenarioFromJson(std::string_view text) {
 std::string scenarioToJson(const Scenario& scenario) {
     // ordered_json keeps keys in the parameter table's order, which reads better
     // than alphabetical.
+    // Only what shapes this mission: a natural body's file has no rocket in
+    // it, and a rocket's no body.
+    const Mission& m = scenario.mission;
     nlohmann::ordered_json mission = nlohmann::ordered_json::object();
+    mission[std::string(kVehicleKey)] = vehicleKey(m.vehicle);
+    if (m.vehicle == Vehicle::NaturalBody) {
+        mission[std::string(kBodyGivenKey)] = bodyGivenKey(m.body.given);
+        mission[std::string(kEpochUtcKey)] = formatIsoUtc(m.body.epoch);
+    }
     for (const ParameterInfo& p : missionParameters()) {
         if (p.derived || !p.inScenario) continue; // follows from the others
-        mission[std::string(p.key)] = tidy(p.get(scenario.mission));
+        if (!parameterInUse(p, m)) continue;
+        mission[std::string(p.key)] = tidy(p.get(m));
     }
-    mission[std::string(kPlanKey)] = planKey(scenario.mission.plan);
-    mission[std::string(kLaunchUtcKey)] = formatIsoUtc(scenario.mission.launchEpoch);
-    if (scenario.mission.plan == FlightPlan::Custom) {
+    if (m.vehicle == Vehicle::Rocket) {
+        mission[std::string(kPlanKey)] = planKey(m.plan);
+        mission[std::string(kLaunchUtcKey)] = formatIsoUtc(m.launchEpoch);
+    }
+    if (m.vehicle == Vehicle::Rocket && m.plan == FlightPlan::Custom) {
         nlohmann::ordered_json steps = nlohmann::ordered_json::array();
         for (const FlightStep& step : scenario.mission.program) steps.push_back(writeStep(step));
         mission[std::string(kProgramKey)] = steps;

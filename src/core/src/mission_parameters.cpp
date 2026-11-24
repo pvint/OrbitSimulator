@@ -22,7 +22,75 @@ void setLaunchHourOfDay(Mission& mission, double hours) {
     mission.launchEpoch = epochFromCalendar({t.year, t.month, t.day, 0, 0, 0.0}) + hours * 3600.0;
 }
 
+double bodyEpochHourOfDay(const Mission& mission) {
+    const CalendarTime t = calendarFromEpoch(mission.body.epoch);
+    const double midnight = epochFromCalendar({t.year, t.month, t.day, 0, 0, 0.0});
+    return (mission.body.epoch - midnight) / 3600.0;
+}
+
+void setBodyEpochHourOfDay(Mission& mission, double hours) {
+    const CalendarTime t = calendarFromEpoch(mission.body.epoch);
+    mission.body.epoch = epochFromCalendar({t.year, t.month, t.day, 0, 0, 0.0}) + hours * 3600.0;
+}
+
 namespace {
+
+// Groups of a natural body's parameters, and which way of giving it each
+// belongs to.
+constexpr std::string_view kElementsGroup = "Orbit at closest approach";
+constexpr std::string_view kStateGroup = "Position and velocity";
+
+/// A natural body's parameter: no slider of its own is derived, all go in
+/// scenario files (except the epoch's hour, saved within "epoch-utc").
+constexpr ParameterInfo bodyParameter(std::string_view key, std::string_view label,
+                                      std::string_view unit, std::string_view group,
+                                      std::string_view help, double min, double max, double step,
+                                      double (*get)(const Mission&), void (*set)(Mission&, double),
+                                      bool inScenario = true) {
+    return {key,
+            label,
+            unit,
+            group,
+            help,
+            min,
+            max,
+            step,
+            get,
+            set,
+            false,
+            inScenario,
+            Vehicle::NaturalBody};
+}
+
+// The state vector's components in km and km/s, one getter/setter per axis.
+template <int Axis>
+double& component(Vec3& v) {
+    if constexpr (Axis == 0) {
+        return v.x;
+    } else if constexpr (Axis == 1) {
+        return v.y;
+    } else {
+        return v.z;
+    }
+}
+template <int Axis>
+double bodyPosition(const Mission& m) {
+    Vec3 r = m.body.position;
+    return component<Axis>(r) / 1000.0;
+}
+template <int Axis>
+void setBodyPosition(Mission& m, double v) {
+    component<Axis>(m.body.position) = v * 1000.0;
+}
+template <int Axis>
+double bodyVelocity(const Mission& m) {
+    Vec3 v = m.body.velocity;
+    return component<Axis>(v) / 1000.0;
+}
+template <int Axis>
+void setBodyVelocity(Mission& m, double v) {
+    component<Axis>(m.body.velocity) = v * 1000.0;
+}
 
 // Getters and setters for stage K's numbers, in display units (t, kN).
 template <std::size_t K>
@@ -219,11 +287,84 @@ constexpr std::array kParameters{
                   100.0, 60000.0, 100.0,
                   [](const Mission& m) { return m.lunar.captureApoapsisAltitude / 1000.0; },
                   [](Mission& m, double v) { m.lunar.captureApoapsisAltitude = v * 1000.0; }},
+
+    // --- Natural bodies (natural_body.hpp) ---------------------------------
+    bodyParameter(
+        "periapsis-distance", "Periapsis distance", "km", kElementsGroup,
+        "Closest approach, from the Earth's centre, at the epoch. The Earth's radius is "
+        "6,371 km: closer than that is an impact",
+        1.0, 2000000.0, 1.0, [](const Mission& m) { return m.body.periapsisDistance / 1000.0; },
+        [](Mission& m, double v) { m.body.periapsisDistance = v * 1000.0; }),
+    bodyParameter(
+        "eccentricity", "Eccentricity", "", kElementsGroup,
+        "0 = a circle, below 1 = an ellipse (bound to the Earth), above 1 = a "
+        "hyperbola: it comes from far away and leaves again",
+        0.0, 30.0, 0.001, [](const Mission& m) { return m.body.eccentricity; },
+        [](Mission& m, double v) { m.body.eccentricity = v; }),
+    bodyParameter(
+        "inclination", "Inclination", "°", kElementsGroup,
+        "Tilt of the orbit against the equator (of J2000). Over 90° = moving "
+        "westward, against the Earth's turning",
+        0.0, 180.0, 0.01, [](const Mission& m) { return radToDeg(m.body.inclination); },
+        [](Mission& m, double v) { m.body.inclination = degToRad(v); }),
+    bodyParameter(
+        "raan", "Ascending node (Ω)", "°", kElementsGroup,
+        "Where the orbit crosses the equator going north, measured eastward from "
+        "the vernal equinox (right ascension)",
+        0.0, 360.0, 0.01, [](const Mission& m) { return radToDeg(m.body.raan); },
+        [](Mission& m, double v) { m.body.raan = degToRad(v); }),
+    bodyParameter(
+        "argument-of-periapsis", "Argument of periapsis (ω)", "°", kElementsGroup,
+        "Where the closest point lies, measured from the ascending node in the "
+        "direction of motion",
+        0.0, 360.0, 0.01, [](const Mission& m) { return radToDeg(m.body.argumentOfPeriapsis); },
+        [](Mission& m, double v) { m.body.argumentOfPeriapsis = degToRad(v); }),
+
+    bodyParameter("body-x", "x", "km", kStateGroup,
+                  "Position at the epoch, towards the vernal equinox (J2000 equator, as JPL "
+                  "Horizons gives it)",
+                  -1e7, 1e7, 1.0, bodyPosition<0>, setBodyPosition<0>),
+    bodyParameter("body-y", "y", "km", kStateGroup,
+                  "Position at the epoch, 90° east of x in the equator's plane", -1e7, 1e7, 1.0,
+                  bodyPosition<1>, setBodyPosition<1>),
+    bodyParameter("body-z", "z", "km", kStateGroup, "Position at the epoch, towards the north pole",
+                  -1e7, 1e7, 1.0, bodyPosition<2>, setBodyPosition<2>),
+    bodyParameter("body-vx", "vx", "km/s", kStateGroup, "Velocity at the epoch, along x", -50.0,
+                  50.0, 0.001, bodyVelocity<0>, setBodyVelocity<0>),
+    bodyParameter("body-vy", "vy", "km/s", kStateGroup, "Velocity at the epoch, along y", -50.0,
+                  50.0, 0.001, bodyVelocity<1>, setBodyVelocity<1>),
+    bodyParameter("body-vz", "vz", "km/s", kStateGroup, "Velocity at the epoch, along z", -50.0,
+                  50.0, 0.001, bodyVelocity<2>, setBodyVelocity<2>),
+
+    bodyParameter(
+        "epoch-hour", "Epoch time", "h UTC", "Epoch and time span",
+        "Time of day (UTC, decimal hours) when the values above hold: for "
+        "elements, the moment of closest approach. Sets where the Earth has turned "
+        "to, and where the Moon is",
+        0.0, 23.99, 0.01, [](const Mission& m) { return bodyEpochHourOfDay(m); },
+        [](Mission& m, double v) { setBodyEpochHourOfDay(m, v); }, false),
+    bodyParameter(
+        "days-before", "Days before", "d", "Epoch and time span",
+        "How far back from the epoch to follow the body", 0.0, 365.0, 0.1,
+        [](const Mission& m) { return m.body.timeBefore / 86400.0; },
+        [](Mission& m, double v) { m.body.timeBefore = v * 86400.0; }),
+    bodyParameter(
+        "days-after", "Days after", "d", "Epoch and time span",
+        "How far on from the epoch to follow it", 0.0, 365.0, 0.1,
+        [](const Mission& m) { return m.body.timeAfter / 86400.0; },
+        [](Mission& m, double v) { m.body.timeAfter = v * 86400.0; }),
 };
 
 } // namespace
 
 std::span<const ParameterInfo> missionParameters() { return kParameters; }
+
+bool parameterInUse(const ParameterInfo& parameter, const Mission& mission) {
+    if (parameter.vehicle != mission.vehicle) return false;
+    if (parameter.group == kElementsGroup) return mission.body.given == BodyGiven::Elements;
+    if (parameter.group == kStateGroup) return mission.body.given == BodyGiven::StateVector;
+    return true;
+}
 
 std::string parameterTitle(const ParameterInfo& parameter) {
     const auto sameLabel = [&](const ParameterInfo& p) { return p.label == parameter.label; };

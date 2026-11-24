@@ -7,6 +7,7 @@
 //   orbitsim-cli --scenario scenarios/kourou-equatorial.json
 //   orbitsim-cli --sweep kick-angle:5:45:9        a table, one row per flight
 //   orbitsim-cli --csv flight.csv                 also write every sample
+//   orbitsim-cli --vehicle natural-body           Apophis passing the Earth in 2029
 
 #include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
@@ -44,17 +45,28 @@ std::string padded(std::string_view text, std::size_t width) {
 void printUsage() {
     std::cout << "Usage: orbitsim-cli [options]\n\n"
                  "Flies one mission with the orbit simulator physics and prints the result.\n\n"
-                 "Mission options (defaults: the prototype's rocket from Cape Canaveral):\n";
-    for (const auto& p : orbit::missionParameters()) {
-        std::cout << "  --" << padded(p.key, 22) << padded(p.unit, 4) << p.help << '\n';
-    }
+                 "Rocket options (defaults: the prototype's rocket from Cape Canaveral):\n";
+    const auto list = [](orbit::Vehicle vehicle) {
+        for (const auto& p : orbit::missionParameters()) {
+            if (p.vehicle != vehicle) continue;
+            std::cout << "  --" << padded(p.key, 22) << padded(p.unit, 5) << p.help << '\n';
+        }
+    };
+    list(orbit::Vehicle::Rocket);
     std::cout << "  --plan PLAN            orbit, burn-to-depletion, lunar-flyby, lunar-orbit, or\n"
                  "                         custom (needs a scenario with a program)\n"
                  "  --show-program         list the flight program's steps before flying\n"
                  "  --no-circularize       same as --plan burn-to-depletion\n"
                  "  --best-launch-hour     pick the time of day that lets a lunar flight go east\n"
                  "  --aim-moon             set the azimuth so the orbit plane meets the Moon\n"
-                 "\nScenarios and sweeps:\n"
+                 "\nNatural body options (default: asteroid Apophis passing the Earth in 2029):\n"
+                 "  --vehicle VEHICLE      rocket (the default) or natural-body\n"
+                 "  --body-given HOW       elements (at closest approach) or state-vector,\n"
+                 "                         converting the body's values to keep its path\n"
+                 "  --epoch-utc TIME       when the elements or state hold, e.g.\n"
+                 "                         2029-04-13T21:45:04Z\n";
+    list(orbit::Vehicle::NaturalBody);
+    std::cout << "\nScenarios and sweeps:\n"
                  "  --scenario FILE        start from a scenario file (put it first; later\n"
                  "                         options change it)\n"
                  "  --sweep KEY:FROM:TO:STEPS  fly STEPS flights with parameter KEY from FROM\n"
@@ -118,8 +130,75 @@ std::string duration(double seconds) {
     return os.str();
 }
 
+/// A moment of a flight as a UTC time.
+std::string utc(const orbit::SimResult& r, double t) {
+    return orbit::formatIsoUtc(r.startEpoch + t);
+}
+
+void printOrbitLine(const char* label, const orbit::OrbitalElements& o) {
+    std::cout << label << std::setprecision(1) << "periapsis " << km(o.periapsis)
+              << " from the centre, e = " << std::setprecision(4) << o.eccentricity
+              << std::setprecision(1) << ", inclination " << orbit::radToDeg(o.inclination)
+              << " deg\n";
+}
+
+void printBodyResult(const orbit::SimResult& r, const orbit::EncounterSummary& e) {
+    const orbit::Sample& closest = e.closest;
+    std::cout << std::fixed << std::setprecision(1);
+    std::cout << "Outcome:          " << orbit::toString(r.outcome)
+              << "  (simulation ended: " << orbit::toString(r.endReason) << ")\n"
+              << "Time span:        " << utc(r, 0.0) << " to " << utc(r, r.duration) << " ("
+              << duration(r.duration) << ")\n"
+              << "Closest approach: " << km(orbit::norm(closest.state.r)) << " from the centre ("
+              << km(closest.altitude()) << " up) at " << utc(r, closest.t) << ", "
+              << std::setprecision(0) << closest.speed() << " m/s\n";
+    if (e.arrivalSpeed > 0.0 || e.departureSpeed > 0.0) {
+        std::cout << "Speed far away:   " << e.arrivalSpeed << " m/s in, " << e.departureSpeed
+                  << " m/s out (v-infinity, if unbound)\n";
+    }
+    if (std::isfinite(e.impactParameter)) {
+        std::cout << std::setprecision(1) << "Aimed at:         " << km(e.impactParameter)
+                  << " from the centre (impact parameter: the miss without the Earth's "
+                     "gravity)\n";
+    }
+    if (e.timeBound > 0.0) {
+        std::cout << "Bound to Earth:   " << duration(e.timeBound) << '\n';
+    }
+    printOrbitLine("Orbit at start:   ", e.initialOrbit);
+    printOrbitLine("Orbit at end:     ", e.finalOrbit);
+    if (r.endReason == orbit::EndReason::Impact) {
+        const orbit::Sample& last = r.samples.back();
+        const orbit::GeoPoint where =
+            orbit::groundPoint(last.state.r, orbit::earthRotationAngleAt(r.startEpoch + last.t));
+        std::cout << std::setprecision(2)
+                  << "Impact at:        " << std::abs(orbit::radToDeg(where.latitude))
+                  << (where.latitude >= 0.0 ? " N, " : " S, ")
+                  << std::abs(orbit::radToDeg(where.longitude))
+                  << (where.longitude >= 0.0 ? " E" : " W") << ", " << std::setprecision(0)
+                  << last.speed() << " m/s\n";
+    }
+    std::cout << std::setprecision(1) << "Moon:             closest approach "
+              << km(r.lunar.closestApproachAltitude) << " above the surface, at "
+              << utc(r, r.lunar.closestApproachTime) << '\n';
+    if (!r.events.empty()) {
+        std::cout << "Events:\n";
+        for (const auto& ev : r.events) {
+            std::cout << "  " << utc(r, ev.sample.t) << "  " << std::left << std::setw(48)
+                      << ev.description << std::right << ' ' << km(orbit::norm(ev.sample.state.r))
+                      << " from the centre, " << std::setprecision(0) << ev.sample.speed()
+                      << " m/s\n"
+                      << std::setprecision(1);
+        }
+    }
+    std::cout << r.samples.size() << " samples\n";
+}
+
 void printResult(const orbit::SimResult& r) {
     using orbit::radToDeg;
+    if (r.encounter) {
+        printBodyResult(r, *r.encounter);
+        return;
+    }
     const auto& o = r.orbit;
     std::cout << std::fixed << std::setprecision(1);
     std::cout << "Outcome:          " << orbit::toString(r.outcome)
@@ -148,8 +227,8 @@ void printResult(const orbit::SimResult& r) {
     }
     if (r.endReason == orbit::EndReason::Impact) {
         const orbit::Sample& last = r.samples.back();
-        const orbit::GeoPoint where = orbit::groundPoint(
-            last.state.r, orbit::earthRotationAngleAt(r.mission.launchEpoch + last.t));
+        const orbit::GeoPoint where =
+            orbit::groundPoint(last.state.r, orbit::earthRotationAngleAt(r.startEpoch + last.t));
         std::cout << std::setprecision(2)
                   << "Came down at:     " << std::abs(radToDeg(where.latitude))
                   << (where.latitude >= 0.0 ? " N, " : " S, ")
@@ -225,10 +304,36 @@ void printProgram(const orbit::FlightProgram& program) {
     std::cout << '\n';
 }
 
+void printBodySweep(const std::vector<double>& values,
+                    const std::vector<orbit::Mission>& missions) {
+    std::cout << std::right << std::setw(12) << "value" << "  " << std::left << std::setw(19)
+              << "outcome" << std::right << std::setw(15) << "closest" << std::setw(23)
+              << "when (UTC)" << std::setw(12) << "v-inf out" << std::setw(16) << "nearest Moon"
+              << std::setw(12) << "bound" << '\n';
+    for (std::size_t i = 0; i < missions.size(); ++i) {
+        const orbit::SimResult r = orbit::simulate(missions[i]);
+        if (!r.encounter) continue;
+        const orbit::EncounterSummary& e = *r.encounter;
+        std::cout << std::fixed << std::setprecision(3) << std::setw(12) << values[i] << "  "
+                  << std::left << std::setw(19) << orbit::toString(r.outcome) << std::right
+                  << std::setprecision(1) << std::setw(15) << km(orbit::norm(e.closest.state.r))
+                  << std::setw(23) << utc(r, e.closest.t) << std::setprecision(0) << std::setw(8)
+                  << e.departureSpeed << " m/s" << std::setprecision(1) << std::setw(16)
+                  << km(r.lunar.closestApproachAltitude) << std::setw(12) << duration(e.timeBound)
+                  << '\n';
+    }
+}
+
 void printSweep(const orbit::Mission& base, const orbit::SweepSpec& spec,
                 const orbit::SweepTarget& p) {
     const auto values = orbit::sweepValues(spec);
     const auto missions = orbit::sweepMissions(base, spec);
+    if (base.vehicle == orbit::Vehicle::NaturalBody) {
+        std::cout << "Sweep of " << p.title
+                  << (p.unit.empty() ? std::string() : " (" + p.unit + ")") << "\n\n";
+        printBodySweep(values, missions);
+        return;
+    }
     std::cout << "Sweep of " << p.title << (p.unit.empty() ? std::string() : " (" + p.unit + ")")
               << "\n\n"
               << std::right << std::setw(10) << "value" << "  " << std::left << std::setw(13)
@@ -295,7 +400,8 @@ int main(int argc, char* argv[]) {
             continue;
         }
         const bool takesText = arg == "--csv" || arg == "--scenario" || arg == "--sweep" ||
-                               arg == "--save-scenario" || arg == "--plan";
+                               arg == "--save-scenario" || arg == "--plan" || arg == "--vehicle" ||
+                               arg == "--body-given" || arg == "--epoch-utc";
         const orbit::ParameterInfo* param =
             arg.starts_with("--") ? orbit::findParameter(arg.substr(2)) : nullptr;
         if (!takesText && param == nullptr) {
@@ -317,6 +423,25 @@ int main(int argc, char* argv[]) {
                              "custom\n";
                 return 1;
             }
+        } else if (arg == "--vehicle") {
+            if (!orbit::vehicleFromKey(value, scenario.mission.vehicle)) {
+                std::cerr << "--vehicle must be rocket or natural-body\n";
+                return 1;
+            }
+        } else if (arg == "--body-given") {
+            orbit::BodyGiven given{};
+            if (!orbit::bodyGivenFromKey(value, given)) {
+                std::cerr << "--body-given must be elements or state-vector\n";
+                return 1;
+            }
+            orbit::setBodyGiven(scenario.mission.body, given);
+        } else if (arg == "--epoch-utc") {
+            const std::optional<double> epoch = orbit::parseIsoUtc(value);
+            if (!epoch) {
+                std::cerr << "--epoch-utc needs a time like 2029-04-13T21:45:04Z\n";
+                return 1;
+            }
+            scenario.mission.body.epoch = *epoch;
         } else if (arg == "--save-scenario") {
             savePath = value;
         } else if (arg == "--scenario") {

@@ -102,6 +102,52 @@ PositionVelocity stateFromElements(double semiMajorAxis, double eccentricity, do
     return {orient(rPlane), orient(vPlane)};
 }
 
+PositionVelocity stateFromPeriapsis(double periapsisDistance, double eccentricity,
+                                    double inclination, double raan, double argumentOfPeriapsis,
+                                    double trueAnomaly, double mu) {
+    // In the orbit's own plane, with x towards periapsis: the conic equation
+    // r = p / (1 + e cos ν) gives the distance. The velocity has a radial
+    // part √(μ/p)·e sin ν and a sideways part √(μ/p)·(1 + e cos ν), which
+    // in these axes is √(μ/p)·(−sin ν, e + cos ν).
+    const double p = periapsisDistance * (1.0 + eccentricity);
+    const double cosNu = std::cos(trueAnomaly);
+    const double sinNu = std::sin(trueAnomaly);
+    const double r = p / (1.0 + eccentricity * cosNu);
+    const Vec3 rPlane{r * cosNu, r * sinNu, 0.0};
+    const Vec3 vPlane = std::sqrt(mu / p) * Vec3{-sinNu, eccentricity + cosNu, 0.0};
+
+    const auto orient = [&](const Vec3& a) {
+        return rotateZ(rotateX(rotateZ(a, argumentOfPeriapsis), inclination), raan);
+    };
+    return {orient(rPlane), orient(vPlane)};
+}
+
+double timeSincePeriapsis(double periapsisDistance, double eccentricity, double trueAnomaly,
+                          double mu) {
+    const double q = periapsisDistance;
+    const double e = eccentricity;
+    // Measure ν from periapsis either way: (−π, π].
+    double nu = wrapTwoPi(trueAnomaly);
+    if (nu > kPi) nu -= kTwoPi;
+    const double halfTan = std::tan(nu / 2.0);
+
+    // Within a whisker of e = 1 the elliptic and hyperbolic forms both divide
+    // by nearly zero, so use Barker's equation for the parabola.
+    if (std::abs(e - 1.0) < 1e-8) {
+        return std::sqrt(2.0 * q * q * q / mu) * (halfTan + halfTan * halfTan * halfTan / 3.0);
+    }
+    const double a = q / (1.0 - e); // negative for a hyperbola
+    const double meanMotion = std::sqrt(mu / std::abs(a * a * a));
+    if (e < 1.0) {
+        // Eccentric anomaly E: the angle on the circle that wraps the ellipse.
+        const double eccentricAnomaly = 2.0 * std::atan(std::sqrt((1.0 - e) / (1.0 + e)) * halfTan);
+        return (eccentricAnomaly - e * std::sin(eccentricAnomaly)) / meanMotion;
+    }
+    // Hyperbolic anomaly H, the hyperbola's counterpart of E.
+    const double hyperbolicAnomaly = 2.0 * std::atanh(std::sqrt((e - 1.0) / (e + 1.0)) * halfTan);
+    return (e * std::sinh(hyperbolicAnomaly) - hyperbolicAnomaly) / meanMotion;
+}
+
 double orbitalPeriod(double semiMajorAxis, double mu) {
     return kTwoPi * std::sqrt(semiMajorAxis * semiMajorAxis * semiMajorAxis / mu);
 }

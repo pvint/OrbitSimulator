@@ -2,6 +2,7 @@
 #include "globe_view.hpp"
 
 #include "orbit/core/angles.hpp"
+#include "orbit/core/astro_time.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/earth.hpp"
 #include "orbit/core/ephemeris.hpp"
@@ -37,7 +38,8 @@ namespace {
 constexpr int kSliderSteps = 2000;
 
 /// Playback speeds offered: simulated seconds per real second.
-constexpr std::array kSpeeds{1, 10, 60, 300, 1000, 5000, 20000, 100000};
+/// (The fastest are for natural bodies, followed for months.)
+constexpr std::array kSpeeds{1, 10, 60, 300, 1000, 5000, 20000, 100000, 500000, 2000000};
 
 // Line colours: burns warm, coasting cool, the ground track yellow.
 const QColor kBurnColor(0xff, 0xb3, 0x47);
@@ -49,6 +51,13 @@ const QColor kSpentStageColor(0xcb, 0xd5, 0xe1); // dropped stages, falling back
 
 /// The ground track floats this far above the surface so it isn't hidden by it.
 constexpr double kGroundTrackLift = 3000.0; // m
+
+/// A natural body's ground track is drawn only while it is this close to
+/// the Earth's centre (m). Further out the Earth turns beneath a body that
+/// hardly moves, and the track would just wind round and round the globe.
+constexpr double kBodyGroundTrackRange = 1.0e8;
+
+const QColor kBodyColor(0xd6, 0xc7, 0xa1); // a natural body: rock
 
 /// How many recent flights stay visible as ghosts, and how often a new ghost
 /// may be added while a slider is dragged. Without the limit, dragging would
@@ -87,6 +96,23 @@ QString formatMissionTime(double seconds) {
         .arg(total % 60, 2, 10, QLatin1Char('0'));
 }
 
+/// A natural body's time is a date: "2029-04-13 21:45 UTC".
+QString formatUtc(double epoch) {
+    // The start of the minute, plus a second so rounding inside the calendar
+    // conversion can't tip it back into the minute before.
+    const orbit::CalendarTime t = orbit::calendarFromEpoch(std::floor(epoch / 60.0) * 60.0 + 1.0);
+    return QStringLiteral("%1-%2-%3 %4:%5 UTC")
+        .arg(t.year)
+        .arg(t.month, 2, 10, QLatin1Char('0'))
+        .arg(t.day, 2, 10, QLatin1Char('0'))
+        .arg(t.hour, 2, 10, QLatin1Char('0'))
+        .arg(t.minute, 2, 10, QLatin1Char('0'));
+}
+
+bool isNaturalBody(const orbit::SimResult& result) {
+    return result.mission.vehicle == orbit::Vehicle::NaturalBody;
+}
+
 } // namespace
 
 GlobeView::GlobeView(QWidget* parent) : QWidget(parent), m_view(new QQuickWidget(this)) {
@@ -123,8 +149,9 @@ void GlobeView::buildPlaybackBar(QBoxLayout* layout) {
     });
 
     m_timeLabel = new QLabel(formatMissionTime(0.0), bar);
+    m_timeLabel->setObjectName(QStringLiteral("playbackTime"));
     m_timeLabel->setMinimumWidth(
-        m_timeLabel->fontMetrics().horizontalAdvance(QStringLiteral("T+00:00:00")) + 8);
+        m_timeLabel->fontMetrics().horizontalAdvance(QStringLiteral("2029-04-13 21:45 UTC")) + 8);
 
     m_speed = new QComboBox(bar);
     m_speed->setToolTip(tr("Playback speed: simulated seconds per real second"));
@@ -283,7 +310,7 @@ void GlobeView::applyDemoStep(const orbit::DemoStep& step) {
             m_scene, "lookAt", Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(direction))),
             Q_ARG(QVariant, distanceKm));
     };
-    const double epoch = m_result->mission.launchEpoch + step.startTime;
+    const double epoch = m_result->startEpoch + step.startTime;
 
     m_centre->setCurrentIndex(static_cast<int>(step.centre));
     switch (step.view) {
@@ -346,8 +373,8 @@ double GlobeView::farthestDistance() const {
 /// The Moon's path over about a month around the launch, so its orbit is
 /// visible behind any flight.
 void GlobeView::updateMoonOrbit() {
-    if (!m_moonOrbit || !m_result || m_result->mission.launchEpoch == m_moonOrbitEpoch) return;
-    m_moonOrbitEpoch = m_result->mission.launchEpoch;
+    if (!m_moonOrbit || !m_result || m_result->startEpoch == m_moonOrbitEpoch) return;
+    m_moonOrbitEpoch = m_result->startEpoch;
     QList<QVector3D> points;
     const QColor grey(0xb0, 0xb8, 0xc8);
     for (int hour = -24 * 3; hour <= 24 * 28; hour += 2) {
@@ -367,7 +394,8 @@ void GlobeView::updateSelectedLines() {
     if (!m_trajectory || !m_groundTrack || !m_result) return;
     updateMoonOrbit();
     const auto& samples = m_result->samples;
-    const double theta0 = orbit::earthRotationAngleAt(m_result->mission.launchEpoch);
+    const double theta0 = orbit::earthRotationAngleAt(m_result->startEpoch);
+    const bool body = isNaturalBody(*m_result);
 
     // Single flights: burns orange, coasting blue. In a sweep the selected
     // flight keeps its sweep colour (lighter where the engine burns) and is
@@ -390,6 +418,7 @@ void GlobeView::updateSelectedLines() {
         const bool burning = i > 0 ? samples[i - 1].burning : s.burning;
         pathColors.append(burning ? burnColor : coastColor);
 
+        if (body && orbit::norm(s.state.r) > kBodyGroundTrackRange) continue;
         const orbit::Vec3 ecef =
             orbit::eciToEcef(s.state.r, orbit::earthRotationAngle(s.t, theta0));
         track.append(
@@ -402,6 +431,10 @@ void GlobeView::updateSelectedLines() {
     m_scene->setProperty("launchSitePosition",
                          scene::fromPhysics(orbit::positionFromLatLon(site.latitude, site.longitude,
                                                                       orbit::kRadiusEarth)));
+    m_scene->setProperty("launchSiteVisible", !body);
+    m_scene->setProperty("vehicleColor", body ? kBodyColor : QColor(Qt::white));
+    m_centre->setItemText(1, body ? tr("Centre: Body") : tr("Centre: Rocket"));
+    m_timeSlider->setToolTip(body ? tr("Time") : tr("Time since liftoff"));
 }
 
 /// The other flights of a sweep, or the ghosts of recent single flights,
@@ -445,8 +478,8 @@ void GlobeView::setPlaybackTime(double t) {
     m_time = std::clamp(t, 0.0, m_result->duration);
 
     const orbit::State state = orbit::stateAt(*m_result, m_time);
-    const double theta = orbit::earthRotationAngle(
-        m_time, orbit::earthRotationAngleAt(m_result->mission.launchEpoch));
+    const double theta =
+        orbit::earthRotationAngle(m_time, orbit::earthRotationAngleAt(m_result->startEpoch));
     m_scene->setProperty("rocketPosition", scene::fromPhysics(state.r));
     // Dropped stages, from separation until they come down.
     QVariantList stages;
@@ -457,7 +490,7 @@ void GlobeView::setPlaybackTime(double t) {
     }
     m_scene->setProperty("stagePositions", stages);
     m_scene->setProperty("earthRotation", orbit::radToDeg(theta));
-    const double epoch = m_result->mission.launchEpoch + m_time;
+    const double epoch = m_result->startEpoch + m_time;
     m_scene->setProperty("moonPosition", scene::fromPhysics(orbit::moonPosition(epoch)));
     m_scene->setProperty("moonRotation", moonOrientation(epoch));
 
@@ -467,7 +500,7 @@ void GlobeView::setPlaybackTime(double t) {
     m_scene->setProperty("sunlightRotation",
                          QQuaternion::rotationTo(QVector3D(0.0F, 0.0F, -1.0F), -towardsSun));
 
-    m_timeLabel->setText(formatMissionTime(m_time));
+    m_timeLabel->setText(isNaturalBody(*m_result) ? formatUtc(epoch) : formatMissionTime(m_time));
     if (!m_timeSlider->isSliderDown() && m_result->duration > 0.0) {
         m_timeSlider->setValue(
             static_cast<int>(std::lround(m_time / m_result->duration * kSliderSteps)));
@@ -500,6 +533,14 @@ void GlobeView::onTick() {
 /// radii, or further for long flights such as to the Moon.
 double GlobeView::viewDistanceKm() const {
     const double farthest = farthestDistance();
+    if (m_result && m_result->encounter) {
+        // A natural body: close enough to see its closest approach, which is
+        // what it is about; the rest runs off towards the edges.
+        // One that never comes within the Moon's distance is seen whole.
+        const double closest = orbit::norm(m_result->encounter->closest.state.r);
+        if (closest > 4.0e8) return 1.3 * farthest / 1000.0;
+        return std::clamp(4.0 * closest, 4.0 * orbit::kRadiusEarth, 2.4 * farthest) / 1000.0;
+    }
     return (farthest > 5.0e7 ? 2.4 * farthest : 3.2 * orbit::kRadiusEarth) / 1000.0;
 }
 
@@ -557,6 +598,43 @@ void GlobeView::lookFromNorth(double distanceKm) {
         Q_ARG(QVariant, distanceKm));
 }
 
+/// A natural body's starting view. One that comes close (within the Moon's
+/// distance) is seen from above the plane of its closest approach, centred
+/// between the Earth and that point, so the bend of its path is in the
+/// middle. One that stays far is seen whole, from ecliptic north: such
+/// bodies go round the Sun near the plane of the Earth's orbit.
+void GlobeView::resetBodyView() {
+    if (!m_scene || !m_result || !m_result->encounter) return;
+    const orbit::State& closest = m_result->encounter->closest.state;
+    const double closestDistance = orbit::norm(closest.r);
+    const auto lookFrom = [this](const orbit::Vec3& direction, double distanceKm) {
+        QMetaObject::invokeMethod(
+            m_scene, "lookAt", Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics(direction))),
+            Q_ARG(QVariant, distanceKm));
+    };
+    if (closestDistance < 4.0e8) {
+        const orbit::Vec3 h = orbit::cross(closest.r, closest.v);
+        lookFrom(orbit::norm(h) > 0.0 ? orbit::normalized(h) : orbit::Vec3{0.0, 0.0, 1.0},
+                 viewDistanceKm());
+        m_scene->setProperty("panOffset", scene::fromPhysics(0.6 * closest.r));
+        return;
+    }
+    // The middle of the path's bounding box, and how far it reaches from there.
+    orbit::Vec3 low = m_result->samples.front().state.r;
+    orbit::Vec3 high = low;
+    for (const orbit::Sample& s : m_result->samples) {
+        low = {std::min(low.x, s.state.r.x), std::min(low.y, s.state.r.y),
+               std::min(low.z, s.state.r.z)};
+        high = {std::max(high.x, s.state.r.x), std::max(high.y, s.state.r.y),
+                std::max(high.z, s.state.r.z)};
+    }
+    const orbit::Vec3 middle = 0.5 * (low + high);
+    constexpr double obliquity = 23.43928 * std::numbers::pi / 180.0;
+    const orbit::Vec3 eclipticNorth{0.0, -std::sin(obliquity), std::cos(obliquity)};
+    lookFrom(eclipticNorth, 0.9 * orbit::norm(high - low) / 1000.0);
+    m_scene->setProperty("panOffset", scene::fromPhysics(middle));
+}
+
 /// A good starting view of the selected flight, and a playback speed that
 /// shows all of it in about a minute and a half.
 void GlobeView::resetView() {
@@ -564,7 +642,9 @@ void GlobeView::resetView() {
     m_centre->setCurrentIndex(0); // circle the Earth
 
     const double farthest = farthestDistance();
-    if (farthest > 5.0e7) {
+    if (m_result->encounter) {
+        resetBodyView();
+    } else if (farthest > 5.0e7) {
         // A long flight (to the Moon): look down on the plane it flies in,
         // from far enough away to see all of it. The plane comes from the
         // first sample well clear of the Earth.
@@ -581,8 +661,8 @@ void GlobeView::resetView() {
     } else {
         // Look at the launch site, where it is at the current playback time.
         const orbit::LaunchSite& site = m_result->mission.site;
-        const double theta = orbit::earthRotationAngle(
-            m_time, orbit::earthRotationAngleAt(m_result->mission.launchEpoch));
+        const double theta =
+            orbit::earthRotationAngle(m_time, orbit::earthRotationAngleAt(m_result->startEpoch));
         const orbit::Vec3 siteEci = orbit::rotateZ(
             orbit::positionFromLatLon(site.latitude, site.longitude, orbit::kRadiusEarth), theta);
         QMetaObject::invokeMethod(m_scene, "lookAt",

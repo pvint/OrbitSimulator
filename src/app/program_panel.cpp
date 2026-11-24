@@ -114,6 +114,8 @@ ProgramPanel::ProgramPanel(QWidget* parent)
 void ProgramPanel::setMission(const orbit::Mission& mission) {
     const bool wasCustom = m_mission.plan == orbit::FlightPlan::Custom;
     m_mission = mission;
+    // A natural body has no engine, so no program.
+    setEnabled(mission.vehicle == orbit::Vehicle::Rocket);
     const bool custom = mission.plan == orbit::FlightPlan::Custom;
     if (custom == wasCustom && orbit::flightProgramFor(mission) == m_shown) return;
     rebuild();

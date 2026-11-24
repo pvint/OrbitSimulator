@@ -12,9 +12,11 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDateEdit>
 #include <QDoubleSpinBox>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLocale>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSlider>
@@ -353,6 +355,93 @@ private slots:
         QCOMPARE(spy.count(), 2);
         QCOMPARE(panel.mission().rocket.dragCoefficient, 0.0);
         QCOMPARE(panel.mission().rocket.diameter, 4.0);
+    }
+
+    // Natural bodies: the panel shows the body's groups instead of the
+    // rocket's, and switching how it is given converts its values.
+    void vehicleChoiceShowsTheBodysParameters() {
+        ParameterPanel panel;
+        QSignalSpy spy(&panel, &ParameterPanel::missionChanged);
+        auto* vehicle = panel.findChild<QComboBox*>(QStringLiteral("vehicle"));
+        auto* given = panel.findChild<QComboBox*>(QStringLiteral("bodyGiven"));
+        auto* q = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-periapsis-distance"));
+        auto* x = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-body-x"));
+        auto* thrust = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin-thrust"));
+        auto* epoch = panel.findChild<QDateEdit*>(QStringLiteral("epochDate"));
+        QVERIFY(vehicle && given && q && x && thrust && epoch);
+        QVERIFY(thrust->isVisibleTo(&panel));
+        QVERIFY(!q->isVisibleTo(&panel));
+
+        vehicle->setCurrentIndex(vehicle->findData(static_cast<int>(orbit::Vehicle::NaturalBody)));
+        QCOMPARE(spy.count(), 1);
+        QVERIFY(panel.mission().vehicle == orbit::Vehicle::NaturalBody);
+        QVERIFY(!thrust->isVisibleTo(&panel));
+        QVERIFY(q->isVisibleTo(&panel));
+        QVERIFY(!x->isVisibleTo(&panel)); // given by elements
+        QCOMPARE(q->value(), 38011.0);    // Apophis, in km
+        QCOMPARE(epoch->date(), QDate(2029, 4, 13));
+
+        // To a state vector: the same path, now as x, y, z.
+        given->setCurrentIndex(given->findData(static_cast<int>(orbit::BodyGiven::StateVector)));
+        QVERIFY(panel.mission().body.given == orbit::BodyGiven::StateVector);
+        QVERIFY(x->isVisibleTo(&panel));
+        QVERIFY(!q->isVisibleTo(&panel));
+        QCOMPARE(x->value(), std::round(orbit::bodyStateJ2000(orbit::apophisFlyby()).r.x / 1000.0));
+
+        // Reset keeps the vehicle.
+        QPushButton* reset = nullptr;
+        for (auto* button : panel.findChildren<QPushButton*>()) {
+            if (button->text().contains(QStringLiteral("Reset"))) reset = button;
+        }
+        QVERIFY(reset);
+        reset->click();
+        QVERIFY(panel.mission().vehicle == orbit::Vehicle::NaturalBody);
+        QVERIFY(panel.mission().body.given == orbit::BodyGiven::Elements);
+    }
+
+    void statsPanelShowsANaturalBodysPassage() {
+        FlightStatsPanel stats;
+        auto* passage = stats.findChild<QGroupBox*>(QStringLiteral("passage"));
+        auto* closest = stats.findChild<QLabel*>(QStringLiteral("closestApproach"));
+        auto* aim = stats.findChild<QLabel*>(QStringLiteral("impactParameter"));
+        auto* maxQ = stats.findChild<QLabel*>(QStringLiteral("maxQ"));
+        QVERIFY(passage && closest && aim && maxQ);
+
+        stats.showResult(orbit::simulate(orbit::defaultMission()));
+        QVERIFY(!passage->isVisibleTo(&stats));
+
+        orbit::Mission body = orbit::defaultMission();
+        body.vehicle = orbit::Vehicle::NaturalBody;
+        stats.showResult(orbit::simulate(body));
+        QVERIFY(passage->isVisibleTo(&stats));
+        QVERIFY(!maxQ->isVisibleTo(&stats));
+        QVERIFY(
+            closest->text().contains(QLocale().toString(38011.0, 'f', 0) + QStringLiteral(" km")));
+        QVERIFY(aim->text().contains(QStringLiteral("km")));
+        auto* outcome = stats.findChild<QLabel*>(QStringLiteral("outcome"));
+        QVERIFY(outcome->text().contains(QStringLiteral("Flyby")));
+    }
+
+    void programPanelIsOffForANaturalBody() {
+        ProgramPanel panel;
+        orbit::Mission body = orbit::defaultMission();
+        body.vehicle = orbit::Vehicle::NaturalBody;
+        panel.setMission(body);
+        QVERIFY(!panel.isEnabled());
+        panel.setMission(orbit::defaultMission());
+        QVERIFY(panel.isEnabled());
+    }
+
+    void sweepPanelOffersABodysParameters() {
+        SweepPanel panel;
+        orbit::Mission body = orbit::defaultMission();
+        body.vehicle = orbit::Vehicle::NaturalBody;
+        panel.setMission(body);
+        auto* parameter = panel.findChild<QComboBox*>(QStringLiteral("sweepParameter"));
+        QVERIFY(parameter);
+        QVERIFY(parameter->findData(QStringLiteral("periapsis-distance")) >= 0);
+        QCOMPARE(parameter->findData(QStringLiteral("kick-angle")), -1);
+        QVERIFY(parameter->currentIndex() >= 0); // something is chosen
     }
 };
 

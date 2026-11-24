@@ -37,8 +37,9 @@ struct SweepTarget {
     std::function<void(Mission&, double)> set;
 };
 
-/// Everything this mission lets a sweep vary: every mission parameter, then
-/// the values of its custom program's steps (if it flies one).
+/// Everything this mission lets a sweep vary: every mission parameter in use
+/// (parameterInUse: a rocket's or a natural body's), then the values of its
+/// custom program's steps (if it flies one).
 std::vector<SweepTarget> sweepTargets(const Mission& mission);
 
 /// The target with this key for this mission, if there is one.

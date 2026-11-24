@@ -6,6 +6,8 @@
 #include "orbit/core/constants.hpp"
 #include "orbit/core/earth.hpp"
 #include "orbit/core/lunar_targeting.hpp"
+#include "orbit/core/natural_body.hpp"
+#include "orbit/core/orbit.hpp"
 #include "orbit/core/rocket.hpp"
 
 #include <QComboBox>
@@ -14,6 +16,7 @@
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
@@ -38,7 +41,8 @@ double fromSliderSteps(const orbit::ParameterInfo& p, int steps) { return p.min 
 int decimalsFor(double step) {
     if (step >= 1.0) return 0;
     if (step >= 0.1) return 1;
-    return 2;
+    if (step >= 0.01) return 2;
+    return 3;
 }
 
 QString toQString(std::string_view text) {
@@ -48,6 +52,7 @@ QString toQString(std::string_view text) {
 /// Does this parameter make a difference with this flight plan?
 bool appliesToPlan(const orbit::ParameterInfo& p, orbit::FlightPlan plan) {
     using orbit::FlightPlan;
+    if (p.vehicle != orbit::Vehicle::Rocket) return true;
     const bool lunar = plan == FlightPlan::LunarFlyby || plan == FlightPlan::LunarOrbit;
     // A custom program carries its own numbers (altitudes, timings).
     if (p.key == "target-altitude") {
@@ -58,11 +63,36 @@ bool appliesToPlan(const orbit::ParameterInfo& p, orbit::FlightPlan plan) {
     return true;
 }
 
+/// A date picker for an epoch: its date, keeping the time of day.
+QDateEdit* makeDateEdit(QWidget* parent, const QString& objectName, const QString& tooltip) {
+    auto* edit = new QDateEdit(parent);
+    edit->setObjectName(objectName);
+    edit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+    edit->setCalendarPopup(true);
+    edit->setDateRange(QDate(1900, 1, 1), QDate(2100, 12, 31));
+    edit->setToolTip(tooltip);
+    return edit;
+}
+
+/// The epoch with its date changed and its time of day kept.
+double withDate(double epoch, QDate date) {
+    const orbit::CalendarTime t = orbit::calendarFromEpoch(epoch);
+    const double midnight = orbit::epochFromCalendar({t.year, t.month, t.day, 0, 0, 0.0});
+    return orbit::epochFromCalendar({date.year(), date.month(), date.day(), 0, 0, 0.0}) +
+           (epoch - midnight);
+}
+
+QDate dateOf(double epoch) {
+    const orbit::CalendarTime t = orbit::calendarFromEpoch(epoch);
+    return {t.year, t.month, t.day};
+}
+
 } // namespace
 
 ParameterPanel::ParameterPanel(QWidget* parent)
     : QWidget(parent), m_mission(orbit::defaultMission()) {
     auto* layout = new QVBoxLayout(this);
+    buildVehicleChoice(layout);
 
     // One group box per heading, in the order the headings first appear.
     QGroupBox* group = nullptr;
@@ -75,29 +105,41 @@ ParameterPanel::ParameterPanel(QWidget* parent)
         if (p.derived) continue; // e.g. burn time: shown under Derived, swept from the Sweep panel
         if (p.group != currentGroup) {
             currentGroup = p.group;
+            // The natural body's groups start with how it is given.
+            if (p.vehicle == orbit::Vehicle::NaturalBody && m_bodyGroup == nullptr) {
+                buildBodyChoice(layout);
+            }
             group = new QGroupBox(toQString(p.group), this);
             grid = new QGridLayout(group);
             grid->setColumnStretch(0, 1);
             layout->addWidget(group);
+            m_groups.emplace_back(group, &p);
 
+            if (p.group == "Epoch and time span") {
+                m_epochDate = makeDateEdit(
+                    group, QStringLiteral("epochDate"),
+                    tr("Date (UTC) when the elements or the position and velocity hold. With "
+                       "the time below it sets where the Earth has turned to, and where the "
+                       "Moon and the Sun are."));
+                const int row = grid->rowCount();
+                grid->addWidget(new QLabel(tr("Epoch date"), group), row, 0);
+                grid->addWidget(m_epochDate, row, 1);
+                connect(m_epochDate, &QDateEdit::dateChanged, this, [this](QDate date) {
+                    m_mission.body.epoch = withDate(m_mission.body.epoch, date);
+                    refreshWidgets();
+                    emit missionChanged(m_mission);
+                });
+            }
             if (p.group == "Launch site") {
                 // The date has no slider: it's a calendar, not a number.
-                m_launchDate = new QDateEdit(group);
-                m_launchDate->setObjectName(QStringLiteral("launchDate"));
-                m_launchDate->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
-                m_launchDate->setCalendarPopup(true);
-                m_launchDate->setDateRange(QDate(1900, 1, 1), QDate(2100, 12, 31));
-                m_launchDate->setToolTip(
-                    tr("Launch date (UTC). With the launch time it sets where the Moon "
-                       "and the Sun are."));
+                m_launchDate = makeDateEdit(group, QStringLiteral("launchDate"),
+                                            tr("Launch date (UTC). With the launch time it sets "
+                                               "where the Moon and the Sun are."));
                 const int row = grid->rowCount();
                 grid->addWidget(new QLabel(tr("Launch date"), group), row, 0);
                 grid->addWidget(m_launchDate, row, 1);
                 connect(m_launchDate, &QDateEdit::dateChanged, this, [this](QDate date) {
-                    const double hour = orbit::launchHourOfDay(m_mission);
-                    m_mission.launchEpoch = orbit::epochFromCalendar({date.year(), date.month(),
-                                                                      date.day(), 0, 0, 0.0}) +
-                                            hour * 3600.0;
+                    m_mission.launchEpoch = withDate(m_mission.launchEpoch, date);
                     refreshWidgets();
                     emit missionChanged(m_mission);
                 });
@@ -183,10 +225,14 @@ ParameterPanel::ParameterPanel(QWidget* parent)
     }
 
     buildDerivedSection(layout);
+    buildBodyDerivedSection(layout);
 
     auto* reset = new QPushButton(tr("Reset to defaults"), this);
+    reset->setToolTip(tr("The default rocket, or for a natural body, Apophis in 2029"));
     connect(reset, &QPushButton::clicked, this, [this] {
-        setMission(orbit::defaultMission());
+        orbit::Mission fresh = orbit::defaultMission();
+        fresh.vehicle = m_mission.vehicle;
+        setMission(fresh);
         emit missionChanged(m_mission);
     });
     layout->addWidget(reset);
@@ -195,8 +241,83 @@ ParameterPanel::ParameterPanel(QWidget* parent)
     refreshWidgets();
 }
 
+/// What flies: a rocket, or a natural body.
+void ParameterPanel::buildVehicleChoice(QBoxLayout* layout) {
+    auto* row = new QHBoxLayout;
+    m_vehicle = new QComboBox(this);
+    m_vehicle->setObjectName(QStringLiteral("vehicle"));
+    for (const orbit::Vehicle v : orbit::kAllVehicles) {
+        m_vehicle->addItem(toQString(orbit::vehicleLabel(v)), static_cast<int>(v));
+    }
+    m_vehicle->setToolTip(tr("Rocket: launch from a site on the Earth.\n"
+                             "Natural body: an asteroid, comet or moon with no engine, placed by "
+                             "its orbit or its position and velocity at a moment, and followed "
+                             "as it passes the Earth."));
+    connect(m_vehicle, &QComboBox::currentIndexChanged, this, [this](int index) {
+        m_mission.vehicle = static_cast<orbit::Vehicle>(m_vehicle->itemData(index).toInt());
+        refreshWidgets();
+        emit missionChanged(m_mission);
+    });
+    row->addWidget(new QLabel(tr("Simulate"), this));
+    row->addWidget(m_vehicle, 1);
+    layout->addLayout(row);
+}
+
+/// How the natural body is placed: by orbital elements or a state vector.
+void ParameterPanel::buildBodyChoice(QBoxLayout* layout) {
+    m_bodyGroup = new QGroupBox(tr("Natural body"), this);
+    auto* grid = new QGridLayout(m_bodyGroup);
+    grid->setColumnStretch(0, 1);
+    m_bodyGiven = new QComboBox(m_bodyGroup);
+    m_bodyGiven->setObjectName(QStringLiteral("bodyGiven"));
+    for (const orbit::BodyGiven g : orbit::kAllBodyGivens) {
+        m_bodyGiven->addItem(toQString(orbit::bodyGivenLabel(g)), static_cast<int>(g));
+    }
+    m_bodyGiven->setToolTip(
+        tr("Orbital elements: the orbit around the Earth at closest approach, which is the "
+           "epoch.\nPosition and velocity: where it is and how it moves at the epoch, as JPL "
+           "Horizons lists them (geocentric, ICRF, km and km/s).\nSwitching converts the "
+           "values, so the path stays the same."));
+    connect(m_bodyGiven, &QComboBox::currentIndexChanged, this, [this](int index) {
+        orbit::setBodyGiven(m_mission.body,
+                            static_cast<orbit::BodyGiven>(m_bodyGiven->itemData(index).toInt()));
+        refreshWidgets();
+        emit missionChanged(m_mission);
+    });
+    grid->addWidget(new QLabel(tr("Given as"), m_bodyGroup), 0, 0);
+    grid->addWidget(m_bodyGiven, 0, 1);
+    layout->addWidget(m_bodyGroup);
+}
+
+/// For a natural body: what its elements mean, from the two-body orbit
+/// through the values given (orbit.hpp).
+void ParameterPanel::buildBodyDerivedSection(QBoxLayout* layout) {
+    m_bodyDerived = new QGroupBox(tr("Derived"), this);
+    auto* form = new QFormLayout(m_bodyDerived);
+    const auto addRow = [&](const QString& name, const QString& tooltip) {
+        auto* value = new QLabel(m_bodyDerived);
+        value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        value->setToolTip(tooltip);
+        form->addRow(name, value);
+        return value;
+    };
+    m_bodyOrbitKind = addRow(tr("Orbit"), tr("Bound to the Earth (an ellipse, e < 1) or not "
+                                             "(a hyperbola, e > 1), at the epoch"));
+    m_bodyPeriapsisSpeed =
+        addRow(tr("Speed at periapsis"), tr("Vis-viva: v² = μ (2/r − 1/a), at r = q"));
+    m_bodyFarSpeed = addRow(tr("Speed far away"),
+                            tr("v∞ = √(μ (e − 1) / q) for a hyperbola: what is left of the "
+                               "speed far from the Earth. For an ellipse, its period instead"));
+    m_bodyAim =
+        addRow(tr("Aimed at"),
+               tr("The impact parameter b: how far from the Earth's centre it would pass if "
+                  "the Earth's gravity didn't bend its path. Gravity pulls it in to q."));
+    layout->addWidget(m_bodyDerived);
+}
+
 void ParameterPanel::buildDerivedSection(QBoxLayout* layout) {
     auto* group = new QGroupBox(tr("Derived"), this);
+    m_derived = group;
     auto* form = new QFormLayout(group);
     const auto addRow = [&](const QString& name, const QString& tooltip) {
         auto* value = new QLabel(group);
@@ -296,21 +417,73 @@ void ParameterPanel::refreshWidgets() {
         r.label->setToolTip(locked ? tr("Being swept: see the Sweep panel")
                                    : toQString(r.info->help));
     }
+    // Only the groups for what is flying: a rocket's, or a natural body's.
+    const bool body = m_mission.vehicle == orbit::Vehicle::NaturalBody;
+    for (const auto& [group, first] : m_groups) {
+        group->setVisible(orbit::parameterInUse(*first, m_mission));
+    }
+    m_bodyGroup->setVisible(body);
+    m_derived->setVisible(!body);
+    m_bodyDerived->setVisible(body);
+    {
+        const QSignalBlocker blockVehicle(m_vehicle);
+        const QSignalBlocker blockGiven(m_bodyGiven);
+        const QSignalBlocker blockEpoch(m_epochDate);
+        m_vehicle->setCurrentIndex(m_vehicle->findData(static_cast<int>(m_mission.vehicle)));
+        m_bodyGiven->setCurrentIndex(m_bodyGiven->findData(static_cast<int>(m_mission.body.given)));
+        m_epochDate->setDate(dateOf(m_mission.body.epoch));
+    }
+
     const QSignalBlocker blockPlan(m_plan);
     m_plan->setCurrentIndex(m_plan->findData(static_cast<int>(m_mission.plan)));
     const bool lunar = m_mission.plan == orbit::FlightPlan::LunarFlyby ||
                        m_mission.plan == orbit::FlightPlan::LunarOrbit;
     for (int k = 1; k < orbit::kMaxStages; ++k) {
         if (QGroupBox* stage = m_stageGroups.at(static_cast<std::size_t>(k))) {
-            stage->setVisible(k < m_mission.rocket.stageCount);
+            stage->setVisible(!body && k < m_mission.rocket.stageCount);
         }
     }
     m_aimButton->setEnabled(lunar);
     m_bestTimeButton->setEnabled(lunar);
-    const orbit::CalendarTime launch = orbit::calendarFromEpoch(m_mission.launchEpoch);
     const QSignalBlocker blockDate(m_launchDate);
-    m_launchDate->setDate(QDate(launch.year, launch.month, launch.day));
-    refreshDerived();
+    m_launchDate->setDate(dateOf(m_mission.launchEpoch));
+    if (body) {
+        refreshBodyDerived();
+    } else {
+        refreshDerived();
+    }
+}
+
+void ParameterPanel::refreshBodyDerived() {
+    // The two-body orbit through the body's values at the epoch.
+    const orbit::PositionVelocity s = orbit::bodyStateJ2000(m_mission.body);
+    const orbit::OrbitalElements el = orbit::elementsFromState(s.r, s.v);
+    const double mu = orbit::kMuEarth;
+    const double q = el.periapsis;
+    const double e = el.eccentricity;
+    if (!(q > 0.0) || !std::isfinite(el.energy)) {
+        for (QLabel* l : {m_bodyOrbitKind, m_bodyPeriapsisSpeed, m_bodyFarSpeed, m_bodyAim}) {
+            l->setText(QStringLiteral("—"));
+        }
+        return;
+    }
+    const QString underground = q < orbit::kRadiusEarth
+                                    ? tr(" <span style='color:#f87171'>(hits the Earth)</span>")
+                                    : QString();
+    m_bodyOrbitKind->setText((el.bound ? tr("bound (e = %1)") : tr("passing (e = %1)"))
+                                 .arg(QLocale().toString(e, 'f', 3)) +
+                             underground);
+    m_bodyPeriapsisSpeed->setText(display::speed(std::sqrt(2.0 * (el.energy + mu / q))));
+    if (el.bound) {
+        m_bodyFarSpeed->setText(tr("period %1").arg(display::duration(el.period)));
+        m_bodyAim->setText(QStringLiteral("—"));
+    } else {
+        const double vInf = std::sqrt(2.0 * el.energy);
+        m_bodyFarSpeed->setText(display::speed(vInf));
+        // b from h = b v∞ (angular momentum far away).
+        m_bodyAim->setText(vInf > 0.0 ? display::distance(el.angularMomentum / vInf)
+                                      : QStringLiteral("∞"));
+    }
 }
 
 void ParameterPanel::refreshDerived() {

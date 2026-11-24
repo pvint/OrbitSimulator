@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "plot_panel.hpp"
 
+#include "orbit/core/constants.hpp"
+#include "orbit/core/ephemeris.hpp"
+
 #include <QCheckBox>
 #include <QLineSeries>
 #include <QMetaObject>
@@ -41,6 +44,19 @@ NiceAxis niceAxis(double max) {
     const double tick = factor * magnitude;
     // The small epsilon stops a maximum of exactly 200 being pushed up to 250.
     return {std::ceil(max / tick - 1e-9) * tick, tick};
+}
+
+/// The time axis's unit, chosen so the numbers stay readable: seconds for
+/// a launch, minutes for an orbit, hours or days for longer flights.
+struct TimeUnit {
+    double seconds; ///< in this unit
+    const char* name;
+};
+TimeUnit timeUnitFor(double duration) {
+    if (duration <= 1200.0) return {1.0, QT_TRANSLATE_NOOP("PlotPanel", "s")};
+    if (duration <= 5.0 * 3600.0) return {60.0, QT_TRANSLATE_NOOP("PlotPanel", "min")};
+    if (duration <= 72.0 * 3600.0) return {3600.0, QT_TRANSLATE_NOOP("PlotPanel", "h")};
+    return {86400.0, QT_TRANSLATE_NOOP("PlotPanel", "days")};
 }
 
 QString labelFormatFor(double tick) {
@@ -92,6 +108,29 @@ PlotPanel::PlotPanel(QWidget* parent)
         return orbit::aerodynamicsAt(r, s).dynamicPressure / 1000.0;
     };
     m_graphs[3].airborneOnly = true;
+    m_graphs[0].title = tr("Altitude (km)");
+    m_graphs[1].title = tr("Speed, inertial (m/s)");
+    m_graphs[2].title = tr("Mass (t)");
+    m_graphs[3].title = tr("Dynamic pressure (kPa)");
+
+    // A natural body: where it is, and whether the Earth holds on to it.
+    // Distances in thousands of km, so the axis labels stay short.
+    m_graphs[0].bodyValue = [](const SimResult&, const Sample& s) {
+        return orbit::norm(s.state.r) / 1e6;
+    };
+    m_graphs[1].bodyValue = m_graphs[1].value;
+    m_graphs[2].bodyValue = [](const SimResult& r, const Sample& s) {
+        return orbit::norm(s.state.r - orbit::moonPosition(r.startEpoch + s.t)) / 1e6;
+    };
+    // ε = v²/2 − μ/r, in MJ/kg (= km²/s²).
+    m_graphs[3].bodyValue = [](const SimResult&, const Sample& s) {
+        return (orbit::normSquared(s.state.v) / 2.0 - orbit::kMuEarth / orbit::norm(s.state.r)) /
+               1e6;
+    };
+    m_graphs[0].bodyTitle = tr("From the Earth (1000 km)");
+    m_graphs[1].bodyTitle = m_graphs[1].title;
+    m_graphs[2].bodyTitle = tr("From the Moon (1000 km)");
+    m_graphs[3].bodyTitle = tr("Energy (MJ/kg; < 0: bound)");
     connectGraphs();
 }
 
@@ -136,10 +175,12 @@ void PlotPanel::refresh() {
     const FlightRun& selected = m_runs->runs[static_cast<std::size_t>(m_selected)];
     const orbit::SimResult& r = *selected.result;
     if (r.samples.empty()) return;
+    const bool body = r.mission.vehicle == orbit::Vehicle::NaturalBody;
+    m_poweredOnly->setVisible(!body);
 
     // Time range: the selected flight, or up to its last engine event plus a margin.
     double tMax = r.duration;
-    if (m_poweredOnly->isChecked() && !r.events.empty()) {
+    if (!body && m_poweredOnly->isChecked() && !r.events.empty()) {
         tMax = std::min(r.duration, r.events.back().sample.t * 1.05);
     }
     tMax = std::max(tMax, 1.0);
@@ -164,21 +205,25 @@ void PlotPanel::refresh() {
     const std::size_t overlayCount = m_runs->isSweep() ? m_runs->runs.size() - 1 : 0;
 
     for (Graph& g : m_graphs) {
-        const double tEnd = g.airborneOnly && tAir > 0.0 ? std::clamp(tAir * 1.2, 1.0, tMax) : tMax;
-        // Long flights read better in minutes.
-        const bool minutes = tEnd > 1200.0;
-        const double timeScale = minutes ? 1.0 / 60.0 : 1.0;
+        const bool airborneOnly = g.airborneOnly && !body;
+        const double tEnd = airborneOnly && tAir > 0.0 ? std::clamp(tAir * 1.2, 1.0, tMax) : tMax;
+        const TimeUnit unit = timeUnitFor(tEnd);
+        const double timeScale = 1.0 / unit.seconds;
         const NiceAxis xNice = niceAxis(tEnd * timeScale);
+        const Graph::Value& value = body ? g.bodyValue : g.value;
+        g.item->setProperty("title", body ? g.bodyTitle : g.title);
 
         double yMax = 0.0;
+        double yMin = 0.0;
         const auto pointsFor = [&](const orbit::SimResult& result) {
             QList<QPointF> points;
             points.reserve(static_cast<qsizetype>(result.samples.size()));
             for (const orbit::Sample& s : result.samples) {
                 if (s.t > tEnd) break;
-                const double y = g.value(result, s);
+                const double y = value(result, s);
                 points.append({s.t * timeScale, y});
                 yMax = std::max(yMax, y);
+                yMin = std::min(yMin, y);
             }
             return points;
         };
@@ -207,10 +252,19 @@ void PlotPanel::refresh() {
         g.xAxis->setRange(0.0, tEnd * timeScale);
         g.xAxis->setTickInterval(xNice.tick);
         g.xAxis->setLabelFormat(labelFormatFor(xNice.tick));
-        g.item->setProperty("timeUnit", minutes ? tr("min") : tr("s"));
+        g.item->setProperty("timeUnit", tr(unit.name));
 
-        const NiceAxis yNice = niceAxis(g.airborneOnly ? selectedMax * 1.2 : yMax);
-        g.yAxis->setRange(0.0, yNice.top);
+        // From zero (or below, for an energy that goes negative) to a round
+        // number above the top, with the same tick spacing either side.
+        NiceAxis yNice = niceAxis(airborneOnly ? selectedMax * 1.2 : yMax);
+        double bottom = 0.0;
+        if (yMin < 0.0) {
+            // Ticks spaced for the larger of the two sides.
+            yNice.tick = niceAxis(std::max(yMax, -yMin)).tick;
+            yNice.top = std::ceil(yMax / yNice.tick - 1e-9) * yNice.tick;
+            bottom = -std::ceil(-yMin / yNice.tick - 1e-9) * yNice.tick;
+        }
+        g.yAxis->setRange(bottom, yNice.top);
         g.yAxis->setTickInterval(yNice.tick);
         g.yAxis->setLabelFormat(labelFormatFor(yNice.tick));
     }

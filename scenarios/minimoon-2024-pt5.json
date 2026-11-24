@@ -1,0 +1,19 @@
+{
+  "format": "orbitsim-scenario",
+  "version": 6,
+  "name": "A mini-moon: 2024 PT5",
+  "description": "The 10 m asteroid 2024 PT5 drifted past the Earth slowly enough that from 29 September to 25 November 2024 it was bound to it: a temporary second moon. It never went round: the Sun's pull, stronger than the Earth's out there at 4 million km, let it go again. Position and velocity on 30 October 2024 from JPL Horizons; the capture and release dates here match JPL's to within a day.",
+  "mission": {
+    "vehicle": "natural-body",
+    "body-given": "state-vector",
+    "epoch-utc": "2024-10-30T00:00:00Z",
+    "body-x": -653401.3649,
+    "body-y": -980761.8176,
+    "body-z": 3856471.484,
+    "body-vx": -0.1056368025,
+    "body-vy": 0.1563084965,
+    "body-vz": 0.0075460911,
+    "days-before": 90,
+    "days-after": 120
+  }
+}

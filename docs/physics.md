@@ -383,6 +383,66 @@ the **inclination equals the launch latitude**. This is why launches from
 Florida (28.5°N) reach the equatorial plane only with an expensive plane
 change, while launches near the equator don't need one.
 
+## Natural bodies (`natural_body.hpp`, `natural_body_flight.cpp`)
+
+An asteroid, comet or small moon has no engine: it only falls, under the
+Earth's, the Moon's and the Sun's gravity (the same forces as above, in
+`gravity.cpp`). What matters is where it starts.
+
+**Placing it.** A body is placed at a moment, the *epoch*, by
+- **orbital elements at closest approach**: periapsis distance `q`,
+  eccentricity `e`, and the angles `i`, `Ω`, `ω` of the orbit around the
+  Earth. The epoch is the moment it passes periapsis. `q` is used instead
+  of `a` because it works for every conic: the semi-latus rectum is
+  `p = q (1 + e)` for a circle, ellipse, parabola or hyperbola alike, and
+  `r = p / (1 + e cos ν)` gives the shape. A body from far away is on a
+  **hyperbola** (`e > 1`): it arrives, swings round and leaves again.
+- **position and velocity**, as JPL Horizons lists them.
+
+Catalogues give both in the Earth's equatorial frame of the year 2000
+(J2000). The Earth's axis swings round once in 26,000 years
+(**precession**), dragging the equator and the equinox along, so the
+simulation turns the body into the frame of its date with the IAU 1976
+angles ζ, z, θ: `r_date = R_z(z) · R_y(−θ) · R_z(ζ) · r_J2000`. That is
+0.36° by 2029.
+
+**Both ways in time.** The simulation starts at the epoch and integrates
+*backwards* over the days before it (Newton's laws work the same with time
+reversed: a negative step size simply runs the film backwards), then
+forwards over the days after. So the given values hold exactly where they
+were given.
+
+**Kepler's equation** turns a position on the orbit into a time, which is
+needed to switch from a state vector to elements (to find when the body
+passes periapsis). The *mean anomaly* `M` grows steadily with time,
+`M = n t` with `n = √(μ/|a|³)`, and is linked to the angle round the orbit:
+
+| Orbit | Kepler's equation | Auxiliary angle |
+|---|---|---|
+| ellipse | `M = E − e sin E` | `tan(E/2) = √((1−e)/(1+e)) tan(ν/2)` |
+| hyperbola | `M = e sinh H − H` | `tanh(H/2) = √((e−1)/(e+1)) tan(ν/2)` |
+| parabola | Barker: `t = √(2q³/μ) (D + D³/3)` | `D = tan(ν/2)` |
+
+**Speed far away** and **gravitational focusing.** On a hyperbola the
+energy `ε` is positive, and far from the Earth the body still moves at
+`v∞ = √(2ε)`, the hyperbolic excess speed. Had the Earth no gravity, the
+body would pass at the *impact parameter* `b = h / v∞` from its centre.
+Gravity bends the path in, so it actually passes at
+`q = (μ/v∞²)(√(1 + (b v∞²/μ)²) − 1)`, closer than `b`. It hits the Earth if
+`b < R √(1 + v_esc²/v∞²)`, where `v_esc = √(2μ/R)`: for Apophis's
+5.8 km/s that is 2.2 Earth radii. The Earth catches far more than its own
+cross-section, and the slower the body, the more.
+
+**Temporary capture.** While `ε < 0` the body could not get away from the
+Earth on its own: it is bound, a temporary "mini-moon". Far out, though, the
+Sun's tide is stronger than the Earth's pull and can make `ε` positive
+again. 2024 PT5 was bound from 29 September to 25 November 2024, between
+3.5 and 4 million km away, and never completed an orbit.
+
+**Not modelled:** the air. A body that reaches the ground stops there. Real
+ones of a few tens of metres break up high in the atmosphere (Chelyabinsk
+burst at 30 km).
+
 ## Integration (`integrator.hpp`)
 
 The equations of motion are integrated with **Dormand–Prince 5(4)**, an
@@ -415,3 +475,9 @@ changes, burnout), because that would spoil the error estimate.
 | Escape | ε ≥ 0: never comes back |
 | Lunar impact | Hit the Moon |
 | Lunar orbit | Ended bound to the Moon, with its whole orbit above the surface |
+| Flyby | A natural body that passed by, never bound to the Earth |
+| Temporary capture | A natural body bound to the Earth for part of the time |
+| Impact | A natural body that hit the Earth |
+
+A natural body bound to the Earth all along is in **Orbit**, and one that
+hits the Moon is a **Lunar impact**.

@@ -18,7 +18,9 @@ class QValueAxis;
 
 /// Altitude, speed, mass and dynamic pressure against time, drawn with Qt Graphs (a QML scene
 /// in a QQuickWidget, see qml/Plots.qml). The selected flight is drawn
-/// bold; in a sweep, the other flights appear faintly behind it.
+/// bold; in a sweep, the other flights appear faintly behind it. For a
+/// natural body: distance from the Earth, speed, distance from the Moon, and
+/// the energy relative to the Earth (below zero: captured).
 class PlotPanel : public QWidget {
     Q_OBJECT
 
@@ -37,7 +39,11 @@ private:
         QColor defaultColor;
         QValueAxis* xAxis = nullptr;
         QValueAxis* yAxis = nullptr;
-        std::function<double(const orbit::SimResult&, const orbit::Sample&)> value;
+        using Value = std::function<double(const orbit::SimResult&, const orbit::Sample&)>;
+        Value value;     ///< for a rocket
+        Value bodyValue; ///< for a natural body
+        QString title;
+        QString bodyTitle;
         bool airborneOnly = false; ///< time axis ends when the flights leave the air
     };
 

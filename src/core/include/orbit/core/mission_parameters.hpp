@@ -34,12 +34,26 @@ struct ParameterInfo {
     /// Written to scenario files under its key. False for parts of a value
     /// stored another way (the launch hour is saved within "launch-utc").
     bool inScenario = true;
+    /// What it describes: a rocket's numbers mean nothing to a natural body,
+    /// and the other way round.
+    Vehicle vehicle = Vehicle::Rocket;
 };
 
 /// Seconds since midnight UTC of the launch day, and setting it while
 /// keeping the date.
 double launchHourOfDay(const Mission& mission);
 void setLaunchHourOfDay(Mission& mission, double hours);
+
+/// The natural body's epoch as hours since midnight UTC, and setting it
+/// while keeping the date.
+double bodyEpochHourOfDay(const Mission& mission);
+void setBodyEpochHourOfDay(Mission& mission, double hours);
+
+/// Does this parameter shape this mission? It must describe the mission's
+/// vehicle, and a natural body's elements or state vector, whichever it is
+/// given by. (The flight plan is not considered: the parameter panel greys
+/// out what the plan doesn't use.)
+bool parameterInUse(const ParameterInfo& parameter, const Mission& mission);
 
 /// All mission parameters, in display order, grouped by `group`.
 std::span<const ParameterInfo> missionParameters();
