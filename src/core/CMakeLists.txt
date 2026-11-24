@@ -22,11 +22,14 @@ add_library(orbit_core STATIC
     src/demo.cpp
     src/ephemeris.cpp
     src/flight_program.cpp
+    src/gravity.cpp
     src/earth.cpp
     src/guidance.cpp
     src/integrator.cpp
     src/lunar_targeting.cpp
     src/mission_parameters.cpp
+    src/natural_body.cpp
+    src/natural_body_flight.cpp
     src/orbit.cpp
     src/parse.cpp
     src/rocket.cpp

@@ -38,6 +38,7 @@
 #include "orbit/core/flight_program.hpp"
 #include "orbit/core/guidance.hpp"
 #include "orbit/core/integrator.hpp"
+#include "orbit/core/natural_body.hpp"
 #include "orbit/core/orbit.hpp"
 #include "orbit/core/rocket.hpp"
 #include "orbit/core/state.hpp"
@@ -75,6 +76,11 @@ struct LunarTransfer {
 
 /// Everything that defines one flight.
 struct Mission {
+    /// What flies. A natural body uses only `body`; everything else
+    /// describes the rocket and its launch.
+    Vehicle vehicle = Vehicle::Rocket;
+    NaturalBody body = apophisFlyby();
+
     Rocket rocket;
     LaunchSite site;
     AscentGuidance guidance;
@@ -113,7 +119,11 @@ struct SimOptions {
     double coastOutputFraction = 0.005;
     double maxCoastOutputInterval = 600.0; ///< s
     double escapeDistance = 1.5e9;         ///< m (about four times the Moon's distance)
-    double maxTime = 30.0 * 86400.0;       ///< s
+    /// A natural body's flight stops beyond this distance from the Earth (m),
+    /// about seven times the reach of the Earth's gravity against the Sun's
+    /// (its Hill sphere). Further out, the path is better seen around the Sun.
+    double bodyDistanceLimit = 1e10;
+    double maxTime = 30.0 * 86400.0; ///< s
     int maxSteps = 2'000'000;
     /// Start from this state instead of the launch pad (tests, and later
     /// scenarios that begin in orbit). Time 0 is still the launch epoch.
@@ -127,6 +137,10 @@ enum class Outcome {
     Escape,      ///< energy ≥ 0: never comes back
     LunarImpact, ///< hit the Moon
     LunarOrbit,  ///< ended in orbit around the Moon
+    // Natural bodies (they also use Orbit, Escape and LunarImpact)
+    Impact,           ///< hit the Earth
+    Flyby,            ///< passed by, never bound to the Earth
+    TemporaryCapture, ///< bound to the Earth for part of the time: a "mini-moon"
 };
 
 enum class EventType {
@@ -137,6 +151,11 @@ enum class EventType {
     EnterMoonSphere,     ///< entered the Moon's sphere of influence
     LeaveMoonSphere,     ///< left it again
     MoonClosestApproach, ///< closest point to the Moon
+    // Natural bodies
+    Epoch,                ///< where the given elements or state hold
+    EarthClosestApproach, ///< a periapsis: the closest point to the Earth on this pass
+    EarthCapture,         ///< energy relative to the Earth turns negative: bound
+    EarthRelease,         ///< and turns positive again: free
 };
 
 enum class EndReason {
@@ -146,6 +165,8 @@ enum class EndReason {
     EscapeDistance, ///< escaping, and far away
     MaxTime,
     MaxSteps,
+    SpanEnd,       ///< a natural body: the end of its time span
+    DistanceLimit, ///< a natural body: beyond SimOptions::bodyDistanceLimit
 };
 
 /// The rocket's state at one moment, as stored for drawing and graphs.
@@ -187,8 +208,32 @@ struct LunarSummary {
     std::optional<OrbitalElements> finalOrbit;
 };
 
+/// A natural body's passage by the Earth.
+struct EncounterSummary {
+    /// The closest point to the Earth's centre over the whole time span.
+    Sample closest;
+    /// Time (as in the samples) of the epoch, where the body was placed.
+    double epochTime = 0.0;
+    /// The orbit around the Earth at the start and at the end of the span:
+    /// a hyperbola (e > 1) far from the Earth means a flyby, an ellipse a
+    /// capture. With the Sun and Moon pulling too, these are snapshots.
+    OrbitalElements initialOrbit;
+    OrbitalElements finalOrbit;
+    /// Speed far from the Earth on the way in and out, v∞ = √(2ε), if
+    /// unbound (the hyperbolic excess speed; 0 if bound).
+    double arrivalSpeed = 0.0;
+    double departureSpeed = 0.0;
+    /// s spent bound to the Earth (negative energy) within the span.
+    double timeBound = 0.0;
+};
+
 struct SimResult {
     Mission mission;
+    /// The epoch at t = 0 (s since J2000): the launch, or the start of a
+    /// natural body's time span.
+    double startEpoch = 0.0;
+    /// A natural body's encounter with the Earth.
+    std::optional<EncounterSummary> encounter;
     FlightProgram program;
     std::vector<Sample> samples;
     std::vector<FlightEvent> events;
@@ -219,8 +264,13 @@ struct SimResult {
     double duration = 0.0;       ///< s of simulated time
 };
 
-/// Fly the mission's flight plan.
+/// Fly the mission's flight plan, or let its natural body coast.
 SimResult simulate(const Mission& mission, const SimOptions& options = {});
+
+/// A natural body's flight (natural_body_flight.cpp): from the epoch
+/// backwards over the time span before it, then forwards over the span
+/// after. Samples run from t = 0 at the start of the span.
+SimResult simulateNaturalBody(const Mission& mission, const SimOptions& options = {});
 
 /// Fly any flight program (the mission supplies the rocket, launch site,
 /// pitch program and launch time). This is what scripting will call.

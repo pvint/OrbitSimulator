@@ -60,6 +60,12 @@ QString outcomeLabel(orbit::Outcome outcome) {
         return tr("Lunar impact");
     case orbit::Outcome::LunarOrbit:
         return tr("Lunar orbit");
+    case orbit::Outcome::Impact:
+        return tr("Impact");
+    case orbit::Outcome::Flyby:
+        return tr("Flyby");
+    case orbit::Outcome::TemporaryCapture:
+        return tr("Temporary capture");
     }
     return {};
 }
@@ -79,6 +85,12 @@ QColor outcomeColor(orbit::Outcome outcome) {
         return {0xe8, 0x79, 0xf9};
     case orbit::Outcome::LunarOrbit:
         return {0xe2, 0xe8, 0xf0}; // moonlight
+    case orbit::Outcome::Impact:
+        return {0xf8, 0x71, 0x71};
+    case orbit::Outcome::Flyby:
+        return {0x7d, 0xd3, 0xfc};
+    case orbit::Outcome::TemporaryCapture:
+        return {0xfb, 0xbf, 0x24};
     }
     return Qt::white;
 }

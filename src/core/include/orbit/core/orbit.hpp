@@ -61,6 +61,30 @@ PositionVelocity stateFromElements(double semiMajorAxis, double eccentricity, do
                                    double raan, double argumentOfPeriapsis, double trueAnomaly,
                                    double mu = kMuEarth);
 
+/// Position and velocity from elements that suit *any* conic section:
+/// periapsis distance q, eccentricity e, and the orientation angles i, Ω, ω,
+/// at true anomaly ν. The semi-major axis can't describe every orbit (it is
+/// infinite for a parabola, negative for a hyperbola), but q always can:
+/// the semi-latus rectum p = q(1 + e) holds for all of them, and the conic
+/// equation r = p / (1 + e cos ν) does the rest. This is how comets and
+/// asteroid flybys are usually described. For a hyperbola, ν must stay
+/// within the asymptotes: |ν| < arccos(−1/e).
+PositionVelocity stateFromPeriapsis(double periapsisDistance, double eccentricity,
+                                    double inclination, double raan, double argumentOfPeriapsis,
+                                    double trueAnomaly, double mu = kMuEarth);
+
+/// Time since the last periapsis passage (s; negative: before the next
+/// one) of a body at true anomaly ν on a conic with periapsis distance q.
+/// For an ellipse the result lies within half a period of the periapsis.
+/// Uses Kepler's equation in the form that suits the conic:
+///   ellipse    M = E − e sin E,       tan(E/2) = √((1−e)/(1+e)) tan(ν/2)
+///   hyperbola  M = e sinh H − H,      tanh(H/2) = √((e−1)/(e+1)) tan(ν/2)
+///   parabola   Barker's equation:     t = √(2q³/μ) (D + D³/3),  D = tan(ν/2)
+/// where the mean anomaly M grows evenly with time: t = M / n, with the mean
+/// motion n = √(μ/|a|³).
+double timeSincePeriapsis(double periapsisDistance, double eccentricity, double trueAnomaly,
+                          double mu = kMuEarth);
+
 /// Kepler's third law: T = 2π √(a³/μ).
 double orbitalPeriod(double semiMajorAxis, double mu = kMuEarth);
 

@@ -43,10 +43,11 @@ SweepTarget stepTarget(std::size_t index, const FlightStep& step) {
 std::vector<SweepTarget> sweepTargets(const Mission& mission) {
     std::vector<SweepTarget> targets;
     for (const ParameterInfo& p : missionParameters()) {
+        if (!parameterInUse(p, mission)) continue; // a rocket's thrust, for a natural body
         targets.push_back({std::string(p.key), parameterTitle(p), std::string(p.unit), p.min, p.max,
                            p.step, p.get, p.set});
     }
-    if (mission.plan == FlightPlan::Custom) {
+    if (mission.vehicle == Vehicle::Rocket && mission.plan == FlightPlan::Custom) {
         for (std::size_t i = 0; i < mission.program.size(); ++i) {
             if (stepEndHasValue(mission.program[i].end)) {
                 targets.push_back(stepTarget(i, mission.program[i]));

@@ -30,6 +30,10 @@
 //      Keys left out of older files mean no loss, and the old 1.2 MN thrust.
 //   5  a coast between stages: "stage-coast" (s). Older files: 0, the next
 //      stage lit the moment the last was dropped.
+//   6  natural bodies: "vehicle": "rocket" or "natural-body". A body has
+//      "body-given" ("elements" or "state-vector"), "epoch-utc", its elements
+//      or state vector, and "days-before" / "days-after". Files only hold
+//      what their vehicle uses. Older files are all rockets.
 #pragma once
 
 #include "orbit/core/simulation.hpp"
@@ -44,7 +48,7 @@
 
 namespace orbit {
 
-inline constexpr int kScenarioFormatVersion = 5;
+inline constexpr int kScenarioFormatVersion = 6;
 inline constexpr std::string_view kScenarioFormatName = "orbitsim-scenario";
 
 struct Scenario {
