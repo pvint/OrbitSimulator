@@ -55,6 +55,7 @@ private:
     void updateStartOrbit();
     void updateMarkers();
     void updateTimeline();
+    void pickDate();
     void updateStatus();
     void showCard(const QString& title, const QString& text, const QString& button);
     void showEnding();
@@ -72,6 +73,7 @@ private:
     QPushButton* m_restart = nullptr;
     QPushButton* m_fly = nullptr;
     QPushButton* m_next = nullptr;
+    QPushButton* m_date = nullptr;
     QPushButton* m_newGame = nullptr;
     QComboBox* m_speed = nullptr;
     QComboBox* m_centre = nullptr;

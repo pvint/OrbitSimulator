@@ -15,14 +15,20 @@
 
 #include <QComboBox>
 #include <QDateTime>
+#include <QDateTimeEdit>
 #include <QDebug>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QPushButton>
 #include <QQuickItem>
 #include <QQuickWidget>
 #include <QRandomGenerator>
 #include <QStyle>
+#include <QTimeZone>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -167,6 +173,10 @@ void GameWindow::buildControls(QBoxLayout* layout) {
         new QPushButton(style()->standardIcon(QStyle::SP_MediaSkipForward), tr("Next burn"), bar);
     m_next->setObjectName(QStringLiteral("button-next-burn"));
     m_next->setToolTip(tr("Jump ahead to the next burn."));
+    m_date =
+        new QPushButton(QIcon::fromTheme(QStringLiteral("x-office-calendar")), tr("Date…"), bar);
+    m_date->setObjectName(QStringLiteral("button-date"));
+    m_date->setToolTip(tr("Type or pick a date and time to jump to (UTC)."));
     m_speed = new QComboBox(bar);
     m_speed->setObjectName(QStringLiteral("combo-speed"));
     for (const int days : {1, 5, 20, 60}) {
@@ -182,6 +192,7 @@ void GameWindow::buildControls(QBoxLayout* layout) {
     row->addWidget(m_restart);
     row->addWidget(m_fly);
     row->addWidget(m_next);
+    row->addWidget(m_date);
     row->addWidget(m_speed);
     row->addStretch(1);
     row->addWidget(m_centre);
@@ -195,6 +206,7 @@ void GameWindow::buildControls(QBoxLayout* layout) {
     });
     connect(m_fly, &QPushButton::clicked, this, [this] { setFlying(!m_flying); });
     connect(m_next, &QPushButton::clicked, this, &GameWindow::jumpToNextBurn);
+    connect(m_date, &QPushButton::clicked, this, &GameWindow::pickDate);
     connect(m_newGame, &QPushButton::clicked, this, [this] {
         setFlying(false);
         if (!m_scene) return;
@@ -321,6 +333,47 @@ void GameWindow::onTick() {
     const double next = m_session->now() + seconds * daysPerSecond * kDay;
     m_session->setNow(std::min(next, prediction->endEpoch));
     if (m_session->now() >= prediction->endEpoch) setFlying(false);
+}
+
+namespace {
+QDateTime toDateTime(double epoch) {
+    const orbit::CalendarTime t = orbit::calendarFromEpoch(std::floor(epoch / 60.0) * 60.0 + 1.0);
+    return QDateTime(QDate(t.year, t.month, t.day), QTime(t.hour, t.minute), QTimeZone::UTC);
+}
+
+double toEpoch(const QDateTime& when) {
+    const QDateTime utc = when.toUTC();
+    return orbit::epochFromCalendar({utc.date().year(), utc.date().month(), utc.date().day(),
+                                     utc.time().hour(), utc.time().minute(), 0.0});
+}
+} // namespace
+
+/// A small dialog with a calendar drop-down: type a date and time (UTC) or pick one.
+void GameWindow::pickDate() {
+    const auto* prediction = m_session->prediction();
+    if (!prediction || prediction->samples.empty()) return;
+    const double end = prediction->end != orbit::VoyageEnd::Horizon
+                           ? prediction->endEpoch
+                           : prediction->samples.back().epoch;
+    setFlying(false);
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Go to a date"));
+    auto* form = new QFormLayout(&dialog);
+    auto* edit = new QDateTimeEdit(toDateTime(m_session->now()), &dialog);
+    edit->setObjectName(QStringLiteral("edit-date"));
+    edit->setCalendarPopup(true);
+    edit->setTimeZone(QTimeZone::UTC);
+    edit->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm 'UTC'"));
+    edit->setDateTimeRange(toDateTime(m_session->startEpoch()), toDateTime(end));
+    form->addRow(tr("Date and time:"), edit);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted) return;
+    m_endingShown = false;
+    m_session->setNow(toEpoch(edit->dateTime()));
 }
 
 void GameWindow::jumpToNextBurn() {
