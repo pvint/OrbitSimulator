@@ -532,8 +532,16 @@ void GameWindow::onNowChanged() {
 
     const auto* prediction = m_session->prediction();
     if (!prediction) return;
-    m_scene->setProperty("shipPosition",
-                         scene::fromHeliocentric(sampleAt(prediction->samples, now).r));
+    const orbit::VoyageSample ship = sampleAt(prediction->samples, now);
+    m_scene->setProperty("shipPosition", scene::fromHeliocentric(ship.r));
+    // Your own speed: the number to compare with a burn's size. Δv is a change
+    // of velocity, so a burn of 1,000 m/s adds or removes up to that much.
+    const double sunSpeed = orbit::norm(ship.v);
+    const double earthSpeed =
+        orbit::norm(ship.v - orbit::planetVelocity(orbit::Planet::Earth, now));
+    m_scene->setProperty("speedText",
+                         tr("Speed: %1 (Sun), %2 (Earth)")
+                             .arg(display::speed(sunSpeed), display::speed(earthSpeed)));
     updatePath();
     updateMarkers();
     // The end of a flight that ends: show how it went (once).

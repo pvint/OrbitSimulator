@@ -35,6 +35,7 @@ Item {
 
     property string goalText
     property string dateText
+    property string speedText
     property string statusText
     property color statusColor: "#cbd5e1"
     property string busyText
@@ -319,6 +320,12 @@ Item {
                 color: "#f8fafc"
                 font.pixelSize: 22
                 font.bold: true
+            }
+            Text {
+                visible: root.speedText !== ""
+                text: root.speedText
+                color: "#e2e8f0"
+                font.pixelSize: 13
             }
         }
     }
