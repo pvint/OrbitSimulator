@@ -1,0 +1,436 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// The "Lost in space" game's view: the Sun, the planets on their orbits, and
+// the ship with its predicted path. Scene units are millions of km, in the
+// heliocentric ecliptic J2000 frame with scene y = ecliptic north
+// (scene::fromHeliocentric), as in SolarScene.qml. GameWindow (C++) sets the
+// properties marked "from C++" and fills the line geometries.
+//
+// On top: what you're trying to do and the date (top left), where the path
+// takes you (top right), and a card for starting a game and for the ending.
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtQuick3D
+
+Item {
+    id: root
+
+    // --- from C++ -----------------------------------------------------
+    property vector3d shipPosition: Qt.vector3d(0, 0, 0)
+    /// The eight planets, Mercury first (vector3d each), at the game clock.
+    property var planetPositions: []
+    /// Where each burn happens (vector3d), whether it has fired, and the
+    /// one being edited.
+    property var burnPositions: []
+    property var burnFired: []
+    property int selectedBurn: -1
+    /// The closest approach to the Earth: the ship and the Earth then.
+    property bool arrivalVisible: false
+    property vector3d arrivalShip: Qt.vector3d(0, 0, 0)
+    property vector3d arrivalEarth: Qt.vector3d(0, 0, 0)
+    property string arrivalLabel
+    /// What the camera circles: 0 = the Sun, 1 = the ship, 2 = the Earth.
+    property int followTarget: 0
+
+    property string goalText
+    property string dateText
+    property string statusText
+    property color statusColor: "#cbd5e1"
+    property string busyText
+
+    /// The card in the middle: "start" (pick a difficulty), "message" (one
+    /// button) or "" (hidden).
+    property string cardMode: "start"
+    property string cardTitle: qsTr("Lost in space")
+    property string cardText
+    property string cardButton: qsTr("OK")
+
+    signal difficultyChosen(int difficulty)
+    signal cardAccepted()
+
+    // For C++ to fill in.
+    property alias path: pathGeometry
+    property alias arrivalLine: arrivalLineGeometry
+    property alias startOrbit: startOrbitGeometry
+    function planetOrbit(index) { return planetOrbits.objectAt(index) }
+
+    readonly property var planetNames: [qsTr("Mercury"), qsTr("Venus"), qsTr("Earth"), qsTr("Mars"),
+                                        qsTr("Jupiter"), qsTr("Saturn"), qsTr("Uranus"), qsTr("Neptune")]
+    readonly property var planetColors: ["#a8a29e", "#e9c46a", "#4f9de0", "#d9603b",
+                                         "#d8a66c", "#e3c98f", "#8fd3e0", "#5b7fe8"]
+    readonly property color shipColor: "#f8fafc"
+    readonly property color burnColor: "#fb923c"
+
+    // --- camera --------------------------------------------------------
+    readonly property real sunRadius: 0.6957 // million km
+    property real yaw: 0
+    property real pitch: -60
+    property real distance: 600
+    property vector3d panOffset: Qt.vector3d(0, 0, 0)
+    readonly property vector3d earthPosition: planetPositions.length > 2 ? planetPositions[2]
+                                                                         : Qt.vector3d(0, 0, 0)
+    readonly property vector3d centrePoint: followTarget === 1 ? shipPosition
+                                          : followTarget === 2 ? earthPosition
+                                          : Qt.vector3d(0, 0, 0)
+    readonly property vector3d target: centrePoint.plus(panOffset)
+    readonly property real minDistance: followTarget === 0 ? 2 * sunRadius : 0.02
+    readonly property real maxDistance: 40000
+
+    function lookAt(p, fromDistance) {
+        panOffset = Qt.vector3d(0, 0, 0)
+        const len = Math.max(p.length(), 1e-6)
+        yaw = Math.atan2(p.x, p.z) * 180 / Math.PI
+        pitch = -Math.asin(p.y / len) * 180 / Math.PI
+        distance = Math.max(minDistance, fromDistance)
+    }
+
+    readonly property real markerScale: distance * 0.006 / 50 // #Sphere has radius 50
+
+    View3D {
+        id: view
+        anchors.fill: parent
+        camera: camera
+
+        environment: SceneEnvironment {
+            backgroundMode: SceneEnvironment.Color
+            clearColor: "#03050b"
+            antialiasingMode: SceneEnvironment.MSAA
+            antialiasingQuality: SceneEnvironment.High
+        }
+
+        Node {
+            position: root.target
+            eulerRotation.y: root.yaw
+            Node {
+                eulerRotation.x: root.pitch
+                PerspectiveCamera {
+                    id: camera
+                    z: root.distance
+                    fieldOfView: 45
+                    clipNear: Math.max(0.001, root.distance * 0.001)
+                    clipFar: root.distance * 50 + 10000
+                }
+            }
+        }
+
+        Model {
+            source: "#Sphere"
+            readonly property real size: Math.max(root.sunRadius / 50, root.markerScale * 1.8)
+            scale: Qt.vector3d(size, size, size)
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                baseColor: "#ffd27a"
+            }
+        }
+
+        Repeater3D {
+            id: planetOrbits
+            model: 8
+            delegate: Model {
+                property alias line: orbitGeometry
+                geometry: PolylineGeometry { id: orbitGeometry }
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
+                    vertexColorsEnabled: true
+                    opacity: 0.35
+                }
+            }
+        }
+        Repeater3D {
+            model: root.planetPositions
+            delegate: Model {
+                required property var modelData
+                required property int index
+                source: "#Sphere"
+                position: modelData
+                // The Earth a little larger: it's where you're going.
+                readonly property real size: root.markerScale * (index === 2 ? 1.4 : 1.0)
+                scale: Qt.vector3d(size, size, size)
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
+                    baseColor: root.planetColors[index]
+                }
+            }
+        }
+
+        // The orbit the ship started on: where it would go without burns.
+        Model {
+            geometry: PolylineGeometry { id: startOrbitGeometry }
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                vertexColorsEnabled: true
+                opacity: 0.3
+            }
+        }
+
+        // The path: flown (faint) and predicted (bright), coloured by C++.
+        Model {
+            geometry: PolylineGeometry { id: pathGeometry }
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                vertexColorsEnabled: true
+                lineWidth: 2
+            }
+        }
+
+        // Closest approach: where you'll be, where the Earth will be, and a
+        // line between them.
+        Model {
+            visible: root.arrivalVisible
+            geometry: PolylineGeometry { id: arrivalLineGeometry }
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                vertexColorsEnabled: true
+                opacity: 0.8
+            }
+        }
+        Model {
+            visible: root.arrivalVisible
+            source: "#Sphere"
+            position: root.arrivalEarth
+            readonly property real size: root.markerScale * 1.4
+            scale: Qt.vector3d(size, size, size)
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                baseColor: root.planetColors[2]
+                opacity: 0.45
+            }
+        }
+        Model {
+            visible: root.arrivalVisible
+            source: "#Sphere"
+            position: root.arrivalShip
+            readonly property real size: root.markerScale * 0.8
+            scale: Qt.vector3d(size, size, size)
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                baseColor: root.shipColor
+                opacity: 0.5
+            }
+        }
+
+        // Burns: orange ahead, the edited one larger, fired ones grey.
+        Repeater3D {
+            model: root.burnPositions
+            delegate: Model {
+                id: burnMarker
+                required property var modelData
+                required property int index
+                source: "#Sphere"
+                position: modelData
+                readonly property bool fired: root.burnFired[index] === true
+                readonly property real size: root.markerScale * (index === root.selectedBurn ? 1.5 : 1.0)
+                scale: Qt.vector3d(size, size, size)
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
+                    baseColor: burnMarker.fired ? "#64748b" : root.burnColor
+                }
+            }
+        }
+
+        Model {
+            source: "#Sphere"
+            position: root.shipPosition
+            readonly property real size: root.markerScale * 1.2
+            scale: Qt.vector3d(size, size, size)
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                baseColor: root.shipColor
+            }
+        }
+    }
+
+    // --- labels --------------------------------------------------------
+    function project(p) {
+        root.yaw; root.pitch; root.distance; root.target
+        return view.camera ? view.mapFrom3DScene(p) : Qt.vector3d(0, 0, -1)
+    }
+    component Label3D: Text {
+        property vector3d at
+        readonly property vector3d screen: { root.yaw; root.pitch; root.distance; root.target
+                                             return root.project(at) }
+        visible: screen.z > 0
+        x: screen.x + 8
+        y: screen.y - height / 2
+        font.pixelSize: 11
+    }
+    Repeater {
+        model: root.planetPositions.length
+        delegate: Label3D {
+            required property int index
+            at: root.planetPositions[index]
+            text: root.planetNames[index]
+            color: root.planetColors[index]
+        }
+    }
+    Label3D { at: Qt.vector3d(0, 0, 0); text: qsTr("Sun"); color: "#ffd27a" }
+    Label3D {
+        at: root.shipPosition
+        text: qsTr("You")
+        color: root.shipColor
+        font.bold: true
+        font.pixelSize: 12
+    }
+    Label3D {
+        visible: root.arrivalVisible && screen.z > 0
+        at: root.arrivalShip
+        text: root.arrivalLabel
+        color: "#93c5fd"
+    }
+
+    CameraControls {
+        scene: root
+        camera: camera
+        view: view
+    }
+
+    // --- heads-up display ----------------------------------------------
+    Rectangle {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.margins: 10
+        width: Math.min(root.width * 0.45, 420)
+        height: hud.implicitHeight + 20
+        radius: 6
+        color: "#cc0b1220"
+        border.color: "#334155"
+        visible: root.goalText.length > 0
+        ColumnLayout {
+            id: hud
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 4
+            Text {
+                text: qsTr("GOAL")
+                color: "#94a3b8"
+                font.pixelSize: 10
+                font.letterSpacing: 1.5
+            }
+            Text {
+                Layout.fillWidth: true
+                text: root.goalText
+                color: "#e2e8f0"
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                text: root.dateText
+                color: "#f8fafc"
+                font.pixelSize: 22
+                font.bold: true
+            }
+        }
+    }
+    Rectangle {
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 10
+        width: Math.min(root.width * 0.4, 360)
+        height: status.implicitHeight + 20
+        radius: 6
+        color: "#cc0b1220"
+        border.color: "#334155"
+        visible: root.statusText.length > 0
+        Text {
+            id: status
+            anchors.fill: parent
+            anchors.margins: 10
+            text: root.statusText
+            textFormat: Text.StyledText
+            color: root.statusColor
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap
+        }
+    }
+    Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 30
+        visible: root.busyText.length > 0
+        text: root.busyText
+        color: "#fde68a"
+        font.pixelSize: 14
+    }
+
+    // --- the card --------------------------------------------------------
+    Rectangle {
+        anchors.fill: parent
+        color: "#99000000"
+        visible: root.cardMode.length > 0
+        MouseArea { anchors.fill: parent } // the view stays still behind it
+    }
+    Rectangle {
+        id: card
+        visible: root.cardMode.length > 0
+        anchors.centerIn: parent
+        width: Math.min(root.width - 40, 560)
+        height: cardColumn.implicitHeight + 40
+        radius: 10
+        color: "#0f172a"
+        border.color: "#475569"
+        ColumnLayout {
+            id: cardColumn
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 12
+            Text {
+                text: root.cardTitle
+                color: "#f8fafc"
+                font.pixelSize: 24
+                font.bold: true
+            }
+            Text {
+                Layout.fillWidth: true
+                text: root.cardText
+                textFormat: Text.StyledText
+                color: "#cbd5e1"
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+                lineHeight: 1.2
+            }
+            // Start: three ways to play.
+            Repeater {
+                model: root.cardMode === "start" ? [
+                    { name: qsTr("Easy"), goal: qsTr("Reach the Earth's neighbourhood. Plenty of fuel.") },
+                    { name: qsTr("Normal"), goal: qsTr("Hit the atmosphere at just the right angle to land.") },
+                    { name: qsTr("Hard"), goal: qsTr("Brake into orbit around the Earth. Fuel is tight.") }
+                ] : []
+                delegate: Button {
+                    required property var modelData
+                    required property int index
+                    objectName: "button-difficulty-" + index
+                    Layout.fillWidth: true
+                    implicitHeight: 56
+                    contentItem: Column {
+                        spacing: 2
+                        leftPadding: 6
+                        Text { text: modelData.name; color: "#f8fafc"; font.pixelSize: 16; font.bold: true }
+                        Text { text: modelData.goal; color: "#94a3b8"; font.pixelSize: 12 }
+                    }
+                    background: Rectangle {
+                        radius: 6
+                        color: parent.hovered ? "#1e3a5f" : "#1e293b"
+                        border.color: parent.hovered ? "#60a5fa" : "#334155"
+                    }
+                    onClicked: root.difficultyChosen(index)
+                }
+            }
+            Button {
+                visible: root.cardMode === "message"
+                Layout.alignment: Qt.AlignRight
+                text: root.cardButton
+                onClicked: root.cardAccepted()
+            }
+        }
+    }
+
+    Text {
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.margins: 8
+        color: "#64748b"
+        font.pixelSize: 11
+        text: qsTr("Drag to turn · right-drag to pan · wheel to zoom · planets not to scale")
+    }
+}

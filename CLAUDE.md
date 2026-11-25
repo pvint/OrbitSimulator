@@ -42,8 +42,18 @@ prototype settled the physics model and the UI ideas; this is the full version.
   scene for the solar system, scenario format 7. Examples (Halley,
   ʻOumuamua, Ceres, Apophis's orbit change, Kepler's third law) checked
   against JPL by tests. Decision 34.
-- **Next:** ask the user. Candidates on the roadmap: "go to a point on a
-  path", interplanetary rocket transfers, scripting, a first release.
+- **Regroup (2026-11-24, decision 35):** the user found the app
+  overwhelming. Priority now: simple first, advanced out of the way, more
+  game than simulator, physics still real. Check in after each playable
+  piece instead of running down the roadmap.
+- **Lost in space (G1, branch `lost-in-space`):** the first game: a ship
+  on a random orbit around the Sun gets home on its fuel (Game ▸ Lost in
+  Space, `orbitsim --game`). Plan instant burns, fly, hints. Easy / Normal
+  / Hard = reach the Earth / re-entry corridor / Earth orbit.
+- **Next:** show the user the game and ask. Candidates: a start screen
+  (game, launch a rocket, tour, workbench = today's panels), burn handles
+  in 3D, "go to a point on a path", interplanetary rocket transfers,
+  scripting, a first release.
 - The app flies a rocket of one to three stages from any site and date,
   through the air, to low orbit or to the Moon, with built-in plans or a
   custom flight program, or follows a natural body past the Earth or
@@ -89,6 +99,8 @@ build/dev/src/app/orbitsim --demo-step 8 --screenshot out.png  # check a demo st
 build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
 build/dev/src/cli/orbitsim-cli --vehicle natural-body        # Apophis 2029 flyby
 build/dev/src/cli/orbitsim-cli        # CLI
+build/dev/src/app/orbitsim --game     # the Lost in Space game on its own
+build/dev/src/app/orbitsim --puzzle hard:4 --hint --no-cards --screenshot out.png
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
 cmake --build build/release --target package   # archive in build/release/
 QMAKE=<official Qt>/bin/qmake tools/make_appimage.sh build/release   # AppImage
@@ -204,6 +216,19 @@ trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
 `qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
 Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
 series it finds through properties on `qml/Plots.qml`.
+
+### Core API in brief (Lost in space)
+
+`two_body.hpp`: `propagateKepler`, `solveLambert` (universal variables).
+`voyage.hpp`: `Voyage` (start state, `Ship`, `Goal`, `Burn`s in
+prograde/radial/normal relative to the Earth inside its SOI, else the Sun),
+`flyVoyage` → `VoyageResult` (samples, burn reports, `VoyageEnd`,
+`closest` Earth approach, entry speed/angle, Δv left), `voyageStateAt`.
+`lost_in_space.hpp`: `makePuzzle(difficulty, seed, epoch)`,
+`cheapestWayHome` (porkchop), hints `burnTowardsEarth`, `refineAim`
+(B-plane Newton with the full simulation), `captureBurn`. App:
+`GameSession` (puzzle, burns, clock, background work) and `BurnPlanner`
+in orbitsim_ui; `GameWindow` + `qml/VoyageScene.qml` in the exe.
 
 ### Core API in brief (natural bodies)
 

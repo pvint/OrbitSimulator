@@ -492,6 +492,54 @@ for the closest approach to that planet.
 zero, an ellipse; above, a hyperbola. ʻOumuamua had ε > 0 all along: it came
 from another star and left again.
 
+## Lost in space: going home (`two_body.hpp`, `voyage.hpp`, `lost_in_space.hpp`)
+
+The game puts a ship on an orbit around the Sun and asks you to get back
+to the Earth. Three pieces of physics make it work.
+
+**Instant burns and the rocket equation.** A burn changes the velocity by
+Δv in one moment and uses up propellant by Tsiolkovsky's equation,
+Δv = v_e ln(m_before / m_after) with v_e = Isp · g0. The "fuel gauge" shows
+v_e ln(m / m_dry), the speed change the tanks can still buy. Treating a
+burn as instant is how interplanetary transfers are first planned: the
+engine runs for minutes, the trip lasts months.
+
+Each burn is given in the ship's own directions, relative to the body it
+is falling around (the Earth inside its sphere of influence, about
+925,000 km, otherwise the Sun): *prograde* along the velocity (faster:
+the far side of the orbit swings out), *outward* square to the velocity
+in the orbit's plane, and *north* along the orbit's angular momentum
+(tilts the plane).
+
+**Kepler's and Lambert's problems.** Kepler's problem asks where a body
+will be after a time Δt; Lambert's asks which orbit joins two points in a
+given time. Both are solved with "universal variables", one form for
+ellipses and hyperbolas alike, built on Stumpff's functions C(z) and S(z)
+(Curtis, *Orbital Mechanics for Engineering Students*, chapters 3 and 5).
+Lambert's answer gives the velocity needed at the start: the difference
+from the ship's velocity is the burn. Trying every pair of departure and
+arrival days and plotting the total cost gives a *porkchop plot*; the
+puzzle maker searches it for its lowest point to decide how much fuel to
+give you, and the Hint button does the same from wherever you are.
+
+**Aiming: the B-plane.** Aiming at the Earth's centre is no good: the
+path must miss by just the right amount for the Earth's gravity to bend it
+into the air at the right angle, or to the right perigee. The miss is
+measured on the *B-plane*, square to the incoming path through the
+Earth's centre. Angular momentum and energy give the miss distance
+b = r_p √(1 + 2μ/(r_p v∞²)) for a perigee r_p, arriving at speed v∞: the
+Earth's gravity focuses the approach, so the target is several times
+wider than the Earth. The hint aims with Lambert's answer, then refines
+the burn with Newton's method using the full simulation (every planet
+pulling), measuring where the path crosses the B-plane.
+
+**Coming home.** Re-entry is judged at 120 km up: the flight-path angle
+must be between −5° (shallower, and the capsule skips off) and −8°
+(steeper, and it burns up), at under 13 km/s (Stardust, the fastest
+return so far, came in at 12.9 km/s). Staying in orbit means braking at
+perigee, straight back along the motion, from the hyperbola's speed
+√(v∞² + 2μ/r_p) to an ellipse's (vis-viva).
+
 ## Integration (`integrator.hpp`)
 
 The equations of motion are integrated with **Dormand–Prince 5(4)**, an

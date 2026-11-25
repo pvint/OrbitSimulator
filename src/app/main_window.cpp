@@ -4,6 +4,7 @@
 #include "demo_controller.hpp"
 #include "display_format.hpp"
 #include "flight_stats_panel.hpp"
+#include "game_window.hpp"
 #include "globe_view.hpp"
 #include "orbit/core/mission_parameters.hpp"
 #include "orbit/core/scenario.hpp"
@@ -64,6 +65,13 @@ void MainWindow::createMenus() {
 
     // Filled in by createDocks() with a show/hide entry for each panel.
     m_viewMenu = menuBar()->addMenu(tr("&View"));
+
+    QMenu* gameMenu = menuBar()->addMenu(tr("&Game"));
+    gameMenu->addAction(tr("&Lost in Space…"), QKeySequence(Qt::CTRL | Qt::Key_L), this, [] {
+        auto* game = new GameWindow;
+        game->setAttribute(Qt::WA_DeleteOnClose);
+        game->show();
+    });
 
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
     helpMenu->addAction(tr("&Demo Tour"), QKeySequence(Qt::Key_F2), this, [this] { startDemo(); });

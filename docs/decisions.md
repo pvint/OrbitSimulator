@@ -587,6 +587,46 @@ the test allows for. A ΔT model could fix it if old dates come to matter.
 the Earth (switch the body's centre to the Earth to see one); rockets
 flying between planets.
 
+### 35. Regroup: simple first, and a game, "Lost in space" (2026-11-24)
+
+**Context:** after N2 the user opened the app and was overwhelmed: about
+25 sliders, a sweep table and a flight-program grid before doing anything.
+They asked for something much easier, with advanced settings still there
+but out of the way, and more like a game than a simulator while keeping
+the physics real. Their example: drop a ship on a random orbit in the
+solar system and find your way back to the Earth on the fuel you have.
+
+**Decision:**
+- A game of its own, *Lost in space* (Game ▸ Lost in Space, or
+  `orbitsim --game`), in a separate window: the solar system, a fuel
+  gauge, the goal, the date, and a burn planner. Nothing else.
+- **You plan burns rather than fly by hand** (the user's choice): pick
+  when, and how hard prograde / outward / north, and the predicted path
+  updates as you go; then fly, and burns fire as the clock passes them.
+  Months-long trips suit planning better than piloting.
+- **Burns are instant** (impulsive). Burns last minutes and the trip lasts
+  months, so this is how transfers are first designed; it is said so in
+  the code and physics.md. Finite burns can come later.
+- **The goal grows with the difficulty** (the user's choice): Easy, reach
+  the Earth's sphere of influence; Normal, hit the re-entry corridor
+  (−5° to −8°, under 13 km/s at 120 km); Hard, brake into orbit.
+- **Every puzzle is solvable:** the game solves it first (a porkchop
+  search with Lambert's problem, Sun only) and gives that cost × a
+  margin (1.6 / 1.4 / 1.25) plus a reserve for corrections. A test plays
+  puzzles of each difficulty with the hints in the full simulation and
+  checks each reaches its goal on its own fuel.
+- **Hints** do the next sensible step: the cheapest way home from now; a
+  course correction aimed on the B-plane with the full simulation; on
+  Hard, the braking burn at perigee. Hints used are counted at the end.
+- Puzzles start today, and a seed gives the same puzzle on every platform
+  (the random numbers are made from the engine's raw output, not
+  std::uniform_real_distribution, which differs between libraries).
+
+**Next (to talk over with the user):** a start screen in the main app
+that offers the game, launching a rocket, the tour, and the workbench
+(today's panels); dragging burn handles in 3D; a "go to a point on a
+path" for the game's path.
+
 ---
 
 ## Open questions

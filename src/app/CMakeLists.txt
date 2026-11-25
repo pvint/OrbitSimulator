@@ -13,10 +13,14 @@ qt_standard_project_setup(REQUIRES 6.8)
 # orbitsim_ui: the panels and the simulation controller, i.e. everything that
 # doesn't need QML. A separate library so tests/app can test it too.
 qt_add_library(orbitsim_ui STATIC
+    burn_planner.cpp
+    burn_planner.hpp
     display_format.cpp
     display_format.hpp
     flight_stats_panel.cpp
     flight_stats_panel.hpp
+    game_session.cpp
+    game_session.hpp
     parameter_panel.cpp
     parameter_panel.hpp
     program_panel.cpp
@@ -47,6 +51,8 @@ qt_add_executable(orbitsim
     ${orbitsim_platform_sources}
     demo_controller.cpp
     demo_controller.hpp
+    game_window.cpp
+    game_window.hpp
     globe_geometry.cpp
     globe_geometry.hpp
     globe_view.cpp
@@ -75,6 +81,7 @@ qt_add_qml_module(orbitsim
         qml/Plots.qml
         qml/SolarScene.qml
         qml/TimeGraph.qml
+        qml/VoyageScene.qml
 )
 
 # The example scenarios from scenarios/, compiled in for File ▸ Examples
