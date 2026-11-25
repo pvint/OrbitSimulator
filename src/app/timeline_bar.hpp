@@ -22,11 +22,14 @@ public:
 signals:
     /// The user picked this moment.
     void timeSelected(double epoch);
+    /// Double-click: the user wants to type a date.
+    void dateRequested();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private:
     double epochAt(double x) const;

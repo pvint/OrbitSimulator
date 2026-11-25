@@ -21,7 +21,6 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
-#include <QIcon>
 #include <QLabel>
 #include <QPushButton>
 #include <QQuickItem>
@@ -129,6 +128,7 @@ GameWindow::GameWindow(QWidget* parent)
     connect(m_session, &GameSession::puzzleChanged, this, &GameWindow::onPuzzleChanged);
     connect(m_session, &GameSession::predictionChanged, this, &GameWindow::onPredictionChanged);
     connect(m_session, &GameSession::nowChanged, this, &GameWindow::onNowChanged);
+    connect(m_timeline, &TimelineBar::dateRequested, this, &GameWindow::pickDate);
     connect(m_timeline, &TimelineBar::timeSelected, this, [this](double epoch) {
         // Looking around by hand: stop the clock, and let the ending card come again.
         setFlying(false);
@@ -192,7 +192,6 @@ void GameWindow::buildControls(QBoxLayout* layout) {
     row->addWidget(m_restart);
     row->addWidget(m_fly);
     row->addWidget(m_next);
-    row->addWidget(m_date);
     row->addWidget(m_speed);
     row->addStretch(1);
     row->addWidget(m_centre);
@@ -206,7 +205,6 @@ void GameWindow::buildControls(QBoxLayout* layout) {
     });
     connect(m_fly, &QPushButton::clicked, this, [this] { setFlying(!m_flying); });
     connect(m_next, &QPushButton::clicked, this, &GameWindow::jumpToNextBurn);
-    connect(m_date, &QPushButton::clicked, this, &GameWindow::pickDate);
     connect(m_newGame, &QPushButton::clicked, this, [this] {
         setFlying(false);
         if (!m_scene) return;

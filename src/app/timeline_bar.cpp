@@ -20,7 +20,7 @@ TimelineBar::TimelineBar(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("timeline-bar"));
     setMinimumHeight(40);
     setCursor(Qt::PointingHandCursor);
-    setToolTip(tr("Click or drag to go to a moment in the flight."));
+    setToolTip(tr("Click or drag to go to a moment in the flight. Double-click to type a date."));
 }
 
 QSize TimelineBar::sizeHint() const { return {400, 44}; }
@@ -111,4 +111,8 @@ void TimelineBar::mousePressEvent(QMouseEvent* event) {
 
 void TimelineBar::mouseMoveEvent(QMouseEvent* event) {
     if (event->buttons() & Qt::LeftButton) emit timeSelected(epochAt(event->position().x()));
+}
+
+void TimelineBar::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) emit dateRequested();
 }

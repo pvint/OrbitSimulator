@@ -73,7 +73,6 @@ private:
     QPushButton* m_restart = nullptr;
     QPushButton* m_fly = nullptr;
     QPushButton* m_next = nullptr;
-    QPushButton* m_date = nullptr;
     QPushButton* m_newGame = nullptr;
     QComboBox* m_speed = nullptr;
     QComboBox* m_centre = nullptr;
