@@ -4,6 +4,7 @@
 #include "display_format.hpp"
 #include "game_session.hpp"
 
+#include <QDateTimeEdit>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -14,6 +15,7 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QTimeZone>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -34,7 +36,7 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
     : QWidget(parent), m_session(session), m_fuel(new QProgressBar(this)),
       m_fuelText(new QLabel(this)), m_list(new QListWidget(this)),
       m_whenSlider(new QSlider(Qt::Horizontal, this)), m_whenSpin(new QDoubleSpinBox(this)),
-      m_whenDate(new QLabel(this)), m_size(new QLabel(this)) {
+      m_whenDate(new QDateTimeEdit(this)), m_size(new QLabel(this)) {
     auto* layout = new QVBoxLayout(this);
 
     // --- Fuel ----------------------------------------------------------
@@ -77,10 +79,16 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
     m_whenSpin->setSuffix(tr(" days"));
     m_whenSpin->setPrefix(tr("in "));
     whenRow->addWidget(m_whenSpin);
-    whenRow->addWidget(m_whenDate, 1);
+    whenRow->addStretch(1);
+    m_whenDate->setObjectName(QStringLiteral("edit-burn-date"));
+    m_whenDate->setCalendarPopup(true);
+    m_whenDate->setTimeZone(QTimeZone::UTC);
+    m_whenDate->setDisplayFormat(QStringLiteral("d MMM yyyy  HH:mm 'UTC'"));
+    m_whenDate->setToolTip(tr("Type a date and time, or open the calendar to pick one."));
     m_whenSlider->setObjectName(QStringLiteral("slider-burn-days"));
     m_whenSlider->setRange(0, kWhenSliderDays * 10);
     form->addRow(tr("When"), whenRow);
+    form->addRow(tr("Date"), m_whenDate);
     form->addRow(QString(), m_whenSlider);
     m_prograde = addAxis(form, tr("Prograde"), QStringLiteral("prograde"),
                          tr("Along your motion: faster, which swings the far side of your orbit "
@@ -125,6 +133,16 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
         editorChanged();
     });
     connect(m_whenSpin, &QDoubleSpinBox::valueChanged, this, [this] { editorChanged(); });
+    connect(m_whenDate, &QDateTimeEdit::dateTimeChanged, this, [this](const QDateTime& when) {
+        if (m_updating) return;
+        const int index = m_session->selected();
+        if (index < 0) return;
+        // The date picks the moment exactly; the spin box and slider follow
+        // when the session reports the change.
+        orbit::Burn burn = m_session->burns()[static_cast<std::size_t>(index)];
+        burn.epoch = display::epochFromDateTime(when);
+        m_session->setBurn(index, burn);
+    });
 
     connect(m_session, &GameSession::burnsChanged, this, &BurnPlanner::refresh);
     connect(m_session, &GameSession::selectionChanged, this, &BurnPlanner::refresh);
@@ -214,7 +232,11 @@ void BurnPlanner::refresh() {
         const double days = (b.epoch - m_session->now()) / kDay;
         m_whenSpin->setValue(days);
         m_whenSlider->setValue(static_cast<int>(std::lround(days * 10.0)));
-        m_whenDate->setText(display::date(b.epoch));
+        // Not before now (a burn can't be in the past), and as far ahead as the spin box goes.
+        m_whenDate->setDateTimeRange(
+            display::dateTime(m_session->now()),
+            display::dateTime(m_session->now() + m_whenSpin->maximum() * kDay));
+        m_whenDate->setDateTime(display::dateTime(b.epoch));
         for (auto [axis, value] :
              {std::pair{&m_prograde, b.prograde}, std::pair{&m_radial, b.radial},
               std::pair{&m_normal, b.normal}}) {
@@ -223,7 +245,6 @@ void BurnPlanner::refresh() {
         }
         m_size->setText(tr("Size: %1").arg(display::speed(orbit::burnSize(b))));
     } else {
-        m_whenDate->clear();
         m_size->setText(m_session->burnCount() == 0
                             ? tr("No burns yet. Add one, or ask for a hint.")
                             : tr("Pick a burn in the list to change it."));

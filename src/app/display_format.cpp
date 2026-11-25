@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QDate>
 #include <QLocale>
+#include <QTimeZone>
 
 #include <cmath>
 
@@ -43,6 +44,17 @@ QString date(double epoch) {
     // can't tip the date back into the day before at midnight.
     const orbit::CalendarTime t = orbit::calendarFromEpoch(std::floor(epoch / 60.0) * 60.0 + 1.0);
     return QLocale().toString(QDate(t.year, t.month, t.day), QStringLiteral("d MMM yyyy"));
+}
+
+QDateTime dateTime(double epoch) {
+    const orbit::CalendarTime t = orbit::calendarFromEpoch(std::floor(epoch / 60.0) * 60.0 + 1.0);
+    return QDateTime(QDate(t.year, t.month, t.day), QTime(t.hour, t.minute), QTimeZone::UTC);
+}
+
+double epochFromDateTime(const QDateTime& when) {
+    const QDateTime utc = when.toUTC();
+    return orbit::epochFromCalendar({utc.date().year(), utc.date().month(), utc.date().day(),
+                                     utc.time().hour(), utc.time().minute(), 0.0});
 }
 
 QString longDistance(double metres) {

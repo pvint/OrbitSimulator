@@ -4,6 +4,7 @@
 #include <QWidget>
 
 class GameSession;
+class QDateTimeEdit;
 class QDoubleSpinBox;
 class QGroupBox;
 class QLabel;
@@ -44,7 +45,7 @@ private:
     QGroupBox* m_editor = nullptr;
     QSlider* m_whenSlider = nullptr;
     QDoubleSpinBox* m_whenSpin = nullptr;
-    QLabel* m_whenDate = nullptr;
+    QDateTimeEdit* m_whenDate = nullptr;
     Axis m_prograde;
     Axis m_radial;
     Axis m_normal;

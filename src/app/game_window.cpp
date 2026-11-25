@@ -342,16 +342,6 @@ QString infoRow(const QString& name, const QString& value) {
         .arg(name, value);
 }
 
-QDateTime toDateTime(double epoch) {
-    const orbit::CalendarTime t = orbit::calendarFromEpoch(std::floor(epoch / 60.0) * 60.0 + 1.0);
-    return QDateTime(QDate(t.year, t.month, t.day), QTime(t.hour, t.minute), QTimeZone::UTC);
-}
-
-double toEpoch(const QDateTime& when) {
-    const QDateTime utc = when.toUTC();
-    return orbit::epochFromCalendar({utc.date().year(), utc.date().month(), utc.date().day(),
-                                     utc.time().hour(), utc.time().minute(), 0.0});
-}
 } // namespace
 
 /// A small dialog with a calendar drop-down: type a date and time (UTC) or pick one.
@@ -366,12 +356,12 @@ void GameWindow::pickDate() {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Go to a date"));
     auto* form = new QFormLayout(&dialog);
-    auto* edit = new QDateTimeEdit(toDateTime(m_session->now()), &dialog);
+    auto* edit = new QDateTimeEdit(display::dateTime(m_session->now()), &dialog);
     edit->setObjectName(QStringLiteral("edit-date"));
     edit->setCalendarPopup(true);
     edit->setTimeZone(QTimeZone::UTC);
     edit->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm 'UTC'"));
-    edit->setDateTimeRange(toDateTime(m_session->startEpoch()), toDateTime(end));
+    edit->setDateTimeRange(display::dateTime(m_session->startEpoch()), display::dateTime(end));
     form->addRow(tr("Date and time:"), edit);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     form->addRow(buttons);
@@ -379,7 +369,7 @@ void GameWindow::pickDate() {
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     if (dialog.exec() != QDialog::Accepted) return;
     m_endingShown = false;
-    m_session->setNow(toEpoch(edit->dateTime()));
+    m_session->setNow(display::epochFromDateTime(edit->dateTime()));
 }
 
 /// What the hover card says about each object, at this moment. The numbers

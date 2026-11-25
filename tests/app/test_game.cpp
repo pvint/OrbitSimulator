@@ -3,9 +3,11 @@
 // burn planner panel, offscreen.
 
 #include "burn_planner.hpp"
+#include "display_format.hpp"
 #include "game_session.hpp"
 #include "orbit/core/astro_time.hpp"
 
+#include <QDateTimeEdit>
 #include <QDoubleSpinBox>
 #include <QGroupBox>
 #include <QListWidget>
@@ -61,6 +63,16 @@ private slots:
         QCOMPARE(session.burns()[0].prograde, 250.0);
         planner.findChild<QDoubleSpinBox*>(QStringLiteral("spin-burn-days"))->setValue(30.0);
         QVERIFY(std::abs(session.burns()[0].epoch - (session.now() + 30 * kDay)) < 1.0);
+        // The calendar picker shows that moment (to the minute) and sets it too.
+        auto* date = planner.findChild<QDateTimeEdit*>(QStringLiteral("edit-burn-date"));
+        QVERIFY(date);
+        QVERIFY(std::abs(display::epochFromDateTime(date->dateTime()) - session.burns()[0].epoch) <
+                60.0);
+        date->setDateTime(display::dateTime(session.now() + 90 * kDay));
+        QVERIFY(std::abs(session.burns()[0].epoch - (session.now() + 90 * kDay)) < 60.0);
+        QCOMPARE(planner.findChild<QDoubleSpinBox*>(QStringLiteral("spin-burn-days"))->value(),
+                 std::round((session.burns()[0].epoch - session.now()) / kDay * 10.0) / 10.0);
+        planner.findChild<QDoubleSpinBox*>(QStringLiteral("spin-burn-days"))->setValue(30.0);
         session.waitForIdle();
         QCOMPARE(session.prediction()->burns.size(), std::size_t{1});
         QVERIFY(std::abs(session.prediction()->burns[0].deltaV - 250.0) < 1e-6);
