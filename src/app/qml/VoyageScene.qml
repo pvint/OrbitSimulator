@@ -420,12 +420,10 @@ Item {
         id: card
         visible: root.cardMode.length > 0
         readonly property bool atBottom: root.cardMode === "message"
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.verticalCenter: atBottom ? undefined : parent.verticalCenter
-        anchors.bottom: atBottom ? parent.bottom : undefined
-        anchors.bottomMargin: 16
+        x: (root.width - width) / 2
+        y: atBottom ? root.height - height - 16 : (root.height - height) / 2
         width: Math.min(root.width - 40, 560)
-        height: cardColumn.implicitHeight + 40
+        height: Math.min(cardColumn.implicitHeight + 40, root.height - 32)
         radius: 10
         color: "#0f172a"
         border.color: "#475569"
