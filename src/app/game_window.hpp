@@ -56,6 +56,7 @@ private:
     void updateMarkers();
     void updateTimeline();
     void pickDate();
+    void updateInfo(double now, const orbit::VoyageSample& ship);
     void updateStatus();
     void showCard(const QString& title, const QString& text, const QString& button);
     void showEnding();

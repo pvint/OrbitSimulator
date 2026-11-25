@@ -330,6 +330,18 @@ void GameWindow::onTick() {
 }
 
 namespace {
+/// Big numbers in the style "5.97e24 kg" (planet masses don't fit in tonnes).
+QString bigMass(double kilograms) {
+    return QObject::tr("%1 kg").arg(
+        QString::number(kilograms, 'e', 2).replace(QLatin1String("e+"), QLatin1String("e")));
+}
+
+QString infoRow(const QString& name, const QString& value) {
+    return QStringLiteral(
+               "<tr><td style='color:#94a3b8'>%1&nbsp;&nbsp;</td><td align='right'>%2</td></tr>")
+        .arg(name, value);
+}
+
 QDateTime toDateTime(double epoch) {
     const orbit::CalendarTime t = orbit::calendarFromEpoch(std::floor(epoch / 60.0) * 60.0 + 1.0);
     return QDateTime(QDate(t.year, t.month, t.day), QTime(t.hour, t.minute), QTimeZone::UTC);
@@ -368,6 +380,49 @@ void GameWindow::pickDate() {
     if (dialog.exec() != QDialog::Accepted) return;
     m_endingShown = false;
     m_session->setNow(toEpoch(edit->dateTime()));
+}
+
+/// What the hover card says about each object, at this moment. The numbers
+/// are the ones you plan burns with: speeds (relative to the Sun, and to you)
+/// and how far away things are.
+void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
+    // G, to turn a planet's μ = G·M back into a mass (CODATA 2018).
+    constexpr double kG = 6.67430e-11;
+    constexpr double kSunMass = orbit::kMuSun / kG;
+    const auto* prediction = m_session->prediction();
+    QVariantList texts;
+    auto card = [](const QString& title, const QString& rows) {
+        return QStringLiteral("<b>%1</b><table>%2</table>").arg(title, rows);
+    };
+    for (const orbit::Planet planet : orbit::kAllPlanets) {
+        const orbit::Vec3 r = orbit::planetPosition(planet, now);
+        const orbit::Vec3 v = orbit::planetVelocity(planet, now);
+        const auto index = static_cast<int>(planet);
+        texts.append(card(
+            m_scene->property("planetNames").toList().value(index).toString(),
+            infoRow(tr("Speed (Sun)"), display::speed(orbit::norm(v))) +
+                infoRow(tr("Distance from Sun"), display::longDistance(orbit::norm(r))) +
+                infoRow(tr("Mass"), bigMass(orbit::planetMu(planet) / kG)) +
+                infoRow(tr("Radius"), display::distance(orbit::planetRadius(planet))) +
+                infoRow(tr("Distance from you"), display::longDistance(orbit::norm(r - ship.r))) +
+                infoRow(tr("Speed vs you"), display::speed(orbit::norm(v - ship.v)))));
+    }
+    texts.append(card(tr("Sun"), infoRow(tr("Mass"), bigMass(kSunMass)) +
+                                     infoRow(tr("Radius"), display::distance(orbit::kRadiusSun)) +
+                                     infoRow(tr("Distance from you"),
+                                             display::longDistance(orbit::norm(ship.r)))));
+    const orbit::Vec3 earthR = orbit::planetPosition(orbit::Planet::Earth, now);
+    const orbit::Vec3 earthV = orbit::planetVelocity(orbit::Planet::Earth, now);
+    QString rows =
+        infoRow(tr("Speed (Sun)"), display::speed(orbit::norm(ship.v))) +
+        infoRow(tr("Speed (Earth)"), display::speed(orbit::norm(ship.v - earthV))) +
+        infoRow(tr("Distance from Sun"), display::longDistance(orbit::norm(ship.r))) +
+        infoRow(tr("Distance from Earth"), display::longDistance(orbit::norm(ship.r - earthR))) +
+        infoRow(tr("Mass"), display::mass(ship.mass));
+    if (prediction)
+        rows += infoRow(tr("Δv left after burns"), display::speed(prediction->deltaVLeft));
+    texts.append(card(tr("You"), rows));
+    m_scene->setProperty("infoTexts", texts);
 }
 
 void GameWindow::jumpToNextBurn() {
@@ -610,6 +665,7 @@ void GameWindow::onNowChanged() {
     const double sunSpeed = orbit::norm(ship.v);
     const double earthSpeed =
         orbit::norm(ship.v - orbit::planetVelocity(orbit::Planet::Earth, now));
+    updateInfo(now, ship);
     m_scene->setProperty("speedText",
                          tr("Speed: %1 (Sun), %2 (Earth)")
                              .arg(display::speed(sunSpeed), display::speed(earthSpeed)));

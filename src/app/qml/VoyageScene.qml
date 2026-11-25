@@ -32,6 +32,9 @@ Item {
     property string arrivalLabel
     /// What the camera circles: 0 = the Sun, 1 = the ship, 2 = the Earth.
     property int followTarget: 0
+    /// What hovering shows, as rich text: the eight planets, then the Sun,
+    /// then the ship (ten strings).
+    property var infoTexts: []
 
     property string goalText
     property string dateText
@@ -278,6 +281,45 @@ Item {
         at: root.arrivalShip
         text: root.arrivalLabel
         color: "#93c5fd"
+    }
+
+    // --- hover: the object under the pointer -------------------------------
+    HoverHandler { id: hover }
+    /// Index into infoTexts of the object nearest the pointer (within a few
+    /// pixels), or -1. Planets 0-7, the Sun 8, the ship 9.
+    readonly property int hoverIndex: {
+        if (!hover.hovered || root.infoTexts.length < 10) return -1
+        const pointer = hover.point.position
+        let best = -1
+        let bestDistance = 16 // pixels
+        const objects = root.planetPositions.concat([Qt.vector3d(0, 0, 0), root.shipPosition])
+        for (let i = 0; i < objects.length; ++i) {
+            const s = root.project(objects[i])
+            if (s.z <= 0) continue
+            const d = Math.hypot(s.x - pointer.x, s.y - pointer.y)
+            // The ship wins ties: it is the thing you care about.
+            if (d < bestDistance || (i === 9 && d <= bestDistance)) { best = i; bestDistance = d }
+        }
+        return best
+    }
+    Rectangle {
+        id: infoCard
+        visible: root.hoverIndex >= 0
+        x: Math.max(4, Math.min(hover.point.position.x + 18, root.width - width - 4))
+        y: Math.max(4, Math.min(hover.point.position.y + 12, root.height - height - 4))
+        width: infoText.implicitWidth + 20
+        height: infoText.implicitHeight + 16
+        radius: 6
+        color: "#ee0b1220"
+        border.color: "#475569"
+        Text {
+            id: infoText
+            anchors.centerIn: parent
+            textFormat: Text.RichText
+            text: root.hoverIndex >= 0 ? root.infoTexts[root.hoverIndex] : ""
+            color: "#e2e8f0"
+            font.pixelSize: 12
+        }
     }
 
     CameraControls {
