@@ -174,6 +174,10 @@ PlanetOrbit planetOrbit(Planet planet, double epoch) {
     return o;
 }
 
+double sphereOfInfluence(Planet planet, double epoch) {
+    return planetOrbit(planet, epoch).semiMajorAxis * std::pow(planetMu(planet) / kMuSun, 0.4);
+}
+
 Vec3 planetPosition(Planet planet, double epoch) {
     if (planet != Planet::Earth) return tablePosition(planet, epoch);
     // The table gives the Earth–Moon barycentre; the Earth is 1/82 of the

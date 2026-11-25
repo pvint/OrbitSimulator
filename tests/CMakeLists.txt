@@ -19,6 +19,7 @@ add_executable(orbit_core_tests
     test_earth.cpp
     test_heliocentric.cpp
     test_integrator.cpp
+    test_lost_in_space.cpp
     test_mission_parameters.cpp
     test_natural_body.cpp
     test_moon.cpp
@@ -27,6 +28,7 @@ add_executable(orbit_core_tests
     test_simulation.cpp
     test_solar_system.cpp
     test_staging.cpp
+    test_two_body.cpp
     test_vec3.cpp
 )
 target_link_libraries(orbit_core_tests PRIVATE orbit::core Catch2::Catch2WithMain)

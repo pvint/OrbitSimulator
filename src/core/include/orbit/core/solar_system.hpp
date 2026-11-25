@@ -88,6 +88,12 @@ struct PlanetOrbit {
 };
 PlanetOrbit planetOrbit(Planet planet, double epoch);
 
+/// The planet's sphere of influence (m), a (μ_planet / μ_sun)^(2/5) with a
+/// its orbit's semi-major axis: within it, the planet's pull shapes a
+/// passing path more than the Sun's does (Laplace's estimate). The Earth's
+/// reaches about 925,000 km.
+double sphereOfInfluence(Planet planet, double epoch);
+
 /// Turning between the J2000 ecliptic and the J2000 equator: a rotation by
 /// the obliquity about the x axis, the line where the two planes cross
 /// (towards the vernal equinox).

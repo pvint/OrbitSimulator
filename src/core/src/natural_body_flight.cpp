@@ -72,11 +72,6 @@ bool endsPass(Kind kind) {
            kind == Kind::DistanceLimit;
 }
 
-/// The planet's sphere of influence (m): a (m_planet / m_sun)^(2/5).
-double sphereOfInfluence(Planet planet, double epoch) {
-    return planetOrbit(planet, epoch).semiMajorAxis * std::pow(planetMu(planet) / kMuSun, 0.4);
-}
-
 /// One pass, forwards or backwards from the epoch. Times here are τ, seconds
 /// from the epoch (negative before it).
 class BodyPass {
