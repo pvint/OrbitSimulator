@@ -558,6 +558,35 @@ void GameWindow::updateMarkers() {
     }
     m_scene->setProperty("burnPositions", positions);
     m_scene->setProperty("burnFired", fired);
+
+    // What hovering a burn shows. Directions are relative to the Sun, or to
+    // the Earth inside its sphere of influence (as the report says).
+    QVariantList burnTexts;
+    for (int i = 0; i < m_session->burnCount(); ++i) {
+        const orbit::Burn& b = m_session->burns()[static_cast<std::size_t>(i)];
+        const auto index = static_cast<std::size_t>(i);
+        const orbit::VoyageSample at = sampleAt(prediction->samples, b.epoch);
+        QString rows = infoRow(tr("When"), display::date(b.epoch)) +
+                       infoRow(tr("Size"), display::speed(orbit::burnSize(b))) +
+                       infoRow(tr("Prograde"), display::speed(b.prograde)) +
+                       infoRow(tr("Outward"), display::speed(b.radial)) +
+                       infoRow(tr("North"), display::speed(b.normal));
+        if (index < prediction->burns.size()) {
+            const orbit::BurnReport& report = prediction->burns[index];
+            rows += infoRow(tr("Directions vs"),
+                            report.body == orbit::ReferenceBody::Earth ? tr("Earth") : tr("Sun"));
+            if (report.shortOfFuel) {
+                rows +=
+                    infoRow(tr("Given"), tr("%1 (out of fuel)").arg(display::speed(report.deltaV)));
+            }
+        }
+        rows += infoRow(tr("Speed before (Sun)"), display::speed(orbit::norm(at.v)));
+        burnTexts.append(QStringLiteral("<b>%1</b><table>%2</table>")
+                             .arg(m_session->isLocked(i) ? tr("Burn %1 (done)").arg(i + 1)
+                                                         : tr("Burn %1").arg(i + 1),
+                                  rows));
+    }
+    m_scene->setProperty("burnInfoTexts", burnTexts);
     m_scene->setProperty("selectedBurn", m_session->selected());
 
     const orbit::EarthApproach& c = prediction->closest;
