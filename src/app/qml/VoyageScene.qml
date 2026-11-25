@@ -411,13 +411,19 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: "#99000000"
-        visible: root.cardMode.length > 0
+        // Only the start card dims the view; messages sit at the bottom and
+        // leave the scene (the Earth!) visible and usable.
+        visible: root.cardMode === "start"
         MouseArea { anchors.fill: parent } // the view stays still behind it
     }
     Rectangle {
         id: card
         visible: root.cardMode.length > 0
-        anchors.centerIn: parent
+        readonly property bool atBottom: root.cardMode === "message"
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: atBottom ? undefined : parent.verticalCenter
+        anchors.bottom: atBottom ? parent.bottom : undefined
+        anchors.bottomMargin: 16
         width: Math.min(root.width - 40, 560)
         height: cardColumn.implicitHeight + 40
         radius: 10
