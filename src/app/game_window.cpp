@@ -173,10 +173,6 @@ void GameWindow::buildControls(QBoxLayout* layout) {
         new QPushButton(style()->standardIcon(QStyle::SP_MediaSkipForward), tr("Next burn"), bar);
     m_next->setObjectName(QStringLiteral("button-next-burn"));
     m_next->setToolTip(tr("Jump ahead to the next burn."));
-    m_date =
-        new QPushButton(QIcon::fromTheme(QStringLiteral("x-office-calendar")), tr("Date…"), bar);
-    m_date->setObjectName(QStringLiteral("button-date"));
-    m_date->setToolTip(tr("Type or pick a date and time to jump to (UTC)."));
     m_speed = new QComboBox(bar);
     m_speed->setObjectName(QStringLiteral("combo-speed"));
     for (const int days : {1, 5, 20, 60}) {
