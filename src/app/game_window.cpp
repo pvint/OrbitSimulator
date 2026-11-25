@@ -11,6 +11,7 @@
 #include "orbit/core/solar_system.hpp"
 #include "polyline_geometry.hpp"
 #include "scene_coordinates.hpp"
+#include "timeline_bar.hpp"
 
 #include <QComboBox>
 #include <QDateTime>
@@ -111,6 +112,8 @@ GameWindow::GameWindow(QWidget* parent)
     m_view->setSource(QUrl(QStringLiteral("qrc:/qt/qml/OrbitSim/qml/VoyageScene.qml")));
     m_view->setMinimumSize(500, 400);
     left->addWidget(m_view, 1);
+    m_timeline = new TimelineBar;
+    left->addWidget(m_timeline);
     buildControls(left);
     layout->addLayout(left, 1);
     m_planner->setFixedWidth(330);
@@ -120,6 +123,12 @@ GameWindow::GameWindow(QWidget* parent)
     connect(m_session, &GameSession::puzzleChanged, this, &GameWindow::onPuzzleChanged);
     connect(m_session, &GameSession::predictionChanged, this, &GameWindow::onPredictionChanged);
     connect(m_session, &GameSession::nowChanged, this, &GameWindow::onNowChanged);
+    connect(m_timeline, &TimelineBar::timeSelected, this, [this](double epoch) {
+        // Looking around by hand: stop the clock, and let the ending card come again.
+        setFlying(false);
+        m_endingShown = false;
+        m_session->setNow(epoch);
+    });
     connect(m_session, &GameSession::burnsChanged, this, &GameWindow::updateMarkers);
     connect(m_session, &GameSession::selectionChanged, this, &GameWindow::updateMarkers);
     connect(m_session, &GameSession::hintReady, this,
@@ -382,6 +391,7 @@ void GameWindow::updateStartOrbit() {
 }
 
 void GameWindow::onPredictionChanged() {
+    updateTimeline();
     m_pathSplit = static_cast<std::size_t>(-1);
     updatePath();
     updateMarkers();
@@ -420,7 +430,20 @@ void GameWindow::updatePath() {
 }
 
 /// Burn markers and the closest-approach markers.
+void GameWindow::updateTimeline() {
+    const auto* prediction = m_session->prediction();
+    if (!prediction || prediction->samples.empty()) return;
+    const double end = prediction->end != orbit::VoyageEnd::Horizon
+                           ? prediction->endEpoch
+                           : prediction->samples.back().epoch;
+    m_timeline->setRange(m_session->startEpoch(), end);
+    std::vector<double> burns;
+    for (const orbit::Burn& b : m_session->burns()) burns.push_back(b.epoch);
+    m_timeline->setBurns(std::move(burns));
+}
+
 void GameWindow::updateMarkers() {
+    updateTimeline();
     const auto* prediction = m_session->prediction();
     if (!m_scene || !prediction) return;
     QVariantList positions;
@@ -530,6 +553,7 @@ void GameWindow::onNowChanged() {
     m_scene->setProperty("planetPositions", planets);
     m_scene->setProperty("dateText", m_session->hasPuzzle() ? display::date(now) : QString());
 
+    m_timeline->setNow(now);
     const auto* prediction = m_session->prediction();
     if (!prediction) return;
     const orbit::VoyageSample ship = sampleAt(prediction->samples, now);

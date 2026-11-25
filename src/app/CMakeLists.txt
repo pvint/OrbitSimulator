@@ -31,6 +31,8 @@ qt_add_library(orbitsim_ui STATIC
     simulation_controller.hpp
     sweep_panel.cpp
     sweep_panel.hpp
+    timeline_bar.cpp
+    timeline_bar.hpp
 )
 target_include_directories(orbitsim_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(orbitsim_ui PUBLIC orbit::core Qt6::Widgets Qt6::Concurrent)

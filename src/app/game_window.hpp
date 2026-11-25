@@ -17,6 +17,7 @@ class QComboBox;
 class QPushButton;
 class QQuickItem;
 class QQuickWidget;
+class TimelineBar;
 
 /// "Lost in space": a window of its own for the game. The solar system with
 /// the ship's predicted path fills it; the burn planner sits on the right;
@@ -53,6 +54,7 @@ private:
     void updatePath();
     void updateStartOrbit();
     void updateMarkers();
+    void updateTimeline();
     void updateStatus();
     void showCard(const QString& title, const QString& text, const QString& button);
     void showEnding();
@@ -66,6 +68,7 @@ private:
     PolylineGeometry* m_startOrbit = nullptr;
     std::array<PolylineGeometry*, 8> m_planetOrbits{};
 
+    TimelineBar* m_timeline = nullptr;
     QPushButton* m_restart = nullptr;
     QPushButton* m_fly = nullptr;
     QPushButton* m_next = nullptr;
