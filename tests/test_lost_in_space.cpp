@@ -214,7 +214,10 @@ TEST_CASE("A puzzle near a planet starts near it, outside its sphere of influenc
     const auto [region, planet] =
         GENERATE(table<Region, Planet>({{Region::Venus, Planet::Venus},
                                         {Region::Mars, Planet::Mars},
-                                        {Region::Jupiter, Planet::Jupiter}}));
+                                        {Region::Jupiter, Planet::Jupiter},
+                                        {Region::Saturn, Planet::Saturn},
+                                        {Region::Uranus, Planet::Uranus},
+                                        {Region::Neptune, Planet::Neptune}}));
     CAPTURE(regionName(region));
     const double t = epoch2027();
     const Puzzle puzzle = makePuzzle(Difficulty::Easy, 7, t, region);
@@ -263,7 +266,8 @@ TEST_CASE("Coming home from Jupiter: brake before the air, or burn up", "[lost-i
 
 TEST_CASE("Every region's puzzles can be solved on their fuel", "[lost-in-space][regions]") {
     const Region region =
-        GENERATE(Region::Venus, Region::Mars, Region::AsteroidBelt, Region::Jupiter);
+        GENERATE(Region::Venus, Region::Mars, Region::AsteroidBelt, Region::Jupiter, Region::Saturn,
+                 Region::Uranus, Region::Neptune);
     const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
     CAPTURE(regionName(region), difficultyName(difficulty));
     checkPuzzle(makePuzzle(difficulty, 3, epoch2027(), region));

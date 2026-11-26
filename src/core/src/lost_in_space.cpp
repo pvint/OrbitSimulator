@@ -20,9 +20,9 @@ namespace {
 constexpr double kDay = 86400.0;
 constexpr double kYear = 365.25 * kDay;
 constexpr double kShortestFlight = 30.0 * kDay;
-/// The longest trip searched for: it must fit in a prediction
-/// (VoyageOptions::horizon, 4 years from the last burn).
-constexpr double kLongestTrip = 3.5 * kYear;
+/// The longest trip searched for: a little more than a Hohmann transfer
+/// from Neptune (31 years).
+constexpr double kLongestTrip = 40.0 * kYear;
 constexpr double kCapturePerigeeAltitude = 200e3; ///< m
 constexpr double kAimEntryAngle = degToRad(-6.5); ///< the corridor's middle
 /// A re-entry aims this much under the fastest survivable entry speed.
@@ -85,9 +85,15 @@ NearPlanet nearPlanetFor(Region region) {
     case Region::Mars:
         return {Planet::Mars, degToRad(2.0), degToRad(6.0), 500.0};
     case Region::Jupiter:
-        // Further ahead: Jupiter's sphere of influence is 0.3 au across,
+        // Further ahead: Jupiter's sphere of influence reaches 0.32 au,
         // and its pull would dominate the start.
         return {Planet::Jupiter, degToRad(12.0), degToRad(20.0), 300.0};
+    case Region::Saturn: // sphere of influence 0.36 au
+        return {Planet::Saturn, degToRad(12.0), degToRad(20.0), 250.0};
+    case Region::Uranus: // 0.35 au
+        return {Planet::Uranus, degToRad(8.0), degToRad(14.0), 150.0};
+    case Region::Neptune: // 0.58 au
+        return {Planet::Neptune, degToRad(6.0), degToRad(12.0), 120.0};
     case Region::BetweenPlanets:
     case Region::AsteroidBelt:
         break;
@@ -116,6 +122,9 @@ PositionVelocity randomStart(Region region, const Setup& setup, Random& random, 
     case Region::Venus:
     case Region::Mars:
     case Region::Jupiter:
+    case Region::Saturn:
+    case Region::Uranus:
+    case Region::Neptune:
         break;
     }
     // On the planet's orbit, a few degrees ahead or behind: Kepler's
@@ -271,6 +280,12 @@ std::string_view regionKey(Region region) {
         return "belt";
     case Region::Jupiter:
         return "jupiter";
+    case Region::Saturn:
+        return "saturn";
+    case Region::Uranus:
+        return "uranus";
+    case Region::Neptune:
+        return "neptune";
     }
     return "";
 }
@@ -294,6 +309,12 @@ std::string_view regionName(Region region) {
         return "In the asteroid belt";
     case Region::Jupiter:
         return "Near Jupiter";
+    case Region::Saturn:
+        return "Near Saturn";
+    case Region::Uranus:
+        return "Near Uranus";
+    case Region::Neptune:
+        return "Near Neptune";
     }
     return "";
 }
@@ -361,32 +382,41 @@ std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const V
     const EarthTable earth(epoch, window + longestFlight + 10.0 * kDay);
     const TwoBodyState start{r, v};
     std::optional<TransferPlan> best;
-    const auto consider = [&](double departure, double flight) {
-        if (departure < epoch || flight < kShortestFlight) return;
-        const TwoBodyState ship = propagateKepler(start, departure - epoch, kMuSun);
+    const auto consider = [&](const TwoBodyState& ship, double departure, double flight) {
+        if (flight < kShortestFlight) return;
         const auto plan = transfer(ship, departure, flight, earth, goal);
         if (plan && (!best || plan->total() < best->total())) best = plan;
     };
+    const auto shipAt = [&](double departure) {
+        return propagateKepler(start, departure - epoch, kMuSun);
+    };
 
-    // A coarse grid over (departure, flight time): the porkchop plot...
+    // A coarse grid over (departure, flight time): the porkchop plot. The
+    // flight times are 5 days apart, or wider for trips of decades (the
+    // cost changes more slowly the longer the trip)...
     constexpr double kDepartureStep = 4.0 * kDay;
-    constexpr double kFlightStep = 5.0 * kDay;
+    const double flightStep = std::max(5.0 * kDay, (longestFlight - kShortestFlight) / 600.0);
     const int departures = static_cast<int>(window / kDepartureStep);
-    const int flights = static_cast<int>((longestFlight - kShortestFlight) / kFlightStep);
+    const int flights = static_cast<int>((longestFlight - kShortestFlight) / flightStep);
     for (int i = 0; i <= departures; ++i) {
+        const double departure = epoch + i * kDepartureStep;
+        const TwoBodyState ship = shipAt(departure);
         for (int j = 0; j <= flights; ++j) {
-            consider(epoch + i * kDepartureStep, kShortestFlight + j * kFlightStep);
+            consider(ship, departure, kShortestFlight + j * flightStep);
         }
     }
     if (!best) return std::nullopt;
-    // ...then a finer one, a quarter of a day apart, around its lowest point.
+    // ...then a finer one around its lowest point, a quarter of a day apart
+    // in departure, and a twentieth of the coarse step in flight time.
     const TransferPlan coarse = *best;
     const double coarseFlight = coarse.arrival - coarse.departure;
     constexpr double kFine = 0.25 * kDay;
+    const double fineFlight = flightStep / 20.0;
     for (int i = -16; i <= 16; ++i) {
-        for (int j = -20; j <= 20; ++j) {
-            consider(coarse.departure + i * kFine, coarseFlight + j * kFine);
-        }
+        const double departure = coarse.departure + i * kFine;
+        if (departure < epoch) continue;
+        const TwoBodyState ship = shipAt(departure);
+        for (int j = -20; j <= 20; ++j) consider(ship, departure, coarseFlight + j * fineFlight);
     }
     return best;
 }
@@ -436,6 +466,8 @@ Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch, Regio
         candidate.voyage.position = pv.r;
         candidate.voyage.velocity = pv.v;
         candidate.voyage.goal = goal;
+        // Predictions look far enough ahead for the longest trip searched.
+        candidate.voyage.lookAhead = span.longestFlight;
         candidate.plan = *plan;
 
         const double cost = plan->total();
@@ -511,6 +543,7 @@ std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
     trial.position = start.r;
     trial.velocity = start.v;
     trial.ship = voyage.ship;
+    trial.lookAhead = voyage.lookAhead;
     trial.ship.propellant = std::max(0.0, start.mass - voyage.ship.dryMass);
     trial.goal = Goal::EarthOrbit;
     trial.burns = {original};

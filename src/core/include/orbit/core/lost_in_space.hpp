@@ -33,13 +33,14 @@
 // WHERE YOU'RE LOST
 // A puzzle can start anywhere between the planets (a random orbit not far
 // from the Earth's, wider for harder puzzles) or near a place: Venus,
-// Mars, the asteroid belt or Jupiter. Near a planet, the ship shares its
+// Mars, the asteroid belt, or one of the giant planets. Near a planet, the ship shares its
 // orbit, a few degrees ahead of it or behind it, with a small random push
 // so the two drift apart: far enough that the planet's own pull hardly
 // matters. The further out, the longer the trip and the faster the ship
 // meets the Earth: by Kepler's third law, a Hohmann transfer from Jupiter
 // (half an ellipse from 5.2 au down to 1 au) takes 2.7 years, and arrives
-// nearly 9 km/s faster than the Earth is moving.
+// nearly 9 km/s faster than the Earth is moving. From Neptune the same
+// half ellipse takes 31 years: a reason to look for a gravity assist.
 //
 // COMING IN TOO FAST
 // A capsule falling from far away meets the air at √(v∞² + 2μ/r): from
@@ -68,11 +69,15 @@ enum class Region {
     Mars,
     AsteroidBelt,
     Jupiter,
+    Saturn,
+    Uranus,
+    Neptune,
 };
-inline constexpr std::array kAllRegions{Region::BetweenPlanets, Region::Venus, Region::Mars,
-                                        Region::AsteroidBelt, Region::Jupiter};
+inline constexpr std::array kAllRegions{Region::BetweenPlanets, Region::Venus,   Region::Mars,
+                                        Region::AsteroidBelt,   Region::Jupiter, Region::Saturn,
+                                        Region::Uranus,         Region::Neptune};
 /// A short key for files and the command line ("between", "venus", "mars",
-/// "belt", "jupiter"), and back.
+/// "belt", "jupiter", "saturn", "uranus", "neptune"), and back.
 std::string_view regionKey(Region region);
 std::optional<Region> regionFromKey(std::string_view key);
 /// For people: "Between the planets", "Near Venus", ...
@@ -130,9 +135,10 @@ struct SearchSpan {
     /// for the ship and the Earth to come back to the same places relative
     /// to each other, 1 / |1/T − 1/T_earth| (between 1 and 2.2 years).
     double window = 0.0;
-    /// Trips up to this long (s): 1.4 times a Hohmann transfer's from the
+    /// Trips up to this long (s): 1.3 times a Hohmann transfer's from the
     /// orbit's far point down (or up) to the Earth's orbit, π √(a³/μ) with
-    /// a the average of the two distances, and at least 540 days.
+    /// a the average of the two distances; at least 540 days, at most 40
+    /// years.
     double longestFlight = 0.0;
 };
 SearchSpan searchSpan(const Vec3& r, const Vec3& v);

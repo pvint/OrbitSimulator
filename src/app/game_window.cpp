@@ -101,6 +101,12 @@ QString regionPhrase(orbit::Region region) {
         return QObject::tr("in the asteroid belt");
     case orbit::Region::Jupiter:
         return QObject::tr("near Jupiter");
+    case orbit::Region::Saturn:
+        return QObject::tr("near Saturn");
+    case orbit::Region::Uranus:
+        return QObject::tr("near Uranus");
+    case orbit::Region::Neptune:
+        return QObject::tr("near Neptune");
     }
     return {};
 }
@@ -207,7 +213,7 @@ void GameWindow::buildControls(QBoxLayout* layout) {
     m_next->setToolTip(tr("Jump ahead to the next burn."));
     m_speed = new QComboBox(bar);
     m_speed->setObjectName(QStringLiteral("combo-speed"));
-    for (const int days : {1, 5, 20, 60}) {
+    for (const int days : {1, 5, 20, 60, 180, 365}) {
         m_speed->addItem(days == 1 ? tr("1 day a second") : tr("%1 days a second").arg(days), days);
     }
     m_speed->setCurrentIndex(2);
@@ -315,6 +321,14 @@ void GameWindow::onPuzzleChanged() {
     updateStartOrbit();
     m_centre->setCurrentIndex(0);
     resetView();
+    // A clock that flies the way home in a minute and a half or so: the
+    // slowest speed that does, and not slower than 20 days a second.
+    const double tripDays = (puzzle.plan.arrival - v.startEpoch) / kDay;
+    for (int i = 0; i < m_speed->count(); ++i) {
+        const double daysPerSecond = m_speed->itemData(i).toDouble();
+        m_speed->setCurrentIndex(i);
+        if (daysPerSecond >= 20.0 && tripDays / daysPerSecond <= 90.0) break;
+    }
 
     if (m_welcomePending) {
         m_welcomePending = false;

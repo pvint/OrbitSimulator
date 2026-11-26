@@ -70,7 +70,9 @@ void TimelineBar::paintEvent(QPaintEvent*) {
     p.drawRoundedRect(flown, 3, 3);
 
     // Date ticks: the first step from this list that leaves room for labels.
-    constexpr std::array<double, 8> steps{5, 10, 30, 60, 91.3125, 182.625, 365.25, 730.5};
+    // (Days; whole years for trips of decades.)
+    constexpr std::array<double, 10> steps{5,       10,     30,    60,      91.3125,
+                                           182.625, 365.25, 730.5, 1826.25, 3652.5};
     double step = steps.back();
     for (const double s : steps) {
         if (t.width() * s * kDay / (m_end - m_start) >= kLabelSpace) {

@@ -64,7 +64,13 @@ Item {
         { name: qsTr("Asteroid belt"),
           about: qsTr("Between Mars and Jupiter. A long fall home, more than a year, arriving fast.") },
         { name: qsTr("Near Jupiter"),
-          about: qsTr("Five times further from the Sun than the Earth. About three years home, so fast at the end that landing means braking first.") }
+          about: qsTr("Five times further from the Sun than the Earth. About three years home, so fast at the end that landing means braking first.") },
+        { name: qsTr("Near Saturn"),
+          about: qsTr("Ten times further out. Six years home the direct way: can Jupiter's gravity help?") },
+        { name: qsTr("Near Uranus"),
+          about: qsTr("Twenty times further out. Sixteen years home the direct way, unless a giant planet bends your path.") },
+        { name: qsTr("Near Neptune"),
+          about: qsTr("The edge of the planets, thirty times further out. Thirty years home the direct way: look for a gravity assist.") }
     ]
 
     signal startChosen(int region, int difficulty)

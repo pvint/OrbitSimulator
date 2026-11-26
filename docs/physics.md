@@ -541,7 +541,7 @@ perigee, straight back along the motion, from the hyperbola's speed
 √(v∞² + 2μ/r_p) to an ellipse's (vis-viva).
 
 **Coming home from further out.** A puzzle can start near Venus, Mars,
-in the asteroid belt or near Jupiter. Near a planet the ship shares its
+in the asteroid belt or near one of the giant planets. Near a planet the ship shares its
 orbit a few degrees ahead or behind, pushed so it drifts away: by Kepler's
 third law (T ∝ a^(3/2)) a ship slowed down a little has a smaller, quicker
 orbit and pulls ahead. How long to search depends on the distance: the
@@ -549,7 +549,10 @@ ship and the Earth line up again every *synodic period*,
 1 / |1/T − 1/T_earth| (Mars: 780 days; Jupiter: 399), and the trip takes
 about half the period of a Hohmann transfer ellipse, π √(a³/μ) with a the
 average of the two distances: 146 days from Venus, 259 from Mars, 2.7
-years from Jupiter. The further out, the faster the Earth is met: from
+years from Jupiter, 6 from Saturn, 16 from Uranus and 31 from Neptune
+(which is why real missions to the outer planets use gravity assists).
+Far from every planet the integrator takes steps of up to a month, as
+long as no planet could be reached within five of them. The further out, the faster the Earth is met: from
 Jupiter, v∞ ≈ 9 km/s, so the capsule would hit the air at
 √(v∞² + 2μ/r) ≈ 14 km/s. To land, it brakes first, inside the Earth's
 sphere of influence, against its motion relative to the Earth, until the

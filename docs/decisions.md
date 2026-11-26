@@ -663,6 +663,42 @@ solar system, not only from an orbit near the Earth's.
   puzzle carries 30–90 t of propellant. Real, and a point for a future
   talk about better engines.
 
+### 37. Outer planets, gravity assists, and Earth → X (2026-11-25)
+
+**Context:** the user asked for the outer planets as start places, for
+trips the other way (from the Earth to a planet), and said they look
+forward to trying gravity assists.
+
+**Decision (the user's choices, asked before starting):**
+- **Order:** outer planets first, then flyby tools, then Earth → X,
+  checking in after each.
+- **Assists are for the player to find, not the hints.** Hints keep
+  finding direct routes (Lambert, one leg); the player gets tools: where
+  the path passes each planet and what the pass did, and a helper that
+  aims a burn at a chosen planet, distance and side. A good assist beats
+  the hint's fuel use.
+- **Earth → X starts in a 200 km parking orbit** (the Oberth effect is
+  part of the physics to learn), a few weeks before a good departure so
+  nobody sits through months of orbits. Goals: Easy, reach the planet's
+  sphere of influence; Normal, a close pass (a few planet radii, a
+  flyby probe); Hard, brake into orbit around it.
+
+**Step 1, outer planets (done):** Saturn, Uranus and Neptune as start
+places. The direct way home takes about 6, 16 and 30 years, which is the
+point: room for an assist to do better.
+- Puzzles set `Voyage::lookAhead` to their longest searched trip (up to
+  40 years), so predictions reach the Earth; the default horizon stays 4
+  years.
+- The integrator's step cap grows from a day to up to 30 days far from
+  every planet (no planet within five steps at 60 km/s closing speed), so
+  a 30-year flight costs about what a 4-year one did. Near a planet it is
+  still a day, so a step can't jump over a flyby.
+- The porkchop's flight-time step widens for long trips (600 columns),
+  and the ship's state is propagated once per departure day.
+- The clock picks a speed that flies the way home in about 90 s, with
+  new speeds of 180 and 365 days a second; the timeline ticks every 5 or
+  10 years on long trips.
+
 ---
 
 ## Open questions

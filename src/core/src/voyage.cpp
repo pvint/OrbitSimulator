@@ -17,9 +17,16 @@ namespace orbit {
 namespace {
 
 constexpr double kDay = 86400.0;
-/// The longest integration step: the step size adapts anyway, but the cap
-/// makes sure a step never jumps clean over a close pass by the Earth.
+/// The longest integration step near a planet: the step size adapts
+/// anyway, but the cap makes sure a step never jumps clean over a close
+/// pass by the Earth, or a planet.
 constexpr double kMaxStep = kDay;
+/// Far from every planet (out past Jupiter, on a trip of decades), steps may
+/// grow to this...
+constexpr double kMaxFarStep = 30.0 * kDay;
+/// ...as long as no planet could be reached in five of them: the fastest a
+/// ship and a planet close on each other here is well under this.
+constexpr double kFastestClosing = 60e3; ///< m/s
 /// Output samples are spaced by this fraction of √(r³/μ) (a circular period
 /// over 2π), around the Sun, or around the Earth when that is shorter.
 constexpr double kOutputFraction = 0.005;
@@ -47,6 +54,17 @@ enum class Event {
 };
 constexpr std::array kEvents{Event::SunImpact, Event::EntryInterface, Event::EarthArrival,
                              Event::EarthClosest};
+
+/// The longest step allowed here: a day near any planet (or the Sun), up to
+/// a month far from all of them, so that a step never carries the ship past
+/// a planet it could have flown close to.
+double maxStep(double t, const State& y) {
+    double nearest = norm(y.r);
+    for (const Planet planet : kAllPlanets) {
+        nearest = std::min(nearest, norm(y.r - planetPosition(planet, t)));
+    }
+    return std::clamp(0.2 * nearest / kFastestClosing, kMaxStep, kMaxFarStep);
+}
 
 class VoyageFlight {
 public:
@@ -146,7 +164,7 @@ bool VoyageFlight::coastTo(double tEnd) {
             finish(VoyageEnd::Horizon);
             return true;
         }
-        double hStep = std::min(h, kMaxStep);
+        double hStep = std::min(h, maxStep(m_t, m_y));
         if (m_t + hStep > tEnd) hStep = tEnd - m_t;
         const auto result = m_stepper.step(m_t, m_y, hStep);
         h = result.nextStep;
@@ -261,7 +279,8 @@ VoyageResult VoyageFlight::run() {
     std::ranges::stable_sort(burns, {}, &Burn::epoch);
 
     const double lastEvent = burns.empty() ? m_voyage->startEpoch : burns.back().epoch;
-    const double end = m_opt->stopAt ? *m_opt->stopAt : lastEvent + m_opt->horizon;
+    const double end =
+        m_opt->stopAt ? *m_opt->stopAt : lastEvent + std::max(m_opt->horizon, m_voyage->lookAhead);
 
     const Ship& ship = m_voyage->ship;
     m_t = m_voyage->startEpoch;

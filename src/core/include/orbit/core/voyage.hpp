@@ -110,6 +110,9 @@ struct Voyage {
     Ship ship;
     Goal goal = Goal::ReachEarth;
     std::vector<Burn> burns; ///< flown in order of time; burns before the start are skipped
+    /// Predictions look at least this far past the last burn (s), if more
+    /// than VoyageOptions::horizon: a puzzle far out sets its longest trip.
+    double lookAhead = 0.0;
 };
 
 struct VoyageOptions {
