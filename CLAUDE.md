@@ -61,14 +61,12 @@ prototype settled the physics model and the UI ideas; this is the full version.
   no goal); famous missions' trajectories to play with (noted, not
   started). Older candidates: burn handles in 3D, "go to a point on a
   path", scripting, a first release.
-- The app flies a rocket of one to three stages from any site and date,
-  through the air, to low orbit or to the Moon, with built-in plans or a
-  custom flight program, or follows a natural body past the Earth or
-  around the Sun; sweeps
-  (of any parameter or program step), ghosts, scenario files, 30 example
-  scenarios, a textured Earth and Moon lit by the real Sun, a solar-system
-  view, and a 20-step demo tour. 129 test suites pass (GCC, Clang,
-  ASan/UBSan); clang-tidy is clean.
+- **One app (G2, decision 38):** the game window is the app. The old
+  workbench UI (panels, sweeps, plots, globe view, demo tour) was deleted;
+  it's in git history (before branch `one-app`). The core still flies
+  rockets of one to three stages from any site through the air to orbit
+  or the Moon, and follows natural bodies, from `orbitsim-cli` and the
+  tests; the launch is to come back as a mode in the game later.
 - **Open questions:** see the end of `docs/decisions.md` (scripting
   language, importing a body from JPL by name, code signing). Decision 33
   also notes a known 0.36° approximation: the Earth turns by the IERS
@@ -99,15 +97,13 @@ cmake --build --preset dev    # build
 ctest --preset dev            # run tests
 cmake --workflow --preset dev # all three in one go
 
-build/dev/src/app/orbitsim            # GUI
+build/dev/src/app/orbitsim            # the app (the game)
 build/dev/src/app/orbitsim --screenshot out.png   # render the window to a file and quit
-build/dev/src/app/orbitsim scenarios/kick-angle-sweep.json   # open a scenario
-build/dev/src/app/orbitsim --demo-step 8 --screenshot out.png  # check a demo step
+build/dev/src/app/orbitsim --puzzle hard:4 --hint --no-cards --screenshot out.png
+build/dev/src/app/orbitsim --puzzle normal:earth:saturn   # from low Earth orbit to Saturn
 build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
 build/dev/src/cli/orbitsim-cli --vehicle natural-body        # Apophis 2029 flyby
 build/dev/src/cli/orbitsim-cli        # CLI
-build/dev/src/app/orbitsim --game     # the Lost in Space game on its own
-build/dev/src/app/orbitsim --puzzle hard:4 --hint --no-cards --screenshot out.png
 clang-tidy -p build/dev-clang <files> # lint (needs the dev-clang build)
 cmake --build build/release --target package   # archive in build/release/
 QMAKE=<official Qt>/bin/qmake tools/make_appimage.sh build/release   # AppImage
@@ -119,14 +115,11 @@ tools/install_local.sh                # release build + tests + sudo install int
 ```
 src/core/      physics library (namespace orbit). Public headers in include/orbit/core/
 src/cli/       orbitsim-cli
-src/app/       Qt app. orbitsim_ui (static lib): panels + SimulationController, no QML.
-               orbitsim (exe): main window, GlobeView (3D + playback), PlotPanel,
-               custom Quick 3D geometries, QML scenes in qml/, textures in assets/
+src/app/       Qt app, the game. orbitsim_ui (static lib): GameSession, BurnPlanner,
+               TimelineBar, no QML. orbitsim (exe): GameWindow, custom Quick 3D
+               geometries, QML scenes in qml/, textures in assets/
 tools/         textures and icons (make_*.sh), make_appimage.sh, smoke_test.sh (CI)
-scenarios/     example scenario files (built into the app's File ▸ Examples; each is
-               loaded and flown by a test)
-demos/         tour.json: the guided demo tour (Help ▸ Demo Tour); a test checks every
-               step's scenario exists and loads
+scenarios/     example scenario files for orbitsim-cli (each is loaded and flown by a test)
 tests/         Catch2 tests for the core; tests/app: Qt Test GUI tests of orbitsim_ui
 cmake/         CompilerWarnings.cmake (orbit_set_warnings), Packaging.cmake (CPack)
 docs/          decisions.md (why things are the way they are), physics.md (the physics, explained)
@@ -144,11 +137,10 @@ prototype/web/ the original JavaScript prototype, kept for reference
 - Include order (clang-format enforces it): our own headers, then Qt, then std.
 - Every new target calls `orbit_set_warnings(<target>)`.
 - Mission parameters are defined once, in `orbit/core/mission_parameters.hpp`.
-  The GUI sliders and CLI options are generated from it; add new numeric
-  parameters there, not in the UI.
-- Widgets that tests need to find get an `objectName` (e.g. `spin-kick-angle`).
-  New panel behaviour gets a Qt Test in `tests/app/test_ui.cpp` (runs offscreen).
-- Simulations never run on the GUI thread: go through `SimulationController`.
+  The CLI options are generated from it.
+- Widgets that tests need to find get an `objectName` (e.g. `button-hint`).
+  New game behaviour gets a Qt Test in `tests/app/test_game.cpp` (runs offscreen).
+- Simulations never run on the GUI thread: go through `GameSession`.
 - Visual checks: use `orbitsim --screenshot FILE` (captures only the app's own
   window). Never grab the desktop or "active window" with screen tools: that
   can capture the user's other applications.
@@ -157,12 +149,10 @@ prototype/web/ the original JavaScript prototype, kept for reference
   `scenarioFromJson()`; never break existing files. New example scenarios go
   in `scenarios/` with a name and description, and must load without warnings
   (a test checks).
-- Demo tours (`demos/`, `orbit/core/demo.hpp`) refer to scenarios by file
-  name. Captions are for a curious newcomer: plain words, what to look at.
-- Saved window layout is versioned (`kLayoutVersion` in main_window.cpp): bump
-  it when panels are added or removed.
-- 3D scene: 1 unit = 1 km, axes (x, z, −y) of the physics frame; always convert
-  with `scene::fromPhysics()` (src/app/scene_coordinates.hpp).
+- Texts on cards are for a curious newcomer: plain words, what to look at.
+- 3D scene: 1 unit = 1 million km, heliocentric ecliptic, scene y = ecliptic
+  north; always convert with `scene::fromHeliocentric()`
+  (src/app/scene_coordinates.hpp).
 - Git: one branch per milestone (`m1-physics`, ...), small focused commits,
   merged to `main` when the milestone runs. Commit messages: a short summary
   line, then why.
@@ -175,9 +165,8 @@ prototype/web/ the original JavaScript prototype, kept for reference
 ## Tech stack
 
 C++20, CMake 3.25+ with presets, Ninja. Qt 6.8+ (developed against 6.11):
-- Widgets for the window, docks and forms.
-- Qt Quick 3D for the 3D view, and Qt Graphs for the plots. Both are QML scenes
-  embedded with `QQuickWidget`.
+- Widgets for the window and the burn planner.
+- Qt Quick 3D for the 3D view, a QML scene embedded with `QQuickWidget`.
 
 Tests use Catch2 v3 (installed system package first, FetchContent fallback).
 See `docs/decisions.md` for the reasons.
@@ -218,19 +207,13 @@ Each milestone ends with something that runs.
 | G7 | Landing where there's air: an entry goal at Titan, Mars, Venus (the Earth's re-entry generalised) | |
 | Later | Famous missions to replay and change (Voyager 2, Cassini, New Horizons, Juno, Apollo); landing on airless moons (powered descent); the rocket launch from the ground as a mode | |
 
-### App structure in brief (M2–M4)
+### App structure in brief (the game)
 
-`MainWindow` owns the state: mission, optional sweep, latest `RunSet`, the
-selected flight, the scenario file. `ParameterPanel` / `SweepPanel` report
-user changes → `SimulationController::run(mission, sweep)` simulates on worker
-threads (latest wins; sweep flights in parallel) → `resultReady(RunSet)` →
-`MainWindow::showSelection()` feeds `FlightStatsPanel`, `PlotPanel` (selected
-bold, other sweep flights faint), `GlobeView` (ditto in 3D, or fading ghosts
-of recent single flights) and the sweep legend. `GlobeView` fills the
-trajectory (inertial) and ground track (Earth-fixed) `PolylineGeometry`s in
-`qml/GlobeScene.qml` and drives playback (rocket position via `stateAt()`,
-Earth rotation angle). `PlotPanel` pushes data into Qt Graphs
-series it finds through properties on `qml/Plots.qml`.
+`GameWindow` (exe) holds `GameSession` (orbitsim_ui: puzzle, burns, clock,
+predictions and hints on worker threads), `BurnPlanner` (the side panel),
+`TimelineBar` and `qml/VoyageScene.qml` (the solar system, the path, markers,
+cards; `CameraControls.qml`). It fills `PolylineGeometry`s for the path and
+orbits and sets scene properties on each clock tick.
 
 ### Core API in brief (Lost in space)
 
@@ -274,10 +257,7 @@ panels, sweeps and saved files.
 (converts, leaves a state vector), `centreMu`. `gravity.hpp`:
 `heliocentricGravity`. `SimResult::frame` (`ResultFrame`), `SimResult::solar`
 (`SolarSummary`: perihelion, first/last orbit, approaches per planet,
-`impacted`). App: `GlobeView` holds two scenes (GlobeScene.qml in km,
-SolarScene.qml in millions of km, `scene::fromHeliocentric`) and switches
-by the result's frame; shared QML: CameraControls, DemoCaption,
-OrientationGizmo.
+`impacted`).
 
 ### Core API in brief (maneuver editor)
 
@@ -285,8 +265,7 @@ OrientationGizmo.
 functions for plans, `Steering` and `StepEnd` (`kAll...` arrays), and
 `stepValueToDisplay/FromDisplay` (km, °, rev, s). `sweep.hpp`: `SweepTarget`,
 `sweepTargets(mission)` (parameters + `step-N-value` for custom programs),
-`findSweepTarget`. App: `ProgramPanel` (orbitsim_ui) in the "Flight program"
-dock, tabbed with Graphs. CLI: `--show-program`, and impact points.
+`findSweepTarget`. CLI: `--show-program`, and impact points.
 
 ### Core API in brief (staging)
 

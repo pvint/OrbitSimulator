@@ -2,25 +2,24 @@
 
 [![CI](https://github.com/pvint/OrbitSimulator/actions/workflows/ci.yml/badge.svg)](https://github.com/pvint/OrbitSimulator/actions/workflows/ci.yml)
 
-A desktop app for building intuition about orbital mechanics. Launch a rocket
-from anywhere on a rotating Earth, see where it goes, and sweep a parameter
-to compare a whole family of trajectories side by side.
+A desktop game for building intuition about orbital mechanics, with the
+physics kept real. You're somewhere in the solar system with a tank of fuel:
+plan burns, watch where they take you, and get where you're going. Go home
+to the Earth from between the planets, from the asteroid belt or from
+orbit around Jupiter, or leave a low orbit around the Earth for Mars or
+Saturn. The Sun and every planet pull on you all the way, so a close pass
+by a planet can bend your path and speed you up for free (a gravity
+assist).
 
-**Status:** early development, but it flies to the Moon. New here? Start
-the guided tour: *Help ▸ Demo Tour* (F2), or `orbitsim --demo`. The desktop app shows
-flights on a textured 3D Earth (lit by the real Sun for the launch date), with
-the Moon, playback, live parameter sliders, results and graphs, parameter
-sweeps that compare a whole family of flights, scenario files with built-in
-examples, and a guided tour. Rockets fly through a real atmosphere, with
-drag and max-Q, and can have up to three stages. Instead of a rocket you
-can follow a natural body: an asteroid or comet passing the Earth, or going
-round the Sun among the planets.
-`orbitsim-cli` flies missions and sweeps from the command
-line. See the roadmap in [CLAUDE.md](CLAUDE.md). The
-original 2D browser prototype, which already works, is in
+**Status:** early development. Hints plan the way for you when you're
+stuck; "Aim at a planet…" lines a burn up for a flyby. The physics library
+also flies rockets from the ground through the air to orbit or the Moon,
+and follows asteroids and comets: `orbitsim-cli` runs those from the
+command line (the app will bring the launch back as a mode later). See the
+roadmap in [CLAUDE.md](CLAUDE.md). The original 2D browser prototype is in
 [prototype/web](prototype/web/README.md).
 
-![The main window: a flight to low orbit from Cape Canaveral](docs/images/main-window.png)
+![The game: leaving the Earth for Jupiter](docs/images/main-window.png)
 
 ## Installing
 
@@ -224,9 +223,8 @@ nothing is missing. Pushing a tag such as `v0.2.0` (matching the version in
 ```
 src/core/      the physics, in plain C++ (no Qt)
 src/cli/       orbitsim-cli: runs the physics without a GUI
-src/app/       the Qt desktop app (Widgets, plus QML for the 3D view and plots)
-scenarios/     example scenario files
-demos/         the guided demo tour
+src/app/       the Qt desktop app, the game (Widgets, plus QML for the 3D view)
+scenarios/     example scenario files (for orbitsim-cli and the tests)
 tools/         helper scripts: textures, icons, the AppImage, CI's smoke test
 tests/         physics tests (Catch2)
 dist/          Linux desktop file and AppStream metadata; the Gentoo ebuild

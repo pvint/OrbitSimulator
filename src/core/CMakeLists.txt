@@ -19,7 +19,6 @@ add_library(orbit_core STATIC
     src/aerodynamics.cpp
     src/astro_time.cpp
     src/atmosphere.cpp
-    src/demo.cpp
     src/ephemeris.cpp
     src/flight_program.cpp
     src/flyby.cpp

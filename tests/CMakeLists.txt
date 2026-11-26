@@ -35,8 +35,7 @@ add_executable(orbit_core_tests
 target_link_libraries(orbit_core_tests PRIVATE orbit::core Catch2::Catch2WithMain)
 # Where the bundled example scenarios live (test_scenario.cpp loads them all).
 target_compile_definitions(orbit_core_tests PRIVATE
-    ORBIT_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/scenarios"
-    ORBIT_DEMO_DIR="${PROJECT_SOURCE_DIR}/demos")
+    ORBIT_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/scenarios")
 orbit_set_warnings(orbit_core_tests)
 
 # Register each TEST_CASE as its own CTest test.

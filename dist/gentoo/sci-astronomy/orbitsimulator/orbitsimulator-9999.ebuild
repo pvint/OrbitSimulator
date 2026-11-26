@@ -27,7 +27,6 @@ RDEPEND="
 	gui? (
 		dev-qt/qtbase:6[concurrent,gui,widgets]
 		dev-qt/qtdeclarative:6
-		dev-qt/qtgraphs:6
 		dev-qt/qtquick3d:6
 	)
 "

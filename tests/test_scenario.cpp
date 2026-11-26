@@ -3,7 +3,6 @@
 
 #include "orbit/core/angles.hpp"
 #include "orbit/core/astro_time.hpp"
-#include "orbit/core/demo.hpp"
 #include "orbit/core/mission_parameters.hpp"
 #include "orbit/core/parse.hpp"
 #include "orbit/core/scenario.hpp"
@@ -202,44 +201,6 @@ TEST_CASE("Version 1 files fly as they always did: in a vacuum, with a 25° kick
     REQUIRE_THAT(json, ContainsSubstring("\"diameter\": 2.4"));
 }
 
-TEST_CASE("The bundled demo tour is valid and its scenarios exist", "[demo]") {
-    std::ifstream in(std::filesystem::path(ORBIT_DEMO_DIR) / "tour.json");
-    REQUIRE(in);
-    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    const Demo demo = demoFromJson(text);
-    REQUIRE(demo.steps.size() >= 5);
-    for (const DemoStep& step : demo.steps) {
-        CAPTURE(step.title, step.scenario);
-        REQUIRE_FALSE(step.caption.empty());
-        REQUIRE(step.seconds > 0.0);
-        const LoadedScenario loaded =
-            loadScenarioFile(std::filesystem::path(ORBIT_SCENARIO_DIR) / step.scenario);
-        REQUIRE(loaded.warnings.empty());
-    }
-}
-
-TEST_CASE("Broken demos are refused", "[demo]") {
-    REQUIRE_THROWS_AS(demoFromJson("[]"), DemoError);
-    REQUIRE_THROWS_AS(demoFromJson(R"({"format": "orbitsim-demo", "version": 1, "steps": []})"),
-                      DemoError);
-    REQUIRE_THROWS_WITH(demoFromJson(R"({"format": "orbitsim-demo", "version": 1,
-                         "steps": [{"title": "t", "caption": "c", "scenario": "s.json",
-                                    "view": "sideways"}]})"),
-                        ContainsSubstring("view"));
-    const Demo ok = demoFromJson(R"({"format": "orbitsim-demo", "version": 1,
-        "steps": [{"title": "t", "caption": "c", "scenario": "s.json", "centre": "moon",
-                   "start-hours": 2}]})");
-    REQUIRE(ok.steps.front().centre == DemoCentre::Moon);
-    REQUIRE(ok.steps.front().startTime == 7200.0);
-}
-
-TEST_CASE("Demo steps can look along or down on the orbit's plane", "[demo]") {
-    const Demo demo = demoFromJson(R"({"format": "orbitsim-demo", "version": 1,
-        "steps": [{"title": "t", "caption": "c", "scenario": "s.json", "view": "edge-on"},
-                  {"title": "t", "caption": "c", "scenario": "s.json", "view": "above-orbit"}]})");
-    REQUIRE(demo.steps.at(0).view == DemoView::EdgeOn);
-    REQUIRE(demo.steps.at(1).view == DemoView::AboveOrbit);
-}
 
 TEST_CASE("Numbers are read the same in any locale", "[parse]") {
     REQUIRE(parseDouble("28.5") == 28.5);

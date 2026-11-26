@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "game_session.hpp"
 #include "game_window.hpp"
-#include "main_window.hpp"
 #include "orbit/core/version.hpp"
 
 #include <QApplication>
@@ -11,7 +10,6 @@
 #include <QStandardPaths>
 #include <QTimer>
 
-#include <algorithm>
 
 namespace {
 
@@ -22,7 +20,7 @@ void saveScreenshotLater(QWidget* window, const QString& path, int delayMs) {
     });
 }
 
-/// The game in a window of its own (--game, --puzzle).
+/// The game: the app's one window (--puzzle starts one straight away).
 struct GameOptions {
     QCommandLineOption puzzle;
     QCommandLineOption hint;
@@ -115,13 +113,9 @@ int main(int argc, char* argv[]) {
                                    QStringLiteral("Milliseconds to wait before the screenshot "
                                                   "(default 3000)."),
                                    QStringLiteral("ms"), QStringLiteral("3000"));
-    const QCommandLineOption demo(QStringLiteral("demo"),
-                                  QStringLiteral("Start the guided demo tour."));
-    const QCommandLineOption demoStep(
-        QStringLiteral("demo-step"), QStringLiteral("Start the demo tour at step <n> (1 = first)."),
-        QStringLiteral("n"));
+    // Accepted for old shortcuts and scripts: the game is the app now.
     const QCommandLineOption game(QStringLiteral("game"),
-                                  QStringLiteral("Open the Lost in Space game on its own."));
+                                  QStringLiteral("Open the game (the default)."));
     const QCommandLineOption puzzle(
         QStringLiteral("puzzle"),
         QStringLiteral("Start the game with this puzzle, in any order: easy, normal or hard; "
@@ -135,29 +129,7 @@ int main(int argc, char* argv[]) {
     const QCommandLineOption noCards(QStringLiteral("no-cards"),
                                      QStringLiteral("In the game, skip the message cards "
                                                     "(for screenshots)."));
-    parser.addOptions({screenshot, delay, demo, demoStep, game, puzzle, hint, noCards});
-    parser.addPositionalArgument(QStringLiteral("scenario"),
-                                 QStringLiteral("A scenario file to open (optional)."),
-                                 QStringLiteral("[scenario]"));
+    parser.addOptions({screenshot, delay, game, puzzle, hint, noCards});
     parser.process(app);
-
-    if (parser.isSet(game) || parser.isSet(puzzle)) {
-        return runGame(parser, {puzzle, hint, noCards, screenshot, delay});
-    }
-
-    MainWindow window;
-    window.show();
-    if (!parser.positionalArguments().isEmpty()) {
-        window.openScenarioFile(parser.positionalArguments().constFirst());
-    }
-    if (parser.isSet(demoStep)) {
-        window.startDemo(std::max(0, parser.value(demoStep).toInt() - 1));
-    } else if (parser.isSet(demo)) {
-        window.startDemo();
-    }
-
-    if (parser.isSet(screenshot)) {
-        saveScreenshotLater(&window, parser.value(screenshot), parser.value(delay).toInt());
-    }
-    return QApplication::exec();
+    return runGame(parser, {puzzle, hint, noCards, screenshot, delay});
 }

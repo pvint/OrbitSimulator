@@ -5,22 +5,22 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>Orbit Simulator</name>
-  <summary>Launch rockets from a turning Earth and see how orbits work</summary>
+  <summary>Find your way around the solar system with real orbital physics</summary>
   <developer id="io.github.pvint">
     <name>Paul Vint</name>
   </developer>
   <description>
     <p>
-      Orbit Simulator is for building an intuition for orbital mechanics. A rocket
-      launches from anywhere on a rotating 3D Earth, at any date and time, and you see
-      its path, its orbit and graphs of the flight.
+      Orbit Simulator is a game for building an intuition for orbital mechanics.
+      You're somewhere in the solar system with a tank of fuel: plan burns, watch
+      where they take you, and get where you're going. The Sun and every planet
+      pull on you all the way.
     </p>
     <ul>
-      <li>One to three stages, a payload, and an atmosphere with drag</li>
-      <li>Built-in flight plans, or your own list of burns and coasts</li>
-      <li>Sweep any setting to compare a whole family of flights side by side</li>
-      <li>Fly to the Moon, with the Sun and Moon where they really were</li>
-      <li>A guided demo tour and example scenarios to start from</li>
+      <li>Get home from between the planets, the asteroid belt or orbit around Jupiter</li>
+      <li>Leave a low orbit around the Earth for any planet: reach it, fly past it, or orbit it</li>
+      <li>Gravity assists: aim a pass by a planet and see what it gives you</li>
+      <li>Hints that plan the way when you're stuck</li>
     </ul>
   </description>
   <launchable type="desktop-id">io.github.pvint.OrbitSimulator.desktop</launchable>
@@ -28,7 +28,7 @@
   <url type="bugtracker">https://github.com/pvint/OrbitSimulator/issues</url>
   <screenshots>
     <screenshot type="default">
-      <caption>A flight to low orbit from Cape Canaveral</caption>
+      <caption>Leaving the Earth for Jupiter</caption>
       <image>https://raw.githubusercontent.com/pvint/OrbitSimulator/main/docs/images/main-window.png</image>
     </screenshot>
   </screenshots>
