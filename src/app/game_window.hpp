@@ -31,13 +31,13 @@ public:
     explicit GameWindow(QWidget* parent = nullptr);
 
     /// Start a puzzle straight away (from the command line).
-    void startPuzzle(orbit::Difficulty difficulty, std::uint64_t seed);
+    void startPuzzle(orbit::Difficulty difficulty, orbit::Region region, std::uint64_t seed);
     GameSession* session() const { return m_session; }
     /// Show the message cards (welcome, hints, endings). Off for screenshots.
     void setCardsEnabled(bool enabled) { m_cardsEnabled = enabled; }
 
     // Connected by name to VoyageScene.qml's signals.
-    Q_SLOT void chooseDifficulty(int index);
+    Q_SLOT void chooseStart(int region, int difficulty);
     Q_SLOT void acceptCard();
 
 private:
@@ -70,7 +70,7 @@ private:
     PolylineGeometry* m_startOrbit = nullptr;
     std::array<PolylineGeometry*, 8> m_planetOrbits{};
 
-    TimelineBar* m_timeline = nullptr;
+    TimelineBar* m_timeline;
     QPushButton* m_restart = nullptr;
     QPushButton* m_fly = nullptr;
     QPushButton* m_next = nullptr;

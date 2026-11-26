@@ -113,8 +113,9 @@ struct Voyage {
 };
 
 struct VoyageOptions {
-    /// How far to look ahead past the later of the start and the last burn.
-    double horizon = 3.0 * 365.25 * 86400.0;
+    /// How far to look ahead past the later of the start and the last burn:
+    /// long enough for the trip home from Jupiter (about 2.7 years).
+    double horizon = 4.0 * 365.25 * 86400.0;
     /// If set, the flight stops at this epoch instead (to get the state
     /// there, or to keep a prediction short).
     std::optional<double> stopAt;

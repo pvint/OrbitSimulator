@@ -14,6 +14,7 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
+#include <utility>
 
 using namespace orbit;
 using Catch::Matchers::WithinAbs;
@@ -128,21 +129,12 @@ TEST_CASE("The same seed always gives the same puzzle", "[lost-in-space]") {
     CHECK(a.voyage.position != c.voyage.position);
 }
 
-TEST_CASE("Every puzzle can be solved on its fuel, with the full simulation", "[lost-in-space]") {
-    const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
-    const std::uint64_t seed = GENERATE(1U, 2U);
-    CAPTURE(difficultyName(difficulty), seed);
+namespace {
 
-    const Puzzle puzzle = makePuzzle(difficulty, seed, epoch2027());
+/// Play a puzzle the way the hints would, and fly it.
+VoyageResult solveLikeTheHints(const Puzzle& puzzle) {
     const TransferPlan& plan = puzzle.plan;
-    CAPTURE(plan.departureCost, plan.arrivalCost, puzzle.budget);
-    REQUIRE(plan.total() > 0.0);
-    CHECK(puzzle.budget > plan.total());
-    CHECK_THAT(deltaVCapacity(puzzle.voyage.ship), WithinRel(puzzle.budget, 1e-9));
-    CHECK(plan.departure >= puzzle.voyage.startEpoch);
-
-    // Play it the way the hints would: the departure burn from Lambert,
-    // fine-tuned with the real gravity...
+    // The departure burn from Lambert, fine-tuned with the real gravity...
     Voyage voyage = puzzle.voyage;
     const auto departure = burnTowardsEarth(voyage, plan.departure, plan.arrival);
     REQUIRE(departure);
@@ -155,6 +147,16 @@ TEST_CASE("Every puzzle can be solved on its fuel, with the full simulation", "[
     const auto correction = refineAim(voyage, 1);
     REQUIRE(correction);
     voyage.burns[1] = *correction;
+    // ...coming home from far away, braking inside the Earth's sphere of
+    // influence (and aiming again) so the heat shield survives...
+    if (voyage.goal == Goal::Reentry) {
+        if (const auto brake = approachBrake(voyage, voyage.startEpoch)) {
+            voyage.burns.push_back(*brake);
+            const auto aimed = refineAim(voyage, 2);
+            REQUIRE(aimed);
+            voyage.burns[2] = *aimed;
+        }
+    }
     // ...and, to stay, braking at perigee.
     if (voyage.goal == Goal::EarthOrbit) {
         const auto brake = captureBurn(voyage);
@@ -163,8 +165,9 @@ TEST_CASE("Every puzzle can be solved on its fuel, with the full simulation", "[
     }
 
     const VoyageResult result = flyVoyage(voyage);
-    CAPTURE(describe(result.end), result.deltaVLeft, burnSize(voyage.burns[0]),
-            burnSize(voyage.burns[1]));
+    CAPTURE(describe(result.end), result.deltaVLeft, result.entrySpeed,
+            radToDeg(result.entryAngle));
+    for (const Burn& b : voyage.burns) UNSCOPED_INFO("burn of " << burnSize(b) << " m/s");
     CHECK(result.goalMet);
     for (const BurnReport& b : result.burns) CHECK_FALSE(b.shortOfFuel);
     CHECK(result.deltaVLeft > 0.0);
@@ -173,5 +176,95 @@ TEST_CASE("Every puzzle can be solved on its fuel, with the full simulation", "[
     if (voyage.goal == Goal::Reentry) {
         CHECK(result.entryAngle < degToRad(-5.0));
         CHECK(result.entryAngle > degToRad(-8.0));
+        CHECK(result.entrySpeed < VoyageOptions{}.fastestEntry);
     }
+    return result;
+}
+
+void checkPuzzle(const Puzzle& puzzle) {
+    const TransferPlan& plan = puzzle.plan;
+    CAPTURE(plan.departureCost, plan.arrivalCost, plan.vInfinity, puzzle.budget,
+            (plan.arrival - plan.departure) / kDay);
+    REQUIRE(plan.total() > 0.0);
+    CHECK(puzzle.budget > plan.total());
+    CHECK_THAT(deltaVCapacity(puzzle.voyage.ship), WithinRel(puzzle.budget, 1e-9));
+    CHECK(plan.departure >= puzzle.voyage.startEpoch);
+    solveLikeTheHints(puzzle);
+}
+
+} // namespace
+
+TEST_CASE("Every puzzle can be solved on its fuel, with the full simulation", "[lost-in-space]") {
+    const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
+    const std::uint64_t seed = GENERATE(1U, 2U);
+    CAPTURE(difficultyName(difficulty), seed);
+    checkPuzzle(makePuzzle(difficulty, seed, epoch2027()));
+}
+
+TEST_CASE("Regions: names and keys go both ways", "[lost-in-space]") {
+    for (const Region region : kAllRegions) {
+        CHECK(regionFromKey(regionKey(region)) == region);
+        CHECK_FALSE(regionName(region).empty());
+    }
+    CHECK_FALSE(regionFromKey("pluto"));
+}
+
+TEST_CASE("A puzzle near a planet starts near it, outside its sphere of influence",
+          "[lost-in-space]") {
+    const auto [region, planet] =
+        GENERATE(table<Region, Planet>({{Region::Venus, Planet::Venus},
+                                        {Region::Mars, Planet::Mars},
+                                        {Region::Jupiter, Planet::Jupiter}}));
+    CAPTURE(regionName(region));
+    const double t = epoch2027();
+    const Puzzle puzzle = makePuzzle(Difficulty::Easy, 7, t, region);
+    CHECK(puzzle.region == region);
+    const double fromPlanet = norm(puzzle.voyage.position - planetPosition(planet, t));
+    const double fromSun = norm(planetPosition(planet, t));
+    CHECK(fromPlanet > 3.0 * sphereOfInfluence(planet, t));
+    CHECK(fromPlanet < 0.4 * fromSun); // within about 20° along its orbit
+    // About the planet's speed: it shares the orbit, give or take a push.
+    CHECK_THAT(norm(puzzle.voyage.velocity), WithinRel(norm(planetVelocity(planet, t)), 0.05));
+}
+
+TEST_CASE("The search for a way home grows with the distance from the Sun", "[lost-in-space]") {
+    const auto circular = [](double au) {
+        const Vec3 r{au * kAstronomicalUnit, 0.0, 0.0};
+        return std::pair{r, Vec3{0.0, std::sqrt(kMuSun / norm(r)), 0.0}};
+    };
+    const auto [rMars, vMars] = circular(1.52);
+    const auto [rJupiter, vJupiter] = circular(5.2);
+    const SearchSpan mars = searchSpan(rMars, vMars);
+    const SearchSpan jupiter = searchSpan(rJupiter, vJupiter);
+    // Mars and the Earth line up every 780 days (capped at 2.2 years);
+    // Jupiter every 399 days.
+    CHECK_THAT(mars.window / kDay, WithinAbs(2.2 * 365.25, 1.0));
+    CHECK_THAT(jupiter.window / kDay, WithinAbs(1.1 * 398.9, 5.0));
+    // A Hohmann transfer from Jupiter takes about 997 days.
+    CHECK_THAT(jupiter.longestFlight / kDay, WithinRel(1.3 * 997.0, 0.02));
+    CHECK(mars.longestFlight == 540.0 * kDay);
+}
+
+TEST_CASE("Coming home from Jupiter: brake before the air, or burn up", "[lost-in-space]") {
+    // v∞ = 8.8 km/s (a Hohmann return from Jupiter) hits the air at
+    // √(v∞² + 2μ/r_I) ≈ 14 km/s: too fast. The brake costs about the
+    // difference in v∞.
+    CHECK(fastestReentryArrival() > 6000.0);
+    CHECK(fastestReentryArrival() < 6800.0);
+    CHECK_THAT(arrivalCost(Goal::Reentry, 8800.0),
+               WithinAbs(8800.0 - fastestReentryArrival(), 1e-9));
+
+    EarthApproach slowPass;
+    slowPass.valid = true;
+    slowPass.distance = kRadiusEarth + 500e3;
+    slowPass.speed = std::sqrt(3000.0 * 3000.0 + 2.0 * planetMu(Planet::Earth) / slowPass.distance);
+    CHECK_THAT(approachSpeed(slowPass), WithinRel(3000.0, 1e-9));
+}
+
+TEST_CASE("Every region's puzzles can be solved on their fuel", "[lost-in-space][regions]") {
+    const Region region =
+        GENERATE(Region::Venus, Region::Mars, Region::AsteroidBelt, Region::Jupiter);
+    const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
+    CAPTURE(regionName(region), difficultyName(difficulty));
+    checkPuzzle(makePuzzle(difficulty, 3, epoch2027(), region));
 }

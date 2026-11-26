@@ -29,10 +29,29 @@
 // (conservation of angular momentum, h = b v∞ = r_p v_p, and of energy,
 // v_p² = v∞² + 2μ/r_p). Gravity "focuses" the approach: a target the size
 // of the Earth's atmosphere is a few times larger in the B-plane.
+//
+// WHERE YOU'RE LOST
+// A puzzle can start anywhere between the planets (a random orbit not far
+// from the Earth's, wider for harder puzzles) or near a place: Venus,
+// Mars, the asteroid belt or Jupiter. Near a planet, the ship shares its
+// orbit, a few degrees ahead of it or behind it, with a small random push
+// so the two drift apart: far enough that the planet's own pull hardly
+// matters. The further out, the longer the trip and the faster the ship
+// meets the Earth: by Kepler's third law, a Hohmann transfer from Jupiter
+// (half an ellipse from 5.2 au down to 1 au) takes 2.7 years, and arrives
+// nearly 9 km/s faster than the Earth is moving.
+//
+// COMING IN TOO FAST
+// A capsule falling from far away meets the air at √(v∞² + 2μ/r): from
+// Jupiter's distance, over 14 km/s, more than any heat shield has taken.
+// To land, it must first shed some of v∞, braking against its motion
+// relative to the Earth once inside its sphere of influence
+// (approachBrake).
 #pragma once
 
 #include "orbit/core/voyage.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -41,6 +60,23 @@ namespace orbit {
 
 enum class Difficulty { Easy, Normal, Hard };
 std::string_view difficultyName(Difficulty difficulty);
+
+/// Where a puzzle starts.
+enum class Region {
+    BetweenPlanets, ///< a random orbit not far from the Earth's
+    Venus,
+    Mars,
+    AsteroidBelt,
+    Jupiter,
+};
+inline constexpr std::array kAllRegions{Region::BetweenPlanets, Region::Venus, Region::Mars,
+                                        Region::AsteroidBelt, Region::Jupiter};
+/// A short key for files and the command line ("between", "venus", "mars",
+/// "belt", "jupiter"), and back.
+std::string_view regionKey(Region region);
+std::optional<Region> regionFromKey(std::string_view key);
+/// For people: "Between the planets", "Near Venus", ...
+std::string_view regionName(Region region);
 
 /// The goal at each difficulty: Easy, reach the Earth; Normal, re-enter
 /// inside the corridor; Hard, end in orbit around the Earth.
@@ -56,6 +92,10 @@ Goal goalFor(Difficulty difficulty);
 ///               Moon's distance, √(2μ/r_p − 2μ/(r_p + r_a)).
 double arrivalCost(Goal goal, double vInfinity, const VoyageOptions& options = {});
 
+/// The fastest v∞ (m/s) that a re-entry can arrive with, keeping a little
+/// under the fastest survivable entry speed: v∞ = √(v_entry² − 2μ/r_I).
+double fastestReentryArrival(const VoyageOptions& options = {});
+
 /// The impact parameter b to aim for (m), arriving with speed v∞ (m/s):
 ///   Reentry     the middle of the corridor: an entry at γ = −6.5°, from
 ///               h = r_I v_I cos γ at the entry interface (r_I, v_I there),
@@ -67,12 +107,14 @@ double aimImpactParameter(Goal goal, double vInfinity, const VoyageOptions& opti
 
 /// A transfer from the ship's orbit to the Earth.
 struct TransferPlan {
-    double departure = 0.0;     ///< epoch of the burn
-    double arrival = 0.0;       ///< epoch at the Earth
-    Vec3 departureDeltaV;       ///< m/s, heliocentric
-    double departureCost = 0.0; ///< m/s
-    double vInfinity = 0.0;     ///< arrival speed relative to the Earth (m/s)
-    double arrivalCost = 0.0;   ///< m/s (arrivalCost())
+    double departure = 0.0; ///< epoch of the burn
+    double arrival = 0.0;   ///< epoch at the Earth
+    Vec3 departureDeltaV;   ///< m/s, heliocentric, with only the Sun pulling
+    /// m/s: |departureDeltaV|, or in a puzzle the burn from where the full
+    /// simulation puts the ship, if that is dearer.
+    double departureCost = 0.0;
+    double vInfinity = 0.0;   ///< arrival speed relative to the Earth (m/s)
+    double arrivalCost = 0.0; ///< m/s (arrivalCost())
     double total() const { return departureCost + arrivalCost; }
 };
 
@@ -82,17 +124,32 @@ struct TransferPlan {
 std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const Vec3& v, Goal goal,
                                             double window, double longestFlight);
 
+/// How long to search for a way home from (r, v) around the Sun.
+struct SearchSpan {
+    /// Departures within this long (s): about one synodic period, the time
+    /// for the ship and the Earth to come back to the same places relative
+    /// to each other, 1 / |1/T − 1/T_earth| (between 1 and 2.2 years).
+    double window = 0.0;
+    /// Trips up to this long (s): 1.4 times a Hohmann transfer's from the
+    /// orbit's far point down (or up) to the Earth's orbit, π √(a³/μ) with
+    /// a the average of the two distances, and at least 540 days.
+    double longestFlight = 0.0;
+};
+SearchSpan searchSpan(const Vec3& r, const Vec3& v);
+
 struct Puzzle {
     Difficulty difficulty = Difficulty::Easy;
+    Region region = Region::BetweenPlanets;
     std::uint64_t seed = 0;
     Voyage voyage;       ///< the ship where it starts, no burns yet
     TransferPlan plan;   ///< the cheapest way home found
     double budget = 0.0; ///< Δv in the tanks (m/s)
 };
 
-/// A puzzle starting at `epoch`. The same seed and difficulty always give
-/// the same puzzle, on any computer.
-Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch);
+/// A puzzle starting at `epoch`, in `region`. The same seed, difficulty
+/// and region always give the same puzzle, on any computer.
+Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch,
+                  Region region = Region::BetweenPlanets);
 
 // --- Hints ---------------------------------------------------------------
 
@@ -116,5 +173,22 @@ std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
 /// around the Earth reaching out to half the Moon's distance (or nothing,
 /// if the path doesn't come within the Earth's sphere of influence).
 std::optional<Burn> captureBurn(const Voyage& voyage, const VoyageOptions& options = {});
+
+/// For a re-entry: if the path meets the Earth faster than
+/// fastestReentryArrival(), a braking burn once inside its sphere of
+/// influence (about a third of the way from its edge to the closest
+/// approach, and not before `notBefore`), straight back against the motion
+/// relative to the Earth, that brings v∞ down to that. Energy around the
+/// Earth gives the speed wanted there: √(v∞² + 2μ/r). Nothing if the path
+/// isn't too fast, doesn't come within the sphere of influence, or there's
+/// no time left. Aim it with refineAim afterwards: a slower arrival is
+/// bent more, so it needs a wider miss.
+std::optional<Burn> approachBrake(const Voyage& voyage, double notBefore,
+                                  const VoyageOptions& options = {});
+
+/// The speed relative to the Earth far from it, v∞ = √(v² − 2μ/r), of a
+/// path past it (energy around the Earth), from its closest approach
+/// (m/s); 0 if it never gets near or is bound.
+double approachSpeed(const EarthApproach& closest);
 
 } // namespace orbit

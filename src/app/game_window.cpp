@@ -72,6 +72,23 @@ double epochNow() {
         {d.year(), d.month(), d.day(), t.hour(), t.minute(), static_cast<double>(t.second())});
 }
 
+/// Where the ship is, to fit "You're %1".
+QString regionPhrase(orbit::Region region) {
+    switch (region) {
+    case orbit::Region::BetweenPlanets:
+        return QObject::tr("somewhere between the planets");
+    case orbit::Region::Venus:
+        return QObject::tr("near Venus");
+    case orbit::Region::Mars:
+        return QObject::tr("near Mars");
+    case orbit::Region::AsteroidBelt:
+        return QObject::tr("in the asteroid belt");
+    case orbit::Region::Jupiter:
+        return QObject::tr("near Jupiter");
+    }
+    return {};
+}
+
 QString goalText(orbit::Goal goal) {
     switch (goal) {
     case orbit::Goal::ReachEarth:
@@ -104,7 +121,7 @@ QString endingTitle(orbit::VoyageEnd end) {
 
 GameWindow::GameWindow(QWidget* parent)
     : QWidget(parent), m_session(new GameSession(this)), m_planner(new BurnPlanner(m_session)),
-      m_view(new QQuickWidget) {
+      m_view(new QQuickWidget), m_timeline(new TimelineBar) {
     setWindowTitle(tr("Lost in Space — Orbit Simulator"));
     resize(1400, 860);
 
@@ -117,7 +134,6 @@ GameWindow::GameWindow(QWidget* parent)
     m_view->setSource(QUrl(QStringLiteral("qrc:/qt/qml/OrbitSim/qml/VoyageScene.qml")));
     m_view->setMinimumSize(500, 400);
     left->addWidget(m_view, 1);
-    m_timeline = new TimelineBar;
     left->addWidget(m_timeline);
     buildControls(left);
     layout->addLayout(left, 1);
@@ -206,7 +222,7 @@ void GameWindow::buildControls(QBoxLayout* layout) {
         if (!m_scene) return;
         m_scene->setProperty("cardMode", QStringLiteral("start"));
         m_scene->setProperty("cardTitle", tr("Lost in space"));
-        m_scene->setProperty("cardText", tr("Choose how hard:"));
+        m_scene->setProperty("cardText", tr("Where to this time?"));
     });
     connect(m_centre, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (!m_scene) return;
@@ -240,33 +256,38 @@ void GameWindow::connectScene() {
             object ? qobject_cast<PolylineGeometry*>(object->property("line").value<QObject*>())
                    : nullptr;
     }
-    connect(m_scene, SIGNAL(difficultyChosen(int)), this, SLOT(chooseDifficulty(int)));
+    connect(m_scene, SIGNAL(startChosen(int, int)), this, SLOT(chooseStart(int, int)));
     connect(m_scene, SIGNAL(cardAccepted()), this, SLOT(acceptCard()));
 
     m_scene->setProperty(
         "cardText",
-        tr("You wake up somewhere between the planets, far from home. There's some fuel left "
-           "in the tanks: enough, if you use it well.<br><br>Plan burns, watch where they take "
-           "you, and find your way back to the Earth. The physics is real: the Sun and every "
-           "planet pull on you all the way.<br><br>Choose how hard:"));
+        tr("You wake up far from home, with some fuel left in the tanks: enough, if you use it "
+           "well. Plan burns, watch where they take you, and find your way back to the Earth. "
+           "The physics is real: the Sun and every planet pull on you all the way."));
     resetView();
 }
 
-void GameWindow::chooseDifficulty(int index) {
-    const auto difficulty = static_cast<orbit::Difficulty>(std::clamp(index, 0, 2));
-    startPuzzle(difficulty, QRandomGenerator::global()->generate64());
+void GameWindow::chooseStart(int region, int difficulty) {
+    const int lastRegion = static_cast<int>(orbit::kAllRegions.size()) - 1;
+    startPuzzle(static_cast<orbit::Difficulty>(std::clamp(difficulty, 0, 2)),
+                orbit::kAllRegions.at(static_cast<std::size_t>(std::clamp(region, 0, lastRegion))),
+                QRandomGenerator::global()->generate64());
 }
 
 void GameWindow::acceptCard() {
     if (m_scene) m_scene->setProperty("cardMode", QString());
 }
 
-void GameWindow::startPuzzle(orbit::Difficulty difficulty, std::uint64_t seed) {
+void GameWindow::startPuzzle(orbit::Difficulty difficulty, orbit::Region region,
+                             std::uint64_t seed) {
     setFlying(false);
     m_endingShown = false;
     m_welcomePending = true;
-    if (m_scene) m_scene->setProperty("cardMode", QString());
-    m_session->newPuzzle(difficulty, seed, epochNow());
+    if (m_scene) {
+        m_scene->setProperty("cardMode", QString());
+        m_scene->setProperty("regionIndex", static_cast<int>(region));
+    }
+    m_session->newPuzzle(difficulty, region, seed, epochNow());
 }
 
 void GameWindow::onPuzzleChanged() {
@@ -285,16 +306,23 @@ void GameWindow::onPuzzleChanged() {
             orbit::elementsFromState(v.position, v.velocity, orbit::kMuSun, orbit::kRadiusSun);
         const double fromEarth =
             orbit::norm(v.position - orbit::planetPosition(orbit::Planet::Earth, v.startEpoch));
+        // Long orbits in years, the rest in days.
+        constexpr double kYear = 365.25 * kDay;
+        const QString period = el.period > 2.0 * kYear
+                                   ? tr("%1 years to go round (the Earth's takes one)")
+                                         .arg(QString::number(el.period / kYear, 'f', 1))
+                                   : tr("%1 days to go round (the Earth's takes 365)")
+                                         .arg(std::lround(el.period / kDay));
         showCard(tr("Lost!"),
-                 tr("Your ship is %1 from the Sun and %2 from the Earth, on an orbit that takes "
-                    "%3 days to go round (the Earth's takes 365). You have <b>%4</b> of Δv in "
-                    "the tanks: that's how much you can change your speed, in all.<br><br>"
-                    "<b>Goal:</b> %5<br><br>Add a burn on the right and watch your path change, "
-                    "or press <b>Hint</b> if you're stuck. Then <b>Fly</b>.")
-                     .arg(display::longDistance(orbit::norm(v.position)),
-                          display::longDistance(fromEarth),
-                          QString::number(std::lround(el.period / kDay)),
-                          display::speed(puzzle.budget), goalText(v.goal)),
+                 tr("You're %1, %2 from the Sun and %3 from the Earth, on an orbit that takes "
+                    "%4. You have <b>%5</b> of Δv in the tanks: that's how much you can change "
+                    "your speed, in all.<br><br><b>Goal:</b> %6<br><br>Add a burn on the right "
+                    "and watch your path change, or press <b>Hint</b> if you're stuck. Then "
+                    "<b>Fly</b>.")
+                     .arg(regionPhrase(puzzle.region),
+                          display::longDistance(orbit::norm(v.position)),
+                          display::longDistance(fromEarth), period, display::speed(puzzle.budget),
+                          goalText(v.goal)),
                  tr("Let's go"));
     }
 }
@@ -409,8 +437,9 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
         infoRow(tr("Distance from Sun"), display::longDistance(orbit::norm(ship.r))) +
         infoRow(tr("Distance from Earth"), display::longDistance(orbit::norm(ship.r - earthR))) +
         infoRow(tr("Mass"), display::mass(ship.mass));
-    if (prediction)
+    if (prediction) {
         rows += infoRow(tr("Δv left after burns"), display::speed(prediction->deltaVLeft));
+    }
     texts.append(card(tr("You"), rows));
     m_scene->setProperty("infoTexts", texts);
 }

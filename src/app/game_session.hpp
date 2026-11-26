@@ -29,9 +29,10 @@ public:
     GameSession(GameSession&&) = delete;
     GameSession& operator=(GameSession&&) = delete;
 
-    /// Make a new puzzle starting at `epoch` (in the background: puzzleChanged
-    /// follows).
-    void newPuzzle(orbit::Difficulty difficulty, std::uint64_t seed, double epoch);
+    /// Make a new puzzle in `region` starting at `epoch` (in the background:
+    /// puzzleChanged follows).
+    void newPuzzle(orbit::Difficulty difficulty, orbit::Region region, std::uint64_t seed,
+                   double epoch);
     /// Start this puzzle now (tests, and replaying one).
     void setPuzzle(const orbit::Puzzle& puzzle);
 

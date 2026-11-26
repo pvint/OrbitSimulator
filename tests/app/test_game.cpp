@@ -6,6 +6,7 @@
 #include "display_format.hpp"
 #include "game_session.hpp"
 #include "orbit/core/astro_time.hpp"
+#include "orbit/core/lost_in_space.hpp"
 
 #include <QDateTimeEdit>
 #include <QDoubleSpinBox>
@@ -116,6 +117,27 @@ private slots:
         // The clock stops at the end of a flight that ends.
         session.setNow(session.prediction()->endEpoch + 100 * kDay);
         QCOMPARE(session.now(), session.prediction()->endEpoch);
+    }
+
+    void hintsBringYouHomeFromJupiter() {
+        // From Jupiter the path meets the Earth too fast to land: the hints
+        // plan the trip, aim it, then brake near the Earth.
+        GameSession session;
+        session.setPuzzle(orbit::makePuzzle(orbit::Difficulty::Normal, 5,
+                                            orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0}),
+                                            orbit::Region::Jupiter));
+        session.waitForIdle();
+        QStringList messages;
+        connect(&session, &GameSession::hintReady, this,
+                [&messages](const QString& m) { messages.append(m); });
+        for (int i = 0; i < 4 && !session.prediction()->goalMet; ++i) {
+            session.requestHint();
+            session.waitForIdle();
+        }
+        QVERIFY2(session.prediction()->goalMet, qPrintable(messages.join(QLatin1Char('\n'))));
+        QVERIFY(session.prediction()->entrySpeed < 13000.0);
+        QVERIFY(messages.join(QString()).contains(QStringLiteral("heat shield")));
+        QVERIFY(session.prediction()->deltaVLeft > 0.0);
     }
 };
 

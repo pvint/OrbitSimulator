@@ -36,14 +36,25 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
     window.setCardsEnabled(!parser.isSet(o.noCards));
     window.show();
     if (parser.isSet(o.puzzle)) {
-        const QStringList parts = parser.value(o.puzzle).split(QLatin1Char(':'));
-        const QString level = parts.value(0).toLower();
+        // Any order: a difficulty, a region, a seed (e.g. "hard:jupiter:4").
         orbit::Difficulty difficulty = orbit::Difficulty::Normal;
-        if (level == QLatin1String("easy")) difficulty = orbit::Difficulty::Easy;
-        if (level == QLatin1String("hard")) difficulty = orbit::Difficulty::Hard;
-        const std::uint64_t seed =
-            parts.size() > 1 ? parts.at(1).toULongLong() : QRandomGenerator::global()->generate64();
-        window.startPuzzle(difficulty, seed);
+        orbit::Region region = orbit::Region::BetweenPlanets;
+        std::uint64_t seed = QRandomGenerator::global()->generate64();
+        for (const QString& part : parser.value(o.puzzle).split(QLatin1Char(':'))) {
+            const QString word = part.toLower();
+            bool isNumber = false;
+            const std::uint64_t number = word.toULongLong(&isNumber);
+            if (isNumber) {
+                seed = number;
+            } else if (word == QLatin1String("easy")) {
+                difficulty = orbit::Difficulty::Easy;
+            } else if (word == QLatin1String("hard")) {
+                difficulty = orbit::Difficulty::Hard;
+            } else if (const auto r = orbit::regionFromKey(word.toStdString())) {
+                region = *r;
+            }
+        }
+        window.startPuzzle(difficulty, region, seed);
         if (parser.isSet(o.hint)) {
             QObject::connect(
                 window.session(), &GameSession::puzzleChanged, &window,
@@ -102,8 +113,9 @@ int main(int argc, char* argv[]) {
                                   QStringLiteral("Open the Lost in Space game on its own."));
     const QCommandLineOption puzzle(
         QStringLiteral("puzzle"),
-        QStringLiteral("Start the game with this puzzle: easy, normal or hard, and optionally "
-                       "a seed (normal:42)."),
+        QStringLiteral("Start the game with this puzzle: easy, normal or hard, optionally a "
+                       "region (between, venus, mars, belt, jupiter) and "
+                       "a seed, in any order (hard:jupiter:42)."),
         QStringLiteral("puzzle"));
     const QCommandLineOption hint(QStringLiteral("hint"),
                                   QStringLiteral("With --puzzle: take a hint straight away."));

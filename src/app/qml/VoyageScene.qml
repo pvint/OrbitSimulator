@@ -45,14 +45,29 @@ Item {
     property color statusColor: "#cbd5e1"
     property string busyText
 
-    /// The card in the middle: "start" (pick a difficulty), "message" (one
-    /// button) or "" (hidden).
+    /// The card in the middle: "start" (pick where and how hard), "message"
+    /// (one button) or "" (hidden).
     property string cardMode: "start"
     property string cardTitle: qsTr("Lost in space")
     property string cardText
     property string cardButton: qsTr("OK")
 
-    signal difficultyChosen(int difficulty)
+    /// Where the last game started (orbit::Region's order); kept for the next.
+    property int regionIndex: 0
+    readonly property var regions: [
+        { name: qsTr("Between the planets"),
+          about: qsTr("A random orbit not far from the Earth's: the place to start. Harder puzzles start further out.") },
+        { name: qsTr("Near Venus"),
+          about: qsTr("Closer to the Sun than the Earth: speed up to climb out to its orbit. A trip of about half a year.") },
+        { name: qsTr("Near Mars"),
+          about: qsTr("Further out than the Earth: slow down to fall in towards the Sun. A trip of about a year.") },
+        { name: qsTr("Asteroid belt"),
+          about: qsTr("Between Mars and Jupiter. A long fall home, more than a year, arriving fast.") },
+        { name: qsTr("Near Jupiter"),
+          about: qsTr("Five times further from the Sun than the Earth. About three years home, so fast at the end that landing means braking first.") }
+    ]
+
+    signal startChosen(int region, int difficulty)
     signal cardAccepted()
 
     // For C++ to fill in.
@@ -447,7 +462,62 @@ Item {
                 wrapMode: Text.WordWrap
                 lineHeight: 1.2
             }
-            // Start: three ways to play.
+            // Start: where you're lost...
+            Text {
+                visible: root.cardMode === "start"
+                text: qsTr("Where are you lost?")
+                color: "#f8fafc"
+                font.pixelSize: 14
+                font.bold: true
+            }
+            Flow {
+                visible: root.cardMode === "start"
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: root.cardMode === "start" ? root.regions : []
+                    delegate: Button {
+                        required property var modelData
+                        required property int index
+                        readonly property bool chosen: index === root.regionIndex
+                        objectName: "button-region-" + index
+                        implicitHeight: 30
+                        leftPadding: 14
+                        rightPadding: 14
+                        contentItem: Text {
+                            text: modelData.name
+                            color: parent.chosen ? "#0f172a" : "#e2e8f0"
+                            font.pixelSize: 13
+                            font.bold: parent.chosen
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 15
+                            color: parent.chosen ? "#93c5fd" : (parent.hovered ? "#1e3a5f" : "#1e293b")
+                            border.color: parent.chosen || parent.hovered ? "#60a5fa" : "#334155"
+                        }
+                        onClicked: root.regionIndex = index
+                    }
+                }
+            }
+            Text {
+                visible: root.cardMode === "start"
+                Layout.fillWidth: true
+                text: root.regions[root.regionIndex].about
+                color: "#94a3b8"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            // ...and how hard.
+            Text {
+                visible: root.cardMode === "start"
+                Layout.topMargin: 4
+                text: qsTr("How hard?")
+                color: "#f8fafc"
+                font.pixelSize: 14
+                font.bold: true
+            }
             Repeater {
                 model: root.cardMode === "start" ? [
                     { name: qsTr("Easy"), goal: qsTr("Reach the Earth's neighbourhood. Plenty of fuel.") },
@@ -459,7 +529,7 @@ Item {
                     required property int index
                     objectName: "button-difficulty-" + index
                     Layout.fillWidth: true
-                    implicitHeight: 56
+                    implicitHeight: 52
                     contentItem: Column {
                         spacing: 2
                         leftPadding: 6
@@ -471,7 +541,7 @@ Item {
                         color: parent.hovered ? "#1e3a5f" : "#1e293b"
                         border.color: parent.hovered ? "#60a5fa" : "#334155"
                     }
-                    onClicked: root.difficultyChosen(index)
+                    onClicked: root.startChosen(root.regionIndex, index)
                 }
             }
             Button {
