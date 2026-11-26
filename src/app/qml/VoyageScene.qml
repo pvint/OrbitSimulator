@@ -20,6 +20,19 @@ Item {
     property vector3d shipPosition: Qt.vector3d(0, 0, 0)
     /// The eight planets, Mercury first (vector3d each), at the game clock.
     property var planetPositions: []
+    /// Every body's name and colour, in orbit::Body order: the planets,
+    /// then the 18 moons (the Moon, Jupiter's four, ...).
+    property var bodyNames: []
+    property var bodyColors: []
+    /// The moons (vector3d each, orbit::Body order from the Moon), the
+    /// planet each goes round (orbit::Body), its orbit's size and its sphere
+    /// of influence (scene units).
+    property var moonPositions: []
+    property var moonPlanets: []
+    property var moonOrbitRadii: []
+    property var moonInfluenceRadii: []
+    /// What hovering a moon shows.
+    property var moonInfoTexts: []
     /// Where each burn happens (vector3d), whether it has fired, and the
     /// one being edited.
     property var burnPositions: []
@@ -30,8 +43,8 @@ Item {
     property vector3d arrivalShip: Qt.vector3d(0, 0, 0)
     property vector3d arrivalEarth: Qt.vector3d(0, 0, 0)
     property string arrivalLabel
-    /// What the camera circles: 0 = the Sun, 1 = the ship, 2 = a planet
-    /// (followPlanet, orbit::Body order).
+    /// What the camera circles: 0 = the Sun, 1 = the ship, 2 = a planet or
+    /// a moon (followPlanet, orbit::Body order).
     property int followTarget: 0
     property int followPlanet: 2
     /// Each planet's sphere of influence (scene units): where its gravity
@@ -41,7 +54,8 @@ Item {
     /// Double-clicking an object asks to centre on it (index as hoverIndex).
     signal centreRequested(int index)
     /// What hovering shows, as rich text: the eight planets, then the Sun,
-    /// then the ship (ten strings). Burns come after, in burnInfoTexts.
+    /// then the ship (ten strings). Burns come after, in burnInfoTexts, then
+    /// flybys, then the moons.
     property var infoTexts: []
     /// The same for each burn marker.
     property var burnInfoTexts: []
@@ -98,7 +112,7 @@ Item {
     /// In orbit: always around the Earth, never where there's no planet.
     readonly property bool startsInOrbit: startPlanet === 2 || (startPlanet >= 0 && inOrbit)
     readonly property bool goingHome: destinationIndex === 2
-    readonly property string destinationName: planetNames[destinationIndex] ?? ""
+    readonly property string destinationName: bodyNames[destinationIndex] ?? ""
     /// Picking where from: not to the same planet (from the Earth, Mars).
     function chooseRegion(index) {
         regionIndex = index
@@ -120,11 +134,8 @@ Item {
     property alias belt: beltGeometry
     property alias unitCircle: unitCircleGeometry
     function planetOrbit(index) { return planetOrbits.objectAt(index) }
-
-    readonly property var planetNames: [qsTr("Mercury"), qsTr("Venus"), qsTr("Earth"), qsTr("Mars"),
-                                        qsTr("Jupiter"), qsTr("Saturn"), qsTr("Uranus"), qsTr("Neptune")]
-    readonly property var planetColors: ["#a8a29e", "#e9c46a", "#4f9de0", "#d9603b",
-                                         "#d8a66c", "#e3c98f", "#8fd3e0", "#5b7fe8"]
+    function moonOrbit(index) { return moonOrbits.objectAt(index) }
+    readonly property var planetNames: bodyNames.slice(0, 8)
     readonly property color shipColor: "#f8fafc"
     readonly property color burnColor: "#fb923c"
     readonly property color flybyColor: "#c084fc"
@@ -139,7 +150,10 @@ Item {
                                                                          : Qt.vector3d(0, 0, 0)
     readonly property vector3d centrePoint:
         followTarget === 1 ? shipPosition
-        : followTarget === 2 && planetPositions.length > followPlanet ? planetPositions[followPlanet]
+        : followTarget === 2 && followPlanet < 8 && planetPositions.length > followPlanet
+            ? planetPositions[followPlanet]
+        : followTarget === 2 && moonPositions.length > followPlanet - 8
+            ? moonPositions[followPlanet - 8]
         : Qt.vector3d(0, 0, 0)
     readonly property vector3d target: centrePoint.plus(panOffset)
     /// As close as 2,000 km; but not inside the Sun when circling it.
@@ -156,6 +170,20 @@ Item {
     }
 
     readonly property real markerScale: distance * 0.006 / 50 // #Sphere has radius 50
+
+    /// A moon is drawn once the camera is near enough for its orbit to be a
+    /// few pixels across (its name, nearer still): far out they would only
+    /// clutter their planet.
+    function cameraDistanceTo(p) {
+        root.yaw; root.pitch; root.distance; root.target
+        return camera.scenePosition.minus(p).length()
+    }
+    function moonShown(i) {
+        return i < moonPositions.length && cameraDistanceTo(moonPositions[i]) < 120 * (moonOrbitRadii[i] ?? 0)
+    }
+    function moonNamed(i) {
+        return i < moonPositions.length && cameraDistanceTo(moonPositions[i]) < 30 * (moonOrbitRadii[i] ?? 0)
+    }
 
     View3D {
         id: view
@@ -223,7 +251,7 @@ Item {
                     scale: Qt.vector3d(size, size, size)
                     materials: PrincipledMaterial {
                         lighting: PrincipledMaterial.NoLighting
-                        baseColor: root.planetColors[planetNode.index]
+                        baseColor: root.bodyColors[planetNode.index]
                     }
                 }
                 // Its sphere of influence: a ring in the ecliptic, and a
@@ -235,7 +263,7 @@ Item {
                     materials: PrincipledMaterial {
                         lighting: PrincipledMaterial.NoLighting
                         vertexColorsEnabled: true
-                        baseColor: root.planetColors[planetNode.index]
+                        baseColor: root.bodyColors[planetNode.index]
                         opacity: planetNode.destination ? 0.9 : 0.45
                     }
                 }
@@ -246,8 +274,73 @@ Item {
                     scale: Qt.vector3d(size, size, size)
                     materials: PrincipledMaterial {
                         lighting: PrincipledMaterial.NoLighting
-                        baseColor: root.planetColors[planetNode.index]
+                        baseColor: root.bodyColors[planetNode.index]
                         opacity: planetNode.destination ? 0.07 : 0.035
+                        depthDrawMode: Material.NeverDepthDraw
+                    }
+                }
+            }
+        }
+
+        // The moons: each one's orbit around its planet (a ring that moves
+        // with the planet, filled from C++), the moon, and its sphere of
+        // influence.
+        Repeater3D {
+            id: moonOrbits
+            model: 18
+            delegate: Model {
+                required property int index
+                property alias line: moonOrbitGeometry
+                visible: root.moonShown(index)
+                position: root.planetPositions[root.moonPlanets[index] ?? 0] ?? Qt.vector3d(0, 0, 0)
+                geometry: PolylineGeometry { id: moonOrbitGeometry }
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
+                    vertexColorsEnabled: true
+                    opacity: 0.35
+                }
+            }
+        }
+        Repeater3D {
+            model: root.moonPositions
+            delegate: Node {
+                id: moonNode
+                required property var modelData
+                required property int index
+                readonly property int body: index + 8
+                readonly property bool destination: body === root.destinationIndex
+                readonly property real influence: root.moonInfluenceRadii[index] ?? 0
+                position: modelData
+                visible: root.moonShown(index) || destination
+                Model {
+                    source: "#Sphere"
+                    readonly property real size: root.markerScale * (moonNode.destination ? 1.1 : 0.7)
+                    scale: Qt.vector3d(size, size, size)
+                    materials: PrincipledMaterial {
+                        lighting: PrincipledMaterial.NoLighting
+                        baseColor: root.bodyColors[moonNode.body] ?? "#cccccc"
+                    }
+                }
+                Model {
+                    visible: moonNode.influence > 0
+                    geometry: unitCircleGeometry
+                    scale: Qt.vector3d(moonNode.influence, moonNode.influence, moonNode.influence)
+                    materials: PrincipledMaterial {
+                        lighting: PrincipledMaterial.NoLighting
+                        vertexColorsEnabled: true
+                        baseColor: root.bodyColors[moonNode.body] ?? "#cccccc"
+                        opacity: moonNode.destination ? 0.9 : 0.4
+                    }
+                }
+                Model {
+                    visible: moonNode.influence > 0
+                    source: "#Sphere"
+                    readonly property real size: moonNode.influence / 50
+                    scale: Qt.vector3d(size, size, size)
+                    materials: PrincipledMaterial {
+                        lighting: PrincipledMaterial.NoLighting
+                        baseColor: root.bodyColors[moonNode.body] ?? "#cccccc"
+                        opacity: moonNode.destination ? 0.07 : 0.035
                         depthDrawMode: Material.NeverDepthDraw
                     }
                 }
@@ -293,7 +386,7 @@ Item {
             scale: Qt.vector3d(size, size, size)
             materials: PrincipledMaterial {
                 lighting: PrincipledMaterial.NoLighting
-                baseColor: root.planetColors[2]
+                baseColor: root.bodyColors[root.destinationIndex] ?? "#4f9de0"
                 opacity: 0.45
             }
         }
@@ -371,9 +464,15 @@ Item {
     }
 
     // --- labels --------------------------------------------------------
+    /// Where a point is on the screen (x, y in pixels), and z how far in
+    /// front of the camera it is (negative: behind). mapFrom3DScene's own z
+    /// comes from the depth range, which is far too coarse close up (the
+    /// view reaches from 2,000 km to beyond Neptune), so it isn't used.
     function project(p) {
         root.yaw; root.pitch; root.distance; root.target
-        return view.camera ? view.mapFrom3DScene(p) : Qt.vector3d(0, 0, -1)
+        if (!view.camera) return Qt.vector3d(0, 0, -1)
+        const s = view.mapFrom3DScene(p)
+        return Qt.vector3d(s.x, s.y, p.minus(camera.scenePosition).dotProduct(camera.forward))
     }
     component Label3D: Text {
         property vector3d at
@@ -393,7 +492,18 @@ Item {
             required property int index
             at: root.planetPositions[index]
             text: root.planetNames[index]
-            color: root.planetColors[index]
+            color: root.bodyColors[index]
+        }
+    }
+    Repeater {
+        model: root.moonPositions.length
+        delegate: Label3D {
+            required property int index
+            at: root.moonPositions[index]
+            visible: screen.z > 0 && (root.moonNamed(index) || index + 8 === root.destinationIndex)
+            text: root.bodyNames[index + 8] ?? ""
+            color: root.bodyColors[index + 8] ?? "#cccccc"
+            font.pixelSize: 10
         }
     }
     Label3D { at: Qt.vector3d(0, 0, 0); text: qsTr("Sun"); color: "#ffd27a" }
@@ -424,15 +534,18 @@ Item {
     HoverHandler { id: hover }
     /// Index into infoTexts of the object nearest the pointer (within a few
     /// pixels), or -1. Planets 0-7, the Sun 8, the ship 9, burns 10 and up,
-    /// then flybys.
+    /// then flybys, then the moons (only those drawn).
     readonly property int hoverIndex: {
         if (!hover.hovered || root.infoTexts.length < 10) return -1
         const pointer = hover.point.position
         let best = -1
         let bestDistance = 16 // pixels
         const objects = root.planetPositions.concat([Qt.vector3d(0, 0, 0), root.shipPosition],
-                                                    root.burnPositions, root.flybyPositions)
+                                                    root.burnPositions, root.flybyPositions,
+                                                    root.moonPositions)
+        const firstMoon = objects.length - root.moonPositions.length
         for (let i = 0; i < objects.length; ++i) {
+            if (i >= firstMoon && !root.moonShown(i - firstMoon)) continue
             const s = root.project(objects[i])
             if (s.z <= 0) continue
             const d = Math.hypot(s.x - pointer.x, s.y - pointer.y)
@@ -459,10 +572,12 @@ Item {
             text: {
                 const i = root.hoverIndex
                 const burns = root.burnPositions.length
+                const flybys = root.flybyPositions.length
                 if (i < 0) return ""
                 if (i < 10) return root.infoTexts[i]
                 if (i < 10 + burns) return root.burnInfoTexts[i - 10] ?? ""
-                return root.flybyInfoTexts[i - 10 - burns] ?? ""
+                if (i < 10 + burns + flybys) return root.flybyInfoTexts[i - 10 - burns] ?? ""
+                return root.moonInfoTexts[i - 10 - burns - flybys] ?? ""
             }
             color: "#e2e8f0"
             font.pixelSize: 12

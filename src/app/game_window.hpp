@@ -35,6 +35,8 @@ public:
     /// Start a puzzle straight away (from the command line).
     void startPuzzle(const orbit::PuzzleSpec& spec, std::uint64_t seed);
     GameSession* session() const { return m_session; }
+    /// Centre the view on a planet or a moon, as "Centre" does.
+    void centreOnBody(orbit::Body body);
     /// Show the message cards (welcome, hints, endings). Off for screenshots.
     void setCardsEnabled(bool enabled) { m_cardsEnabled = enabled; }
 
@@ -43,7 +45,7 @@ public:
     Q_SLOT void acceptCard(bool hideFromNowOn);
     Q_SLOT void showHiddenCards();
     /// Centre the view on what was double-clicked (index as the scene's
-    /// hoverIndex: planets, the Sun, the ship, burns, flybys).
+    /// hoverIndex: planets, the Sun, the ship, burns, flybys, moons).
     Q_SLOT void centreOn(int index);
 
 protected:
@@ -67,6 +69,7 @@ private:
     void setCentreChoices(int select);
     void onCentreChanged();
     void updatePlanetOrbits();
+    void updateMoonOrbits();
     void updateBelt(double now);
     void updatePath();
     void updateStartOrbit();
@@ -93,7 +96,8 @@ private:
     PolylineGeometry* m_belt = nullptr;
     std::vector<orbit::Asteroid> m_asteroids;
     double m_beltEpoch = -1e300; ///< when the belt was last drawn
-    std::array<PolylineGeometry*, 8> m_planetOrbits{};
+    std::array<PolylineGeometry*, orbit::kAllPlanets.size()> m_planetOrbits{};
+    std::array<PolylineGeometry*, orbit::kMoons.size()> m_moonOrbits{};
 
     TimelineBar* m_timeline;
     QPushButton* m_restart = nullptr;

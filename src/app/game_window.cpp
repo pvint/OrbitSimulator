@@ -46,10 +46,32 @@ const QColor kFlownColor(0x47, 0x55, 0x69);
 const std::array kSegmentColors{QColor(0x38, 0xbd, 0xf8), QColor(0xfb, 0xbf, 0x24),
                                 QColor(0x34, 0xd3, 0x99), QColor(0xf4, 0x72, 0xb6),
                                 QColor(0xa7, 0x8b, 0xfa)};
-const std::array kPlanetColors{QColor(0xa8, 0xa2, 0x9e), QColor(0xe9, 0xc4, 0x6a),
-                               QColor(0x4f, 0x9d, 0xe0), QColor(0xd9, 0x60, 0x3b),
-                               QColor(0xd8, 0xa6, 0x6c), QColor(0xe3, 0xc9, 0x8f),
-                               QColor(0x8f, 0xd3, 0xe0), QColor(0x5b, 0x7f, 0xe8)};
+/// Each body's colour (orbit::Body order): the planets, then the moons,
+/// roughly as they look (sulphur-yellow Io, Titan's orange haze, bright
+/// icy Enceladus, dark Callisto and Umbriel, pinkish Triton).
+const std::array<QColor, orbit::kBodyCount> kBodyColors{
+    QColor(0xa8, 0xa2, 0x9e), QColor(0xe9, 0xc4, 0x6a), QColor(0x4f, 0x9d, 0xe0),
+    QColor(0xd9, 0x60, 0x3b), QColor(0xd8, 0xa6, 0x6c), QColor(0xe3, 0xc9, 0x8f),
+    QColor(0x8f, 0xd3, 0xe0), QColor(0x5b, 0x7f, 0xe8), QColor(0xc9, 0xc5, 0xbd), // Moon
+    QColor(0xe8, 0xd3, 0x6a),                                                     // Io
+    QColor(0xd9, 0xc8, 0xa9),                                                     // Europa
+    QColor(0xa8, 0x9b, 0x8c),                                                     // Ganymede
+    QColor(0x8a, 0x7f, 0x72),                                                     // Callisto
+    QColor(0xc8, 0xc8, 0xc8),                                                     // Mimas
+    QColor(0xf2, 0xf5, 0xf7),                                                     // Enceladus
+    QColor(0xd6, 0xd6, 0xd0),                                                     // Tethys
+    QColor(0xcf, 0xca, 0xc2),                                                     // Dione
+    QColor(0xc4, 0xc0, 0xb8),                                                     // Rhea
+    QColor(0xe0, 0xa2, 0x53),                                                     // Titan
+    QColor(0xb4, 0x9a, 0x7a),                                                     // Iapetus
+    QColor(0xb9, 0xb9, 0xb9),                                                     // Miranda
+    QColor(0xc9, 0xc6, 0xc0),                                                     // Ariel
+    QColor(0x8c, 0x86, 0x80),                                                     // Umbriel
+    QColor(0xb8, 0xae, 0xa4),                                                     // Titania
+    QColor(0xa3, 0x94, 0x86),                                                     // Oberon
+    QColor(0xd9, 0xc2, 0xbd),                                                     // Triton
+};
+QColor bodyColor(orbit::Body body) { return kBodyColors.at(static_cast<std::size_t>(body)); }
 
 /// The ship's state at `epoch`, between the samples either side (straight
 /// line: the samples are close enough that the curve between them doesn't
@@ -332,6 +354,36 @@ void GameWindow::connectScene() {
             object ? qobject_cast<PolylineGeometry*>(object->property("line").value<QObject*>())
                    : nullptr;
     }
+    for (std::size_t i = 0; i < m_moonOrbits.size(); ++i) {
+        QVariant model;
+        QMetaObject::invokeMethod(m_scene, "moonOrbit", Q_RETURN_ARG(QVariant, model),
+                                  Q_ARG(QVariant, static_cast<int>(i)));
+        auto* object = model.value<QObject*>();
+        m_moonOrbits.at(i) =
+            object ? qobject_cast<PolylineGeometry*>(object->property("line").value<QObject*>())
+                   : nullptr;
+    }
+    // Every body's name and colour, and for each moon its planet, the size
+    // of its orbit and its sphere of influence.
+    QVariantList names;
+    QVariantList colors;
+    for (const orbit::Body body : orbit::kAllBodies) {
+        names.append(planetText(body));
+        colors.append(bodyColor(body));
+    }
+    m_scene->setProperty("bodyNames", names);
+    m_scene->setProperty("bodyColors", colors);
+    QVariantList moonPlanets;
+    QVariantList moonOrbitRadii;
+    QVariantList moonInfluence;
+    for (const orbit::Body moon : orbit::kMoons) {
+        moonPlanets.append(static_cast<int>(orbit::planetOf(moon)));
+        moonOrbitRadii.append(orbit::moonOrbit(moon).semiMajorAxis / scene::kSolarMetresPerUnit);
+        moonInfluence.append(orbit::sphereOfInfluence(moon, 0.0) / scene::kSolarMetresPerUnit);
+    }
+    m_scene->setProperty("moonPlanets", moonPlanets);
+    m_scene->setProperty("moonOrbitRadii", moonOrbitRadii);
+    m_scene->setProperty("moonInfluenceRadii", moonInfluence);
     connect(m_scene, SIGNAL(startChosen(int, bool, int, int)), this,
             SLOT(chooseStart(int, bool, int, int)));
     connect(m_scene, SIGNAL(cardAccepted(bool)), this, SLOT(acceptCard(bool)));
@@ -561,6 +613,11 @@ void GameWindow::onCentreChanged() {
                                          scene::kSolarMetresPerUnit);
 }
 
+void GameWindow::centreOnBody(orbit::Body body) {
+    setCentreChoices(static_cast<int>(body));
+    onCentreChanged();
+}
+
 void GameWindow::centreOn(int index) {
     if (index < 0) return;
     constexpr int kPlanets = static_cast<int>(orbit::kAllPlanets.size());
@@ -570,16 +627,21 @@ void GameWindow::centreOn(int index) {
     } else if (index == kPlanets + 1) {
         choice = kCentreShip;
     } else if (index > kPlanets + 1) {
-        // A burn: centre on you; a flyby: on its planet.
+        // A burn: centre on you; a flyby: on its planet; then the moons.
         const int burns = m_session->burnCount();
         const int flyby = index - kPlanets - 2 - burns;
         choice = kCentreShip;
-        if (const auto* p = m_session->prediction(); p && flyby >= 0) {
-            QList<orbit::PlanetPass> shown;
+        QList<orbit::PlanetPass> shown;
+        if (const auto* p = m_session->prediction(); p) {
             for (const orbit::PlanetPass& pass : p->flybys) {
                 if (pass.planet != m_session->puzzle().voyage.destination) shown.append(pass);
             }
-            if (flyby < shown.size()) choice = static_cast<int>(shown.at(flyby).planet);
+        }
+        if (flyby >= 0 && flyby < shown.size()) {
+            choice = static_cast<int>(shown.at(flyby).planet);
+        } else if (flyby >= shown.size()) {
+            const auto moon = static_cast<std::size_t>(flyby - shown.size());
+            if (moon < orbit::kMoons.size()) choice = static_cast<int>(orbit::kMoons.at(moon));
         }
     }
     setCentreChoices(choice);
@@ -676,9 +738,8 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
     for (const orbit::Body planet : orbit::kAllPlanets) {
         const orbit::Vec3 r = orbit::bodyPosition(planet, now);
         const orbit::Vec3 v = orbit::bodyVelocity(planet, now);
-        const auto index = static_cast<int>(planet);
         texts.append(card(
-            m_scene->property("planetNames").toList().value(index).toString(),
+            planetText(planet),
             infoRow(tr("Speed (Sun)"), display::speed(orbit::norm(v))) +
                 infoRow(tr("Distance from Sun"), display::longDistance(orbit::norm(r))) +
                 infoRow(tr("Orbit period"),
@@ -692,6 +753,26 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
                 infoRow(tr("Speed vs you"), display::speed(orbit::norm(v - ship.v))) +
                 closestPassRow(planet)));
     }
+    QVariantList moonTexts;
+    for (const orbit::Body moon : orbit::kMoons) {
+        const orbit::Body planet = orbit::planetOf(moon);
+        const orbit::Vec3 r = orbit::bodyPosition(moon, now);
+        const orbit::Vec3 v = orbit::bodyVelocity(moon, now);
+        const double a = orbit::moonOrbit(moon).semiMajorAxis;
+        moonTexts.append(card(
+            planetText(moon),
+            infoRow(tr("Goes round"), planetInText(planet, true)) +
+                infoRow(tr("Distance from %1").arg(planetText(planet)), display::longDistance(a)) +
+                infoRow(tr("Orbit period"), periodText(keplerPeriod(a, orbit::bodyMu(planet)))) +
+                infoRow(tr("Mass"), bigMass(orbit::bodyMu(moon) / kG)) +
+                infoRow(tr("Radius"), display::distance(orbit::bodyRadius(moon))) +
+                infoRow(tr("Sphere of influence"),
+                        display::longDistance(orbit::sphereOfInfluence(moon, now))) +
+                infoRow(tr("Distance from you"), display::longDistance(orbit::norm(r - ship.r))) +
+                infoRow(tr("Speed vs you"), display::speed(orbit::norm(v - ship.v))) +
+                closestPassRow(moon)));
+    }
+    m_scene->setProperty("moonInfoTexts", moonTexts);
     texts.append(card(tr("Sun"), infoRow(tr("Mass"), bigMass(kSunMass)) +
                                      infoRow(tr("Radius"), display::distance(orbit::kRadiusSun)) +
                                      infoRow(tr("Distance from you"),
@@ -793,8 +874,28 @@ void GameWindow::updatePlanetOrbits() {
                                           o.argumentOfPeriapsis, nu, orbit::kMuSun)
                     .r));
         }
-        line->setPoints(points, QList<QColor>(points.size(),
-                                              kPlanetColors.at(static_cast<std::size_t>(planet))));
+        line->setPoints(points, QList<QColor>(points.size(), bodyColor(planet)));
+    }
+    updateMoonOrbits();
+}
+
+/// Each moon's orbit, relative to its planet (the ring rides along with the
+/// planet in the scene): one turn of it, from where the moon is now.
+void GameWindow::updateMoonOrbits() {
+    const double epoch = m_session->hasPuzzle() ? m_session->startEpoch() : epochNow();
+    for (std::size_t i = 0; i < orbit::kMoons.size(); ++i) {
+        PolylineGeometry* line = m_moonOrbits.at(i);
+        if (!line) continue;
+        const orbit::Body moon = orbit::kMoons.at(i);
+        const double a = orbit::moonOrbit(moon).semiMajorAxis;
+        const double period = keplerPeriod(a, orbit::bodyMu(orbit::planetOf(moon)));
+        QList<QVector3D> points;
+        constexpr int kPoints = 180;
+        for (int k = 0; k <= kPoints; ++k) {
+            points.append(scene::fromHeliocentric(
+                orbit::moonFromPlanet(moon, epoch + period * k / kPoints).r));
+        }
+        line->setPoints(points, QList<QColor>(points.size(), bodyColor(moon)));
     }
 }
 
@@ -951,13 +1052,15 @@ void GameWindow::updateMarkers() {
     // The closest approach to the destination.
     const orbit::Body to = m_session->puzzle().voyage.destination;
     const orbit::PlanetPass& c = prediction->closestPasses.at(static_cast<std::size_t>(to));
-    const QVariantList names = m_scene->property("planetNames").toList();
     QVariantList flybyPositions;
     QVariantList flybyLabels;
     QVariantList flybyTexts;
     for (const orbit::PlanetPass& pass : prediction->flybys) {
         if (pass.planet == to) continue; // the arrival, shown on its own below
-        const QString name = names.value(static_cast<int>(pass.planet)).toString();
+        const QString name = planetText(pass.planet);
+        // A moon's flyby changes the speed around its planet.
+        const QString around =
+            orbit::isMoon(pass.planet) ? planetText(orbit::planetOf(pass.planet)) : tr("Sun");
         const double gain = pass.sunSpeedAfter - pass.sunSpeedBefore;
         const double radius = orbit::bodyRadius(pass.planet);
         flybyPositions.append(QVariant::fromValue(scene::fromHeliocentric(
@@ -973,8 +1076,8 @@ void GameWindow::updateMarkers() {
             rows += infoRow(tr("Far from it (v∞)"), display::speed(pass.vInfinity)) +
                     infoRow(tr("Path turned by"), display::angle(pass.turnAngle));
         }
-        rows += infoRow(tr("Speed (Sun) before"), display::speed(pass.sunSpeedBefore)) +
-                infoRow(tr("Speed (Sun) after"), display::speed(pass.sunSpeedAfter)) +
+        rows += infoRow(tr("Speed (%1) before").arg(around), display::speed(pass.sunSpeedBefore)) +
+                infoRow(tr("Speed (%1) after").arg(around), display::speed(pass.sunSpeedAfter)) +
                 infoRow(tr("Gained for free"), signedSpeed(gain));
         flybyTexts.append(
             QStringLiteral("<b>%1</b><table>%2</table>").arg(tr("%1 flyby").arg(name), rows));
@@ -1095,6 +1198,11 @@ void GameWindow::onNowChanged() {
             QVariant::fromValue(scene::fromHeliocentric(orbit::bodyPosition(planet, now))));
     }
     m_scene->setProperty("planetPositions", planets);
+    QVariantList moons;
+    for (const orbit::Body moon : orbit::kMoons) {
+        moons.append(QVariant::fromValue(scene::fromHeliocentric(orbit::bodyPosition(moon, now))));
+    }
+    m_scene->setProperty("moonPositions", moons);
     updateBelt(now);
     m_scene->setProperty("dateText", m_session->hasPuzzle() ? display::date(now) : QString());
 
@@ -1136,14 +1244,12 @@ void GameWindow::showEnding() {
                               .arg(display::speed(direct), display::speed(used));
         if (used < 0.95 * direct) compare += QLatin1Char(' ') + tr("<b>You beat it!</b>");
         QStringList assists;
-        const QVariantList names = m_scene->property("planetNames").toList();
         for (const orbit::PlanetPass& pass : p->flybys) {
             if (pass.planet == m_session->puzzle().voyage.destination || pass.epoch > p->endEpoch) {
                 continue;
             }
-            assists.append(
-                tr("%1 (%2)").arg(names.value(static_cast<int>(pass.planet)).toString(),
-                                  signedSpeed(pass.sunSpeedAfter - pass.sunSpeedBefore)));
+            assists.append(tr("%1 (%2)").arg(
+                planetText(pass.planet), signedSpeed(pass.sunSpeedAfter - pass.sunSpeedBefore)));
         }
         if (!assists.isEmpty()) {
             compare += QStringLiteral("<br><br>") +

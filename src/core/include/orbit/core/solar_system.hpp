@@ -33,6 +33,7 @@
 
 #include <array>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -92,6 +93,9 @@ inline constexpr std::array<Body, kBodyCount> kAllBodies = [] {
 }();
 
 std::string_view bodyName(Body body);
+/// A body from its name in any case ("titan", "Earth"), for files and the
+/// command line.
+std::optional<Body> bodyFromKey(std::string_view key);
 bool isMoon(Body body);
 /// The planet a moon goes round; a planet is its own.
 Body planetOf(Body body);

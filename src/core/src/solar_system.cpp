@@ -331,6 +331,19 @@ std::string_view bodyName(Body body) {
     return {};
 }
 
+std::optional<Body> bodyFromKey(std::string_view key) {
+    const auto lower = [](char c) {
+        return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+    };
+    for (const Body body : kAllBodies) {
+        const std::string_view name = bodyName(body);
+        if (name.size() == key.size() && std::ranges::equal(name, key, {}, lower, lower)) {
+            return body;
+        }
+    }
+    return std::nullopt;
+}
+
 double bodyMu(Body body) {
     if (body == Body::Moon) return kMuMoonKm3 * 1e9;
     if (isMoon(body)) return moonRow(body).muKm3 * 1e9;

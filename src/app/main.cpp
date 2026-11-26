@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "game_session.hpp"
 #include "game_window.hpp"
+#include "orbit/core/solar_system.hpp"
 #include "orbit/core/version.hpp"
 
 #include <QApplication>
@@ -23,6 +24,7 @@ void saveScreenshotLater(QWidget* window, const QString& path, int delayMs) {
 struct GameOptions {
     QCommandLineOption puzzle;
     QCommandLineOption hint;
+    QCommandLineOption centre;
     QCommandLineOption noCards;
     QCommandLineOption screenshot;
     QCommandLineOption delay;
@@ -63,6 +65,11 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
             }
         }
         window.startPuzzle(spec, seed);
+        if (const auto body = orbit::bodyFromKey(parser.value(o.centre).toStdString())) {
+            QObject::connect(
+                window.session(), &GameSession::puzzleChanged, &window,
+                [&window, body] { window.centreOnBody(*body); }, Qt::SingleShotConnection);
+        }
         if (parser.isSet(o.hint)) {
             QObject::connect(
                 window.session(), &GameSession::puzzleChanged, &window,
@@ -125,10 +132,14 @@ int main(int argc, char* argv[]) {
         QStringLiteral("puzzle"));
     const QCommandLineOption hint(QStringLiteral("hint"),
                                   QStringLiteral("With --puzzle: take a hint straight away."));
+    const QCommandLineOption centre(QStringLiteral("centre"),
+                                    QStringLiteral("With --puzzle: centre the view on this planet "
+                                                   "or moon (saturn, titan)."),
+                                    QStringLiteral("body"));
     const QCommandLineOption noCards(QStringLiteral("no-cards"),
                                      QStringLiteral("In the game, skip the message cards "
                                                     "(for screenshots)."));
-    parser.addOptions({screenshot, delay, game, puzzle, hint, noCards});
+    parser.addOptions({screenshot, delay, game, puzzle, hint, centre, noCards});
     parser.process(app);
-    return runGame(parser, {puzzle, hint, noCards, screenshot, delay});
+    return runGame(parser, {puzzle, hint, centre, noCards, screenshot, delay});
 }
