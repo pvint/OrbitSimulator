@@ -109,6 +109,7 @@ Item {
     property alias path: pathGeometry
     property alias arrivalLine: arrivalLineGeometry
     property alias startOrbit: startOrbitGeometry
+    property alias belt: beltGeometry
     function planetOrbit(index) { return planetOrbits.objectAt(index) }
 
     readonly property var planetNames: [qsTr("Mercury"), qsTr("Venus"), qsTr("Earth"), qsTr("Mars"),
@@ -289,6 +290,15 @@ Item {
                     lighting: PrincipledMaterial.NoLighting
                     baseColor: burnMarker.fired ? "#64748b" : root.burnColor
                 }
+            }
+        }
+
+        // The asteroid belt: faint dots (see asteroid_belt.hpp).
+        Model {
+            geometry: PolylineGeometry { id: beltGeometry }
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                vertexColorsEnabled: true
             }
         }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "orbit/core/asteroid_belt.hpp"
 #include "orbit/core/lost_in_space.hpp"
 
 #include <QElapsedTimer>
@@ -9,6 +10,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 class BurnPlanner;
 class GameSession;
@@ -57,6 +59,7 @@ private:
     void jumpToNextBurn();
     void resetView(bool wholePath = false);
     void updatePlanetOrbits();
+    void updateBelt(double now);
     void updatePath();
     void updateStartOrbit();
     void updateMarkers();
@@ -79,6 +82,9 @@ private:
     PolylineGeometry* m_path = nullptr;
     PolylineGeometry* m_arrivalLine = nullptr;
     PolylineGeometry* m_startOrbit = nullptr;
+    PolylineGeometry* m_belt = nullptr;
+    std::vector<orbit::Asteroid> m_asteroids;
+    double m_beltEpoch = -1e300; ///< when the belt was last drawn
     std::array<PolylineGeometry*, 8> m_planetOrbits{};
 
     TimelineBar* m_timeline;

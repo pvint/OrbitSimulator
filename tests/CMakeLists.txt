@@ -13,6 +13,7 @@ FetchContent_Declare(Catch2
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(orbit_core_tests
+    test_asteroid_belt.cpp
     test_astro.cpp
     test_custom_program.cpp
     test_atmosphere.cpp

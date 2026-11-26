@@ -17,6 +17,15 @@ struct Vertex {
 PolylineGeometry::PolylineGeometry(QQuick3DObject* parent) : QQuick3DGeometry(parent) {}
 
 void PolylineGeometry::setPoints(const QList<QVector3D>& points, const QList<QColor>& colors) {
+    upload(points, colors, PrimitiveType::LineStrip);
+}
+
+void PolylineGeometry::setPointCloud(const QList<QVector3D>& points, const QList<QColor>& colors) {
+    upload(points, colors, PrimitiveType::Points);
+}
+
+void PolylineGeometry::upload(const QList<QVector3D>& points, const QList<QColor>& colors,
+                              PrimitiveType primitive) {
     Q_ASSERT(points.size() == colors.size());
 
     std::vector<Vertex> vertices;
@@ -36,7 +45,7 @@ void PolylineGeometry::setPoints(const QList<QVector3D>& points, const QList<QCo
     QByteArray data(static_cast<qsizetype>(vertices.size() * sizeof(Vertex)), Qt::Uninitialized);
     std::memcpy(data.data(), vertices.data(), vertices.size() * sizeof(Vertex));
     setVertexData(data);
-    setPrimitiveType(PrimitiveType::LineStrip);
+    setPrimitiveType(primitive);
     if (!points.isEmpty()) setBounds(lo, hi);
     addAttribute(Attribute::PositionSemantic, offsetof(Vertex, x), Attribute::F32Type);
     addAttribute(Attribute::ColorSemantic, offsetof(Vertex, r), Attribute::F32Type);

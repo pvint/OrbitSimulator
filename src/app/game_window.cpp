@@ -328,6 +328,7 @@ void GameWindow::connectScene() {
         qobject_cast<PolylineGeometry*>(m_scene->property("arrivalLine").value<QObject*>());
     m_startOrbit =
         qobject_cast<PolylineGeometry*>(m_scene->property("startOrbit").value<QObject*>());
+    m_belt = qobject_cast<PolylineGeometry*>(m_scene->property("belt").value<QObject*>());
     for (std::size_t i = 0; i < m_planetOrbits.size(); ++i) {
         QVariant model;
         QMetaObject::invokeMethod(m_scene, "planetOrbit", Q_RETURN_ARG(QVariant, model),
@@ -685,6 +686,24 @@ void GameWindow::resetView(bool wholePath) {
         Q_ARG(QVariant, 2.4 * reach / scene::kSolarMetresPerUnit));
 }
 
+/// The asteroids where they are now (redrawn when the clock has moved on
+/// by a few hours: they barely move in that time at this scale).
+void GameWindow::updateBelt(double now) {
+    if (!m_belt || std::abs(now - m_beltEpoch) < 0.25 * kDay) return;
+    m_beltEpoch = now;
+    if (m_asteroids.empty()) m_asteroids = orbit::makeAsteroidBelt(2500);
+    QList<QVector3D> points;
+    QList<QColor> colors;
+    points.reserve(static_cast<qsizetype>(m_asteroids.size()));
+    colors.reserve(static_cast<qsizetype>(m_asteroids.size()));
+    const QColor colour(0x8c, 0x84, 0x76, 140); // warm grey, faint
+    for (const orbit::Asteroid& a : m_asteroids) {
+        points.append(scene::fromHeliocentric(orbit::asteroidPosition(a, now)));
+        colors.append(colour);
+    }
+    m_belt->setPointCloud(points, colors);
+}
+
 void GameWindow::updatePlanetOrbits() {
     const double epoch = m_session->hasPuzzle() ? m_session->startEpoch() : epochNow();
     for (const orbit::Planet planet : orbit::kAllPlanets) {
@@ -1003,6 +1022,7 @@ void GameWindow::onNowChanged() {
             QVariant::fromValue(scene::fromHeliocentric(orbit::planetPosition(planet, now))));
     }
     m_scene->setProperty("planetPositions", planets);
+    updateBelt(now);
     m_scene->setProperty("dateText", m_session->hasPuzzle() ? display::date(now) : QString());
 
     m_timeline->setNow(now);

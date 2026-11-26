@@ -10,7 +10,6 @@
 #include <QStandardPaths>
 #include <QTimer>
 
-
 namespace {
 
 void saveScreenshotLater(QWidget* window, const QString& path, int delayMs) {
