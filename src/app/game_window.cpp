@@ -84,14 +84,12 @@ QString signedSpeed(double metresPerSecond) {
            display::speed(std::abs(metresPerSecond));
 }
 
-QString planetText(orbit::Planet planet) {
-    return QString::fromUtf8(orbit::planetName(planet).data());
-}
+QString planetText(orbit::Body planet) { return QString::fromUtf8(orbit::bodyName(planet).data()); }
 
 /// The planet's name inside a sentence: "the Earth", "Mars" (`start`: at
 /// the start of one, "The Earth").
-QString planetInText(orbit::Planet planet, bool start = false) {
-    if (planet != orbit::Planet::Earth) return planetText(planet);
+QString planetInText(orbit::Body planet, bool start = false) {
+    if (planet != orbit::Body::Earth) return planetText(planet);
     return start ? QObject::tr("The Earth") : QObject::tr("the Earth");
 }
 
@@ -129,7 +127,7 @@ QString regionPhrase(orbit::Region region) {
     return {};
 }
 
-QString goalText(orbit::Goal goal, orbit::Planet destination) {
+QString goalText(orbit::Goal goal, orbit::Body destination) {
     const QString name = planetText(destination);
     switch (goal) {
     case orbit::Goal::ReachEarth:
@@ -155,7 +153,7 @@ QString goalText(orbit::Goal goal, orbit::Planet destination) {
 }
 
 /// How the flight ended, with the planets named.
-QString endText(const orbit::VoyageResult& p, orbit::Planet destination) {
+QString endText(const orbit::VoyageResult& p, orbit::Body destination) {
     const QString name = planetText(destination);
     switch (p.end) {
     case orbit::VoyageEnd::ReachedPlanet:
@@ -401,7 +399,7 @@ void GameWindow::onPuzzleChanged() {
     }
     // "Centre" offers the destination too, when it isn't the Earth.
     while (m_centre->count() > 3) m_centre->removeItem(3);
-    if (v.destination != orbit::Planet::Earth) {
+    if (v.destination != orbit::Body::Earth) {
         m_centre->addItem(tr("Centre: %1").arg(planetText(v.destination)));
     }
     updatePlanetOrbits();
@@ -419,7 +417,7 @@ void GameWindow::onPuzzleChanged() {
 
     if (m_welcomePending) {
         m_welcomePending = false;
-        showCard(puzzle.destination == orbit::Planet::Earth ? tr("Lost!") : tr("Ready to go"),
+        showCard(puzzle.destination == orbit::Body::Earth ? tr("Lost!") : tr("Ready to go"),
                  welcomeText(puzzle), tr("Let's go"), QStringLiteral("welcome"));
     }
 }
@@ -429,16 +427,16 @@ QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
     const orbit::Voyage& v = puzzle.voyage;
     const QString to = planetInText(v.destination);
     const double fromTarget =
-        orbit::norm(v.position - orbit::planetPosition(v.destination, v.startEpoch));
+        orbit::norm(v.position - orbit::bodyPosition(v.destination, v.startEpoch));
     QString where;
     if (const auto parked = orbit::parkedAround(v.startEpoch, v.position, v.velocity)) {
         // In orbit: how high, and how long once round.
-        const orbit::Planet home = *parked;
-        const orbit::Vec3 rel = v.position - orbit::planetPosition(home, v.startEpoch);
-        const orbit::Vec3 relV = v.velocity - orbit::planetVelocity(home, v.startEpoch);
-        const double radius = orbit::planetRadius(home);
+        const orbit::Body home = *parked;
+        const orbit::Vec3 rel = v.position - orbit::bodyPosition(home, v.startEpoch);
+        const orbit::Vec3 relV = v.velocity - orbit::bodyVelocity(home, v.startEpoch);
+        const double radius = orbit::bodyRadius(home);
         const orbit::OrbitalElements el =
-            orbit::elementsFromState(rel, relV, orbit::planetMu(home), radius);
+            orbit::elementsFromState(rel, relV, orbit::bodyMu(home), radius);
         where = el.apoapsis < 1.05 * el.periapsis
                     ? tr("You're in orbit around %1, %2 up, going round every %3.")
                           .arg(planetInText(home), display::longDistance(el.periapsis - radius),
@@ -584,7 +582,7 @@ void GameWindow::pickDate() {
 /// are the ones you plan burns with: speeds (relative to the Sun, and to you)
 /// and how far away things are.
 /// The closest the predicted path comes to a planet, for its hover card.
-QString GameWindow::closestPassRow(orbit::Planet planet) const {
+QString GameWindow::closestPassRow(orbit::Body planet) const {
     const auto* prediction = m_session->prediction();
     if (!prediction) return {};
     const orbit::PlanetPass& pass = prediction->closestPasses.at(static_cast<std::size_t>(planet));
@@ -602,9 +600,9 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
     auto card = [](const QString& title, const QString& rows) {
         return QStringLiteral("<b>%1</b><table>%2</table>").arg(title, rows);
     };
-    for (const orbit::Planet planet : orbit::kAllPlanets) {
-        const orbit::Vec3 r = orbit::planetPosition(planet, now);
-        const orbit::Vec3 v = orbit::planetVelocity(planet, now);
+    for (const orbit::Body planet : orbit::kAllPlanets) {
+        const orbit::Vec3 r = orbit::bodyPosition(planet, now);
+        const orbit::Vec3 v = orbit::bodyVelocity(planet, now);
         const auto index = static_cast<int>(planet);
         texts.append(card(
             m_scene->property("planetNames").toList().value(index).toString(),
@@ -613,8 +611,8 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
                 infoRow(tr("Orbit period"),
                         periodText(keplerPeriod(orbit::planetOrbit(planet, now).semiMajorAxis,
                                                 orbit::kMuSun))) +
-                infoRow(tr("Mass"), bigMass(orbit::planetMu(planet) / kG)) +
-                infoRow(tr("Radius"), display::distance(orbit::planetRadius(planet))) +
+                infoRow(tr("Mass"), bigMass(orbit::bodyMu(planet) / kG)) +
+                infoRow(tr("Radius"), display::distance(orbit::bodyRadius(planet))) +
                 infoRow(tr("Distance from you"), display::longDistance(orbit::norm(r - ship.r))) +
                 infoRow(tr("Speed vs you"), display::speed(orbit::norm(v - ship.v))) +
                 closestPassRow(planet)));
@@ -623,28 +621,28 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
                                      infoRow(tr("Radius"), display::distance(orbit::kRadiusSun)) +
                                      infoRow(tr("Distance from you"),
                                              display::longDistance(orbit::norm(ship.r)))));
-    const orbit::Vec3 earthR = orbit::planetPosition(orbit::Planet::Earth, now);
-    const orbit::Vec3 earthV = orbit::planetVelocity(orbit::Planet::Earth, now);
+    const orbit::Vec3 earthR = orbit::bodyPosition(orbit::Body::Earth, now);
+    const orbit::Vec3 earthV = orbit::bodyVelocity(orbit::Body::Earth, now);
     // The ship's orbit as it is now (where it would go with no more burns),
     // around the body whose pull dominates: a planet inside its sphere of
     // influence, otherwise the Sun.
     const auto near = orbit::dominantPlanet(now, ship.r);
     const orbit::OrbitalElements shipOrbit =
-        near ? orbit::elementsFromState(ship.r - orbit::planetPosition(*near, now),
-                                        ship.v - orbit::planetVelocity(*near, now),
-                                        orbit::planetMu(*near), orbit::planetRadius(*near))
+        near ? orbit::elementsFromState(ship.r - orbit::bodyPosition(*near, now),
+                                        ship.v - orbit::bodyVelocity(*near, now),
+                                        orbit::bodyMu(*near), orbit::bodyRadius(*near))
              : orbit::elementsFromState(ship.r, ship.v, orbit::kMuSun, orbit::kRadiusSun);
-    const orbit::Planet destination = m_session->puzzle().voyage.destination;
+    const orbit::Body destination = m_session->puzzle().voyage.destination;
     QString rows =
         infoRow(tr("Speed (Sun)"), display::speed(orbit::norm(ship.v))) +
         infoRow(tr("Speed (Earth)"), display::speed(orbit::norm(ship.v - earthV))) +
         infoRow(tr("Distance from Sun"), display::longDistance(orbit::norm(ship.r))) +
         infoRow(tr("Distance from Earth"), display::longDistance(orbit::norm(ship.r - earthR))) +
-        (destination == orbit::Planet::Earth
+        (destination == orbit::Body::Earth
              ? QString()
              : infoRow(tr("Distance from %1").arg(planetText(destination)),
                        display::longDistance(
-                           orbit::norm(ship.r - orbit::planetPosition(destination, now))))) +
+                           orbit::norm(ship.r - orbit::bodyPosition(destination, now))))) +
         infoRow(near ? tr("Orbit period (%1)").arg(planetText(*near)) : tr("Orbit period"),
                 shipOrbit.bound ? periodText(shipOrbit.period) : tr("none: escaping")) +
         infoRow(tr("Mass"), display::mass(ship.mass));
@@ -706,7 +704,7 @@ void GameWindow::updateBelt(double now) {
 
 void GameWindow::updatePlanetOrbits() {
     const double epoch = m_session->hasPuzzle() ? m_session->startEpoch() : epochNow();
-    for (const orbit::Planet planet : orbit::kAllPlanets) {
+    for (const orbit::Body planet : orbit::kAllPlanets) {
         PolylineGeometry* line = m_planetOrbits.at(static_cast<std::size_t>(planet));
         if (!line) continue;
         const orbit::PlanetOrbit o = orbit::planetOrbit(planet, epoch);
@@ -782,11 +780,11 @@ void GameWindow::updatePath() {
             while (last + 1 < samples.size() && samples[last + 1].parked == samples[i].parked) {
                 ++last;
             }
-            const orbit::Planet planet = samples[i].parked.value_or(orbit::Planet::Earth);
-            const orbit::Vec3 rel = samples[i].r - orbit::planetPosition(planet, samples[i].epoch);
-            const orbit::Vec3 relV = samples[i].v - orbit::planetVelocity(planet, samples[i].epoch);
-            const double period = orbit::elementsFromState(rel, relV, orbit::planetMu(planet),
-                                                           orbit::planetRadius(planet))
+            const orbit::Body planet = samples[i].parked.value_or(orbit::Body::Earth);
+            const orbit::Vec3 rel = samples[i].r - orbit::bodyPosition(planet, samples[i].epoch);
+            const orbit::Vec3 relV = samples[i].v - orbit::bodyVelocity(planet, samples[i].epoch);
+            const double period = orbit::elementsFromState(rel, relV, orbit::bodyMu(planet),
+                                                           orbit::bodyRadius(planet))
                                       .period;
             const double end =
                 last + 1 < samples.size() ? samples[last + 1].epoch : samples[last].epoch;
@@ -876,7 +874,7 @@ void GameWindow::updateMarkers() {
     // did to the speed around the Sun (the closest pass by the Earth is the
     // arrival, shown on its own below).
     // The closest approach to the destination.
-    const orbit::Planet to = m_session->puzzle().voyage.destination;
+    const orbit::Body to = m_session->puzzle().voyage.destination;
     const orbit::PlanetPass& c = prediction->closestPasses.at(static_cast<std::size_t>(to));
     const QVariantList names = m_scene->property("planetNames").toList();
     QVariantList flybyPositions;
@@ -886,9 +884,9 @@ void GameWindow::updateMarkers() {
         if (pass.planet == to) continue; // the arrival, shown on its own below
         const QString name = names.value(static_cast<int>(pass.planet)).toString();
         const double gain = pass.sunSpeedAfter - pass.sunSpeedBefore;
-        const double radius = orbit::planetRadius(pass.planet);
+        const double radius = orbit::bodyRadius(pass.planet);
         flybyPositions.append(QVariant::fromValue(scene::fromHeliocentric(
-            orbit::planetPosition(pass.planet, pass.epoch) + pass.relativePosition)));
+            orbit::bodyPosition(pass.planet, pass.epoch) + pass.relativePosition)));
         flybyLabels.append(tr("%1 flyby, %2").arg(name, signedSpeed(gain)));
         QString rows =
             infoRow(tr("When"), display::date(pass.epoch)) +
@@ -913,7 +911,7 @@ void GameWindow::updateMarkers() {
     const bool show = c.valid && c.epoch > m_session->now();
     m_scene->setProperty("arrivalVisible", show);
     if (show) {
-        const orbit::Vec3 target = orbit::planetPosition(to, c.epoch);
+        const orbit::Vec3 target = orbit::bodyPosition(to, c.epoch);
         const QVector3D ship = scene::fromHeliocentric(target + c.relativePosition);
         m_scene->setProperty("arrivalShip", ship);
         m_scene->setProperty("arrivalEarth", scene::fromHeliocentric(target));
@@ -923,7 +921,7 @@ void GameWindow::updateMarkers() {
         m_scene->setProperty(
             "arrivalLabel",
             near ? tr("closest to %1: %2 up, %3")
-                       .arg(name, display::longDistance(c.distance - orbit::planetRadius(to)),
+                       .arg(name, display::longDistance(c.distance - orbit::bodyRadius(to)),
                             display::date(c.epoch))
                  : tr("closest to %1: %2 away, %3")
                        .arg(name, display::longDistance(c.distance), display::date(c.epoch)));
@@ -940,7 +938,7 @@ void GameWindow::updateStatus() {
     if (!m_scene || !p) return;
     using orbit::VoyageEnd;
     const orbit::Goal goal = m_session->puzzle().voyage.goal;
-    const orbit::Planet to = m_session->puzzle().voyage.destination;
+    const orbit::Body to = m_session->puzzle().voyage.destination;
     const QString name = planetText(to);
     const orbit::PlanetPass& pass = p->closestPasses.at(static_cast<std::size_t>(to));
     QString text;
@@ -965,9 +963,9 @@ void GameWindow::updateStatus() {
             text = tr("<b>On course!</b> You reach %1 on %2.").arg(name, when);
             break;
         case orbit::Goal::ClosePass:
-            text = tr("<b>On course!</b> You pass %1 above %2 on %3.")
-                       .arg(display::longDistance(pass.distance - orbit::planetRadius(to)), name,
-                            when);
+            text =
+                tr("<b>On course!</b> You pass %1 above %2 on %3.")
+                    .arg(display::longDistance(pass.distance - orbit::bodyRadius(to)), name, when);
             break;
         case orbit::Goal::PlanetOrbit:
             text = tr("<b>On course!</b> You settle into orbit around %1 on %2.").arg(name, when);
@@ -983,14 +981,14 @@ void GameWindow::updateStatus() {
                     tr("You'd hit the air at %1, %2 below level.")
                         .arg(display::speed(p->entrySpeed), display::angle(-p->entryAngle));
         }
-    } else if (p->end == VoyageEnd::Captured && to == orbit::Planet::Earth) {
+    } else if (p->end == VoyageEnd::Captured && to == orbit::Body::Earth) {
         color = QColor(0xfd, 0xe6, 0x8a);
         text = tr("You'd end up in orbit around the Earth. To land, add a burn that lowers "
                   "your lowest point into the air.");
     } else if (const auto parked = p->samples.empty() ? std::nullopt : p->samples.back().parked) {
         text = tr("Still in orbit around %1. Add a burn to leave.").arg(planetText(*parked));
     } else if (pass.valid) {
-        const double altitude = pass.distance - orbit::planetRadius(to);
+        const double altitude = pass.distance - orbit::bodyRadius(to);
         const QString day = display::date(pass.epoch);
         if (pass.distance < orbit::sphereOfInfluence(to, p->endEpoch)) {
             text = tr("You pass <b>%1 above %2</b> on %3: close!")
@@ -1017,9 +1015,9 @@ void GameWindow::onNowChanged() {
     if (!m_scene) return;
     const double now = m_session->hasPuzzle() ? m_session->now() : epochNow();
     QVariantList planets;
-    for (const orbit::Planet planet : orbit::kAllPlanets) {
+    for (const orbit::Body planet : orbit::kAllPlanets) {
         planets.append(
-            QVariant::fromValue(scene::fromHeliocentric(orbit::planetPosition(planet, now))));
+            QVariant::fromValue(scene::fromHeliocentric(orbit::bodyPosition(planet, now))));
     }
     m_scene->setProperty("planetPositions", planets);
     updateBelt(now);
@@ -1033,8 +1031,7 @@ void GameWindow::onNowChanged() {
     // Your own speed: the number to compare with a burn's size. Δv is a change
     // of velocity, so a burn of 1,000 m/s adds or removes up to that much.
     const double sunSpeed = orbit::norm(ship.v);
-    const double earthSpeed =
-        orbit::norm(ship.v - orbit::planetVelocity(orbit::Planet::Earth, now));
+    const double earthSpeed = orbit::norm(ship.v - orbit::bodyVelocity(orbit::Body::Earth, now));
     updateInfo(now, ship);
     m_scene->setProperty("speedText",
                          tr("Speed: %1 (Sun), %2 (Earth)")
@@ -1077,8 +1074,8 @@ void GameWindow::showEnding() {
             compare += QStringLiteral("<br><br>") +
                        tr("Gravity assists: %1.").arg(assists.join(QStringLiteral(", ")));
         }
-        showCard(m_session->puzzle().voyage.destination == orbit::Planet::Earth ? tr("Home!")
-                                                                                : tr("Made it!"),
+        showCard(m_session->puzzle().voyage.destination == orbit::Body::Earth ? tr("Home!")
+                                                                              : tr("Made it!"),
                  tr("You made it in %1 days, with %2 of Δv left (%3 % of what you had). "
                     "Hints used: %4.")
                          .arg(std::lround(days))

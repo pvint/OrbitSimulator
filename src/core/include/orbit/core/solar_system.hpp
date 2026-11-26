@@ -44,27 +44,87 @@ inline constexpr double kRadiusSun = 6.957e8;
 /// much against the pole of its orbit (radians).
 inline constexpr double kObliquityJ2000 = 23.43928 * std::numbers::pi / 180.0;
 
-enum class Planet { Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune };
-inline constexpr std::array kAllPlanets{Planet::Mercury, Planet::Venus,   Planet::Earth,
-                                        Planet::Mars,    Planet::Jupiter, Planet::Saturn,
-                                        Planet::Uranus,  Planet::Neptune};
+/// The planets, then the round moons ("major moons"): the Moon, Jupiter's
+/// four Galilean moons, Saturn's seven, Uranus's five and Neptune's Triton.
+/// (Mars's Phobos and Deimos are too small to matter here: their spheres
+/// of influence lie inside them.)
+enum class Body {
+    Mercury,
+    Venus,
+    Earth,
+    Mars,
+    Jupiter,
+    Saturn,
+    Uranus,
+    Neptune,
+    Moon,
+    Io,
+    Europa,
+    Ganymede,
+    Callisto,
+    Mimas,
+    Enceladus,
+    Tethys,
+    Dione,
+    Rhea,
+    Titan,
+    Iapetus,
+    Miranda,
+    Ariel,
+    Umbriel,
+    Titania,
+    Oberon,
+    Triton,
+};
+inline constexpr std::array kAllPlanets{Body::Mercury, Body::Venus,  Body::Earth,  Body::Mars,
+                                        Body::Jupiter, Body::Saturn, Body::Uranus, Body::Neptune};
+inline constexpr std::array kMoons{
+    Body::Moon,      Body::Io,     Body::Europa,  Body::Ganymede, Body::Callisto, Body::Mimas,
+    Body::Enceladus, Body::Tethys, Body::Dione,   Body::Rhea,     Body::Titan,    Body::Iapetus,
+    Body::Miranda,   Body::Ariel,  Body::Umbriel, Body::Titania,  Body::Oberon,   Body::Triton};
+inline constexpr std::size_t kBodyCount = kAllPlanets.size() + kMoons.size();
+/// Every body, planets first (index: static_cast<std::size_t>(body)).
+inline constexpr std::array<Body, kBodyCount> kAllBodies = [] {
+    std::array<Body, kBodyCount> all{};
+    for (std::size_t i = 0; i < kBodyCount; ++i) all.at(i) = static_cast<Body>(i);
+    return all;
+}();
 
-std::string_view planetName(Planet planet);
+std::string_view bodyName(Body body);
+bool isMoon(Body body);
+/// The planet a moon goes round; a planet is its own.
+Body planetOf(Body body);
 
-/// μ = G·M (m³/s²) of the planet with its moons (the Earth without its
-/// Moon), from JPL's DE440.
-double planetMu(Planet planet);
+/// μ = G·M (m³/s²): a planet with its moons (the Earth without its Moon),
+/// from JPL's DE440; a moon, from JPL's satellite physical parameters.
+double bodyMu(Body body);
 
 /// Mean radius (m).
-double planetRadius(Planet planet);
+double bodyRadius(Body body);
 
-/// Heliocentric ecliptic J2000 position of the planet's centre (m) at an
+/// Heliocentric ecliptic J2000 position of the body's centre (m) at an
 /// epoch (s since J2000). For the Earth, the Earth itself, not the
-/// Earth–Moon barycentre.
-Vec3 planetPosition(Planet planet, double epoch);
+/// Earth–Moon barycentre. A moon: its planet's position plus its own orbit
+/// around it (moonOrbit).
+Vec3 bodyPosition(Body body, double epoch);
 
-/// Its velocity (m/s), by differencing positions an hour apart.
-Vec3 planetVelocity(Planet planet, double epoch);
+/// Its velocity (m/s): a planet's by differencing positions an hour apart,
+/// a moon's its planet's plus its own on its orbit.
+Vec3 bodyVelocity(Body body, double epoch);
+
+/// A moon's orbit around its planet (not the Moon's: that comes from the
+/// lunar theory in ephemeris.hpp). Mean elements from JPL's satellite
+/// tables, in the planet's equatorial plane, whose pole comes from the
+/// IAU's rotation elements; the moon goes round at n = √(μ_planet / a³).
+/// The phases (where on its orbit each moon is) are only illustrative:
+/// right for playing, not for planning a real mission.
+struct MoonOrbit {
+    double semiMajorAxis = 0.0; ///< m
+    double eccentricity = 0.0;
+    double inclination = 0.0; ///< radians, to the planet's equator (over 90°: backwards)
+    Vec3 pole;                ///< the planet's north pole, ecliptic J2000 unit vector
+};
+MoonOrbit moonOrbit(Body moon);
 
 /// Heliocentric ecliptic J2000 position of the Moon (m).
 Vec3 moonHeliocentric(double epoch);
@@ -77,7 +137,8 @@ struct EarthMoon {
 EarthMoon earthAndMoonHeliocentric(double epoch);
 
 /// The planet's orbital elements at the epoch, from the tables (the
-/// Earth–Moon barycentre's for the Earth): for drawing its orbit.
+/// Earth–Moon barycentre's for the Earth): for drawing its orbit. For a
+/// moon, its planet's.
 struct PlanetOrbit {
     double semiMajorAxis = 0.0; ///< m
     double eccentricity = 0.0;
@@ -86,13 +147,14 @@ struct PlanetOrbit {
     double argumentOfPeriapsis = 0.0; ///< ω, radians
     double meanAnomaly = 0.0;         ///< M, radians
 };
-PlanetOrbit planetOrbit(Planet planet, double epoch);
+PlanetOrbit planetOrbit(Body body, double epoch);
 
-/// The planet's sphere of influence (m), a (μ_planet / μ_sun)^(2/5) with a
-/// its orbit's semi-major axis: within it, the planet's pull shapes a
+/// The body's sphere of influence (m), a (μ_body / μ_sun)^(2/5) with a
+/// its orbit's semi-major axis: within it, the body's pull shapes a
 /// passing path more than the Sun's does (Laplace's estimate). The Earth's
-/// reaches about 925,000 km.
-double sphereOfInfluence(Planet planet, double epoch);
+/// reaches about 925,000 km. A moon's is the same against its planet's
+/// pull, a (μ_moon / μ_planet)^(2/5): Titan's about 43,000 km.
+double sphereOfInfluence(Body body, double epoch);
 
 /// Turning between the J2000 ecliptic and the J2000 equator: a rotation by
 /// the obliquity about the x axis, the line where the two planes cross

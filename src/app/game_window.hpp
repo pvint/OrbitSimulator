@@ -66,7 +66,7 @@ private:
     void updateTimeline();
     void pickDate();
     void updateInfo(double now, const orbit::VoyageSample& ship);
-    QString closestPassRow(orbit::Planet planet) const;
+    QString closestPassRow(orbit::Body planet) const;
     void updateStatus();
     /// A message card. With a `key`, it offers "Don't show this again", and
     /// isn't shown once the player has said so (kept in the settings).

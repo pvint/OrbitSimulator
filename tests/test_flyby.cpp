@@ -39,8 +39,8 @@ double longitude(const Vec3& r) { return std::atan2(r.y, r.x); }
 Voyage shipNearEarthsOrbit() {
     Voyage v;
     v.startEpoch = epoch2027();
-    const TwoBodyState earth{planetPosition(Planet::Earth, v.startEpoch),
-                             planetVelocity(Planet::Earth, v.startEpoch)};
+    const TwoBodyState earth{bodyPosition(Body::Earth, v.startEpoch),
+                             bodyVelocity(Body::Earth, v.startEpoch)};
     const TwoBodyState ahead = propagateKepler(earth, 60.0 * kDay, kMuSun);
     v.position = ahead.r;
     v.velocity = ahead.v;
@@ -51,7 +51,7 @@ Voyage shipNearEarthsOrbit() {
     for (int day = 10; day < 420; ++day) {
         const double t = v.startEpoch + day * kDay;
         const Vec3 ship = propagateKepler({v.position, v.velocity}, t - v.startEpoch, kMuSun).r;
-        double lead = longitude(planetPosition(Planet::Jupiter, t)) - longitude(ship);
+        double lead = longitude(bodyPosition(Body::Jupiter, t)) - longitude(ship);
         lead = std::remainder(lead, 2.0 * std::numbers::pi);
         const double off = std::abs(lead - 97.0 * std::numbers::pi / 180.0);
         if (off < bestOff) {
@@ -69,14 +69,14 @@ TEST_CASE("A hyperbolic pass: v∞, the turn, and the speed around the Sun", "[f
     // Past Jupiter at 10 radii, 6 km/s far away. e = 1 + r_p v∞² / μ, and
     // the path turns by δ = 2 asin(1/e).
     const double t = epoch2027();
-    const double mu = planetMu(Planet::Jupiter);
-    const double rp = 10.0 * planetRadius(Planet::Jupiter);
+    const double mu = bodyMu(Body::Jupiter);
+    const double rp = 10.0 * bodyRadius(Body::Jupiter);
     const double vInf = 6000.0;
     const double vp = std::sqrt(vInf * vInf + 2.0 * mu / rp);
     const Vec3 rel{0.0, rp, 0.0};
     const Vec3 relV{-vp, 0.0, 0.0};
-    const PlanetPass pass = passAt(Planet::Jupiter, t, planetPosition(Planet::Jupiter, t) + rel,
-                                   planetVelocity(Planet::Jupiter, t) + relV);
+    const PlanetPass pass = passAt(Body::Jupiter, t, bodyPosition(Body::Jupiter, t) + rel,
+                                   bodyVelocity(Body::Jupiter, t) + relV);
     CHECK_THAT(pass.distance, WithinRel(rp, 1e-12));
     CHECK_THAT(pass.vInfinity, WithinRel(vInf, 1e-9));
     const double e = 1.0 + rp * vInf * vInf / mu;
@@ -98,19 +98,19 @@ TEST_CASE("The flight records passes inside a planet's sphere of influence", "[f
     // approach to every planet.
     CHECK(coast.flybys.empty());
     for (const PlanetPass& p : coast.closestPasses) CHECK(p.valid);
-    CHECK(coast.closestPasses.at(static_cast<std::size_t>(Planet::Jupiter)).distance >
+    CHECK(coast.closestPasses.at(static_cast<std::size_t>(Body::Jupiter)).distance >
           3.0 * kAstronomicalUnit);
 }
 
 TEST_CASE("Aiming at Jupiter, and what the pass gives", "[flyby][slow]") {
     Voyage voyage = shipNearEarthsOrbit();
-    const double rj = planetRadius(Planet::Jupiter);
+    const double rj = bodyRadius(Body::Jupiter);
     const auto passFor = [&](const FlybyAim& aim) {
         Voyage v = voyage;
         const auto burn = aimFlyby(v, 0, aim).burn;
         REQUIRE(burn);
         v.burns = {*burn};
-        const auto pass = passAfter(flyVoyage(v), Planet::Jupiter, burn->epoch);
+        const auto pass = passAfter(flyVoyage(v), Body::Jupiter, burn->epoch);
         REQUIRE(pass);
         CAPTURE(flybySideName(aim.side), burnSize(*burn), pass->distance / rj, pass->vInfinity,
                 pass->sunSpeedBefore, pass->sunSpeedAfter);
@@ -119,8 +119,8 @@ TEST_CASE("Aiming at Jupiter, and what the pass gives", "[flyby][slow]") {
         return std::pair{v, *pass};
     };
 
-    const auto [faster, fast] = passFor({Planet::Jupiter, 8.0 * rj, FlybySide::Faster});
-    const auto [slower, slow] = passFor({Planet::Jupiter, 8.0 * rj, FlybySide::Slower});
+    const auto [faster, fast] = passFor({Body::Jupiter, 8.0 * rj, FlybySide::Faster});
+    const auto [slower, slow] = passFor({Body::Jupiter, 8.0 * rj, FlybySide::Slower});
     // Arriving from a Hohmann transfer, Jupiter catches the ship up: its
     // motion relative to Jupiter points backwards, so turning it either way
     // speeds the ship up, but on the "faster" side by much more.
@@ -139,10 +139,10 @@ TEST_CASE("Aiming at Jupiter, and what the pass gives", "[flyby][slow]") {
 
     // Aiming again with "keep" and a wider pass: further out, less turn.
     Voyage again = faster;
-    const auto wider = aimFlyby(again, 0, {Planet::Jupiter, 20.0 * rj, FlybySide::Keep}).burn;
+    const auto wider = aimFlyby(again, 0, {Body::Jupiter, 20.0 * rj, FlybySide::Keep}).burn;
     REQUIRE(wider);
     again.burns = {*wider};
-    const auto widerPass = passAfter(flyVoyage(again), Planet::Jupiter, wider->epoch);
+    const auto widerPass = passAfter(flyVoyage(again), Body::Jupiter, wider->epoch);
     REQUIRE(widerPass);
     CHECK_THAT(widerPass->distance, WithinRel(20.0 * rj, 0.01));
     CHECK(widerPass->turnAngle < fast.turnAngle);
@@ -156,7 +156,7 @@ TEST_CASE("Aiming at a planet out of reach says so", "[flyby]") {
     voyage.burns.front().epoch = voyage.startEpoch + 1.0 * kDay;
     voyage.ship.propellant = 500.0;
     const FlybyAimResult result =
-        aimFlyby(voyage, 0, {Planet::Neptune, 5.0 * planetRadius(Planet::Neptune)});
+        aimFlyby(voyage, 0, {Body::Neptune, 5.0 * bodyRadius(Body::Neptune)});
     CHECK_FALSE(result.burn);
     CHECK(result.outOfReach);
     CHECK(result.cheapest > deltaVCapacity(voyage.ship));

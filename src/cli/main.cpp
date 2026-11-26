@@ -227,9 +227,9 @@ void printSolarResult(const orbit::SimResult& r, const orbit::SolarSummary& s) {
     printSolarOrbit("Orbit at start:   ", s.initialOrbit);
     printSolarOrbit("Orbit at end:     ", s.finalOrbit);
     std::cout << "Nearest planets:\n";
-    for (const orbit::Planet planet : orbit::kAllPlanets) {
+    for (const orbit::Body planet : orbit::kAllPlanets) {
         const auto& a = s.approaches.at(static_cast<std::size_t>(planet));
-        std::cout << "  " << std::left << std::setw(9) << orbit::planetName(planet) << std::right
+        std::cout << "  " << std::left << std::setw(9) << orbit::bodyName(planet) << std::right
                   << std::setw(14) << au(a.distance) << std::setw(18) << km(a.distance) << "  "
                   << utc(r, a.t) << '\n';
     }
@@ -389,7 +389,7 @@ void printSolarSweep(const std::vector<double>& values,
         const orbit::SimResult r = orbit::simulate(missions[i]);
         if (!r.solar) continue;
         const orbit::OrbitalElements& o = r.solar->finalOrbit;
-        const auto& earth = r.solar->approaches.at(static_cast<std::size_t>(orbit::Planet::Earth));
+        const auto& earth = r.solar->approaches.at(static_cast<std::size_t>(orbit::Body::Earth));
         std::cout << std::fixed << std::setprecision(3) << std::setw(12) << values[i] << "  "
                   << std::left << std::setw(10) << orbit::toString(r.outcome) << std::right
                   << std::setw(14) << au(o.periapsis) << std::setw(14)

@@ -72,14 +72,14 @@ enum class FlybySide {
 std::string_view flybySideName(FlybySide side);
 
 struct FlybyAim {
-    Planet planet = Planet::Jupiter;
+    Body planet = Body::Jupiter;
     double periapsis = 0.0; ///< m, from the planet's centre
     FlybySide side = FlybySide::Keep;
 };
 
 /// The pass by `planet` after `after`: the first flyby inside its sphere
 /// of influence, else the closest approach if it comes later than that.
-std::optional<PlanetPass> passAfter(const VoyageResult& result, Planet planet, double after);
+std::optional<PlanetPass> passAfter(const VoyageResult& result, Body planet, double after);
 
 struct FlybyAimResult {
     std::optional<Burn> burn; ///< the burn that makes the pass, if found

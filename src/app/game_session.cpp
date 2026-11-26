@@ -24,11 +24,9 @@ constexpr double kHintLongestFlight = 700.0 * kDay;
 /// Course corrections go this long before arriving.
 constexpr double kCorrectionLead = 20.0 * kDay;
 
-QString planetText(orbit::Planet planet) {
-    return QString::fromUtf8(orbit::planetName(planet).data());
-}
+QString planetText(orbit::Body planet) { return QString::fromUtf8(orbit::bodyName(planet).data()); }
 
-QString goalPhrase(orbit::Goal goal, orbit::Planet destination) {
+QString goalPhrase(orbit::Goal goal, orbit::Body destination) {
     const QString name = planetText(destination);
     switch (goal) {
     case orbit::Goal::ReachEarth:
@@ -302,7 +300,7 @@ GameSession::Hint GameSession::computeAim(const orbit::Puzzle& puzzle,
             tr("You pass %1 on %2, %3 from its centre (%4 times its radius). Around "
                "the Sun you go from %5 to %6.")
                 .arg(name, display::date(pass->epoch), display::longDistance(pass->distance))
-                .arg(QString::number(pass->distance / planetRadius(aim.planet), 'f', 1))
+                .arg(QString::number(pass->distance / bodyRadius(aim.planet), 'f', 1))
                 .arg(display::speed(pass->sunSpeedBefore), display::speed(pass->sunSpeedAfter));
     }
     return {voyage.burns, at, message, false, reach};
@@ -336,14 +334,14 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
     using namespace orbit;
     Voyage voyage = puzzle.voyage;
     voyage.burns = burns;
-    const Planet to = voyage.destination;
+    const Body to = voyage.destination;
     const QString name = planetText(to);
     const VoyageResult prediction = flyVoyage(voyage);
     if (prediction.goalMet) {
         return {{},
                 -1,
-                to == Planet::Earth ? tr("You're on your way home already: just fly.")
-                                    : tr("You're on your way already: just fly.")};
+                to == Body::Earth ? tr("You're on your way home already: just fly.")
+                                  : tr("You're on your way already: just fly.")};
     }
     const PlanetPass& closest = prediction.closestPasses.at(static_cast<std::size_t>(to));
     const double soi = sphereOfInfluence(to, now);
@@ -361,14 +359,14 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
         Vec3 r = here.r;
         Vec3 v = here.v;
         if (const auto parked = parkedAround(now, here.r, here.v)) {
-            const Vec3 pr = planetPosition(*parked, now);
-            const Vec3 pv = planetVelocity(*parked, now);
-            const OrbitalElements el = elementsFromState(here.r - pr, here.v - pv,
-                                                         planetMu(*parked), planetRadius(*parked));
+            const Vec3 pr = bodyPosition(*parked, now);
+            const Vec3 pv = bodyVelocity(*parked, now);
+            const OrbitalElements el =
+                elementsFromState(here.r - pr, here.v - pv, bodyMu(*parked), bodyRadius(*parked));
             // The orbit is set: price each departure from its best point.
             from = {parked,
                     {el.periapsis, el.apoapsis},
-                    orbitPoints({here.r - pr, here.v - pv}, planetMu(*parked), 72)};
+                    orbitPoints({here.r - pr, here.v - pv}, bodyMu(*parked), 72)};
             r = pr;
             v = pv;
         }
@@ -422,7 +420,7 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
         }
     }
     if (voyage.goal == Goal::PlanetOrbit && closest.valid && !prediction.hitPlanet) {
-        const double radii = closest.distance / planetRadius(to);
+        const double radii = closest.distance / bodyRadius(to);
         if (radii >= VoyageOptions{}.orbitMinPeriapsisRadii && radii < 3.0) {
             if (const auto brake = captureBurn(voyage)) {
                 voyage.burns.push_back(*brake);
@@ -451,11 +449,10 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
                 }
                 // Energy around the Earth: v_entry² = v∞² + 2μ/r_I.
                 const double rI = kRadiusEarth + VoyageOptions{}.entryInterfaceAltitude;
-                const double entry =
-                    prediction.entrySpeed > 0.0
-                        ? prediction.entrySpeed
-                        : std::hypot(approachSpeed(prediction.closest),
-                                     std::sqrt(2.0 * planetMu(Planet::Earth) / rI));
+                const double entry = prediction.entrySpeed > 0.0
+                                         ? prediction.entrySpeed
+                                         : std::hypot(approachSpeed(prediction.closest),
+                                                      std::sqrt(2.0 * bodyMu(Body::Earth) / rI));
                 return {voyage.burns, static_cast<int>(index),
                         tr("Coming from so far out, you'd hit the air at about %1: faster than "
                            "any heat shield can take. Brake as you near the Earth, on %2: %3 "

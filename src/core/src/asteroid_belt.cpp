@@ -38,7 +38,7 @@ double normal(std::mt19937_64& engine) {
 } // namespace
 
 std::vector<double> kirkwoodGaps() {
-    const double aJupiter = planetOrbit(Planet::Jupiter, 0.0).semiMajorAxis;
+    const double aJupiter = planetOrbit(Body::Jupiter, 0.0).semiMajorAxis;
     std::vector<double> gaps;
     gaps.reserve(kResonances.size());
     for (const Resonance& r : kResonances) gaps.push_back(aJupiter * std::pow(r.k, -2.0 / 3.0));

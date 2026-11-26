@@ -221,11 +221,11 @@ void BurnPlanner::openAimDialog() {
     auto* form = new QFormLayout;
     auto* planet = new QComboBox(&dialog);
     planet->setObjectName(QStringLiteral("combo-aim-planet"));
-    for (const orbit::Planet p : orbit::kAllPlanets) {
-        planet->addItem(QString::fromUtf8(orbit::planetName(p).data()), static_cast<int>(p));
+    for (const orbit::Body p : orbit::kAllPlanets) {
+        planet->addItem(QString::fromUtf8(orbit::bodyName(p).data()), static_cast<int>(p));
     }
     // The planet the path passes next after this burn, else Jupiter.
-    int chosen = static_cast<int>(orbit::Planet::Jupiter);
+    int chosen = static_cast<int>(orbit::Body::Jupiter);
     if (const auto* p = m_session->prediction()) {
         const double after = m_session->burns()[static_cast<std::size_t>(index)].epoch;
         for (const orbit::PlanetPass& pass : p->flybys) {
@@ -254,7 +254,7 @@ void BurnPlanner::openAimDialog() {
     side->addItem(tr("Over its north side"), static_cast<int>(orbit::FlybySide::North));
     side->addItem(tr("Under its south side"), static_cast<int>(orbit::FlybySide::South));
     side->setCurrentIndex(1);
-    form->addRow(tr("Planet"), planet);
+    form->addRow(tr("Body"), planet);
     form->addRow(tr("Closest pass"), radii);
     form->addRow(tr("Side"), side);
     layout->addLayout(form);
@@ -265,8 +265,8 @@ void BurnPlanner::openAimDialog() {
     layout->addWidget(buttons);
     if (dialog.exec() != QDialog::Accepted) return;
 
-    const auto p = static_cast<orbit::Planet>(planet->currentData().toInt());
-    m_session->aimBurn(index, {p, radii->value() * orbit::planetRadius(p),
+    const auto p = static_cast<orbit::Body>(planet->currentData().toInt());
+    m_session->aimBurn(index, {p, radii->value() * orbit::bodyRadius(p),
                                static_cast<orbit::FlybySide>(side->currentData().toInt())});
 }
 

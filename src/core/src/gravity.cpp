@@ -33,12 +33,12 @@ Vec3 heliocentricGravity(const Vec3& r, double epoch, bool thirdBodies) {
     const double rNorm = norm(r);
     Vec3 acceleration = (-kMuSun / (rNorm * rNorm * rNorm)) * r;
     if (!thirdBodies) return acceleration;
-    for (const Planet planet : kAllPlanets) {
-        if (planet == Planet::Earth) continue; // with the Moon, below
-        acceleration += tidalPull(r, planetPosition(planet, epoch), planetMu(planet));
+    for (const Body planet : kAllPlanets) {
+        if (planet == Body::Earth) continue; // with the Moon, below
+        acceleration += tidalPull(r, bodyPosition(planet, epoch), bodyMu(planet));
     }
     const EarthMoon em = earthAndMoonHeliocentric(epoch);
-    acceleration += tidalPull(r, em.earth, planetMu(Planet::Earth));
+    acceleration += tidalPull(r, em.earth, bodyMu(Body::Earth));
     acceleration += tidalPull(r, em.moon, kMuMoon);
     return acceleration;
 }

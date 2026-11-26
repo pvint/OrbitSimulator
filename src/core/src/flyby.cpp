@@ -71,7 +71,7 @@ std::optional<Towards> lambertTowards(double epoch, const Vec3& r, const Vec3& v
     for (int i = 0; i <= kTrips; ++i) {
         const double flight = 20.0 * kDay + (longest - 20.0 * kDay) * i / kTrips;
         const auto solution =
-            solveLambert(r, planetPosition(aim.planet, epoch + flight), flight, kMuSun);
+            solveLambert(r, bodyPosition(aim.planet, epoch + flight), flight, kMuSun);
         if (!solution) continue;
         const double cost = norm(solution->v1 - v);
         if (!best || cost < bestCost) {
@@ -87,9 +87,9 @@ std::optional<Towards> lambertTowards(double epoch, const Vec3& r, const Vec3& v
     // for the pass wanted (the arrival direction depends on the aim point,
     // so aim, solve, and aim again).
     const double arrival = epoch + bestFlight;
-    const Vec3 planetR = planetPosition(aim.planet, arrival);
-    const Vec3 planetV = planetVelocity(aim.planet, arrival);
-    const double mu = planetMu(aim.planet);
+    const Vec3 planetR = bodyPosition(aim.planet, arrival);
+    const Vec3 planetV = bodyVelocity(aim.planet, arrival);
+    const double mu = bodyMu(aim.planet);
     Vec3 target = planetR;
     for (int i = 0; i < 3; ++i) {
         const auto solution = solveLambert(r, target, bestFlight, kMuSun);
@@ -112,13 +112,13 @@ struct Departure {
     Vec3 vInfinity;
     double cost = 0.0;
 };
-std::optional<Departure> departureTowards(double epoch, Planet home, const TwoBodyState& rel,
+std::optional<Departure> departureTowards(double epoch, Body home, const TwoBodyState& rel,
                                           const FlybyAim& aim) {
-    const double mu = planetMu(home);
-    const OrbitalElements el = elementsFromState(rel.r, rel.v, mu, planetRadius(home));
+    const double mu = bodyMu(home);
+    const OrbitalElements el = elementsFromState(rel.r, rel.v, mu, bodyRadius(home));
     const ParkingOrbit orbit{el.periapsis, el.apoapsis};
-    const Vec3 r = planetPosition(home, epoch);
-    const Vec3 v = planetVelocity(home, epoch);
+    const Vec3 r = bodyPosition(home, epoch);
+    const Vec3 v = bodyVelocity(home, epoch);
     const double a = 0.5 * (norm(r) + planetOrbit(aim.planet, epoch).semiMajorAxis);
     const double longest = std::max(60.0 * kDay, 1.5 * kPi * std::sqrt(a * a * a / kMuSun));
     constexpr int kTrips = 400;
@@ -126,7 +126,7 @@ std::optional<Departure> departureTowards(double epoch, Planet home, const TwoBo
     for (int i = 0; i <= kTrips; ++i) {
         const double flight = 20.0 * kDay + (longest - 20.0 * kDay) * i / kTrips;
         const auto solution =
-            solveLambert(r, planetPosition(aim.planet, epoch + flight), flight, kMuSun);
+            solveLambert(r, bodyPosition(aim.planet, epoch + flight), flight, kMuSun);
         if (!solution) continue;
         const Vec3 vInfinity = solution->v1 - v;
         const double cost = departureCost(home, orbit, norm(vInfinity));
@@ -181,7 +181,7 @@ std::string_view flybySideName(FlybySide side) {
     return "";
 }
 
-std::optional<PlanetPass> passAfter(const VoyageResult& result, Planet planet, double after) {
+std::optional<PlanetPass> passAfter(const VoyageResult& result, Body planet, double after) {
     for (const PlanetPass& pass : result.flybys) {
         if (pass.planet == planet && pass.epoch > after) return pass;
     }
@@ -237,8 +237,8 @@ FlybyAimResult aimFlybyFrom(const Voyage& voyage, std::size_t index, const Flyby
         // In orbit around a planet: the cheapest way out towards it, and
         // the best point in the orbit to burn for that, within half an
         // orbit of the burn as placed; then aim from there.
-        const TwoBodyState rel{start.r - planetPosition(*parked, original.epoch),
-                               start.v - planetVelocity(*parked, original.epoch)};
+        const TwoBodyState rel{start.r - bodyPosition(*parked, original.epoch),
+                               start.v - bodyVelocity(*parked, original.epoch)};
         const auto departure = departureTowards(original.epoch, *parked, rel, aim);
         if (!departure) return out;
         out.cheapest = departure->cost;
@@ -247,7 +247,7 @@ FlybyAimResult aimFlybyFrom(const Voyage& voyage, std::size_t index, const Flyby
             return out;
         }
         const double period =
-            elementsFromState(rel.r, rel.v, planetMu(*parked), planetRadius(*parked)).period;
+            elementsFromState(rel.r, rel.v, bodyMu(*parked), bodyRadius(*parked)).period;
         double earliest = std::max(voyage.startEpoch, original.epoch - 0.5 * period);
         if (index > 0) earliest = std::max(earliest, burns[index - 1].epoch + 1.0);
         const auto burn = departureBurn(before, earliest, departure->vInfinity, options);
@@ -287,14 +287,14 @@ FlybyAimResult aimFlybyFrom(const Voyage& voyage, std::size_t index, const Flyby
     // The B-plane's axes, fixed from this flight so the target doesn't move
     // under Newton's feet: T square to the incoming direction in the
     // ecliptic, R completing the set.
-    const double mu = planetMu(aim.planet);
+    const double mu = bodyMu(aim.planet);
     const BPlane plane0 = bPlane(pass->relativePosition, pass->relativeVelocity, mu);
     const Vec3 axisT = normalized(cross(plane0.s, Vec3{0.0, 0.0, 1.0}));
     const Vec3 axisR = cross(plane0.s, axisT);
     const double bNow = norm(plane0.b);
     Vec3 direction = axisT;
     if (const auto side =
-            sideDirection(aim.side, plane0.s, planetVelocity(aim.planet, pass->epoch))) {
+            sideDirection(aim.side, plane0.s, bodyVelocity(aim.planet, pass->epoch))) {
         direction = *side;
     } else if (bNow > 1000.0) {
         direction = plane0.b / bNow; // keep the side it passes on now

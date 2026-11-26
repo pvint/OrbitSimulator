@@ -64,7 +64,7 @@ enum class Kind {
 
 struct Trigger {
     Kind kind;
-    Planet planet = Planet::Earth; ///< for the planet triggers
+    Body planet = Body::Earth; ///< for the planet triggers
 };
 
 bool endsPass(Kind kind) {
@@ -131,7 +131,7 @@ void BodyPass::buildTriggers() {
     if (m_sun) {
         m_triggers.push_back({Kind::Apoapsis});
         if (!third) return;
-        for (const Planet planet : kAllPlanets) {
+        for (const Body planet : kAllPlanets) {
             m_triggers.push_back({Kind::PlanetImpact, planet});
             m_triggers.push_back({Kind::PlanetPeriapsis, planet});
             m_soi.at(static_cast<std::size_t>(planet)) = sphereOfInfluence(planet, m_body->epoch);
@@ -155,7 +155,7 @@ double BodyPass::g(const Trigger& trigger, double tau, const State& y) const {
     case Kind::MoonImpact:
         return kRadiusMoon - norm(y.r - moonAt(tau));
     case Kind::PlanetImpact:
-        return planetRadius(trigger.planet) - norm(y.r - planetPosition(trigger.planet, epoch));
+        return bodyRadius(trigger.planet) - norm(y.r - bodyPosition(trigger.planet, epoch));
     case Kind::DistanceLimit:
         return norm(y.r) - (m_sun ? m_opt->heliocentricDistanceLimit : m_opt->bodyDistanceLimit);
     case Kind::Periapsis:
@@ -171,9 +171,9 @@ double BodyPass::g(const Trigger& trigger, double tau, const State& y) const {
     case Kind::LeaveMoonSphere:
         return norm(y.r - moonAt(tau)) - kMoonSphereOfInfluence;
     case Kind::PlanetPeriapsis: {
-        const Vec3 rel = y.r - planetPosition(trigger.planet, epoch);
+        const Vec3 rel = y.r - bodyPosition(trigger.planet, epoch);
         if (norm(rel) > m_soi.at(static_cast<std::size_t>(trigger.planet))) return -1.0;
-        return dot(rel, y.v - planetVelocity(trigger.planet, epoch));
+        return dot(rel, y.v - bodyVelocity(trigger.planet, epoch));
     }
     }
     return -1.0;
@@ -188,10 +188,10 @@ double BodyPass::outputInterval(double tau, const State& y) const {
     if (m_sun) {
         double interval = fraction * std::sqrt(r * r * r / kMuSun);
         if (m_opt->thirdBodyGravity) {
-            for (const Planet planet : kAllPlanets) {
-                const double d = norm(y.r - planetPosition(planet, epochAt(tau)));
+            for (const Body planet : kAllPlanets) {
+                const double d = norm(y.r - bodyPosition(planet, epochAt(tau)));
                 if (d > m_soi.at(static_cast<std::size_t>(planet))) continue;
-                interval = std::min(interval, fraction * std::sqrt(d * d * d / planetMu(planet)));
+                interval = std::min(interval, fraction * std::sqrt(d * d * d / bodyMu(planet)));
             }
         }
         return std::clamp(interval, m_opt->minHeliocentricOutputInterval,
@@ -291,7 +291,7 @@ BodyPass::Output BodyPass::run(const State& start, double tau0, double tauEnd) {
         m_y = yStop;
         if (!fired) continue;
 
-        const std::string planet(planetName(fired->planet));
+        const std::string planet(bodyName(fired->planet));
         switch (fired->kind) {
         case Kind::CentreImpact:
             // Exactly on the surface (the interpolated point is within mm).
@@ -339,7 +339,7 @@ BodyPass::Output BodyPass::run(const State& start, double tau0, double tauEnd) {
         case Kind::PlanetPeriapsis:
             record(EventType::PlanetClosestApproach,
                    std::string("Closest approach to ") +
-                       (fired->planet == Planet::Earth ? "the Earth" : planet));
+                       (fired->planet == Body::Earth ? "the Earth" : planet));
             break;
         }
     }
@@ -463,8 +463,8 @@ void summariseAroundSun(SimResult& result, double epochTime, const std::string& 
         if (norm(s.state.r) < norm(solar.perihelion.state.r)) solar.perihelion = s;
         // How near each planet came (the closest-approach events are
         // samples too, so the minima are exact where they were found).
-        for (const Planet planet : kAllPlanets) {
-            const double d = norm(s.state.r - planetPosition(planet, result.startEpoch + s.t));
+        for (const Body planet : kAllPlanets) {
+            const double d = norm(s.state.r - bodyPosition(planet, result.startEpoch + s.t));
             SolarSummary::Approach& a = solar.approaches.at(static_cast<std::size_t>(planet));
             if (d < a.distance) a = {d, s.t};
         }

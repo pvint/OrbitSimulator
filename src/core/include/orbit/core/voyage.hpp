@@ -109,17 +109,17 @@ double burnSize(const Burn& burn);
 
 /// The planet whose sphere of influence the ship is in at (epoch, r), if
 /// any (the one it is deepest inside, as a fraction of its sphere).
-std::optional<Planet> dominantPlanet(double epoch, const Vec3& r);
+std::optional<Body> dominantPlanet(double epoch, const Vec3& r);
 
 /// The planet the ship is parked around: on a closed orbit with its far
 /// point within half the sphere of influence and its low point clear of
 /// the ground (and, for the Earth, of the air). See PARKED IN ORBIT.
-std::optional<Planet> parkedAround(double epoch, const Vec3& r, const Vec3& v);
+std::optional<Body> parkedAround(double epoch, const Vec3& r, const Vec3& v);
 
 /// The ship's own directions at a moment, relative to the body that
 /// dominates there (unit vectors, heliocentric ecliptic frame).
 struct BurnFrame {
-    std::optional<Planet> planet; ///< relative to this planet; none: the Sun
+    std::optional<Body> planet; ///< relative to this planet; none: the Sun
     Vec3 prograde;
     Vec3 radial;
     Vec3 normal;
@@ -136,8 +136,8 @@ struct Voyage {
     Vec3 velocity;           ///< m/s
     Ship ship;
     Goal goal = Goal::ReachEarth;
-    Planet destination = Planet::Earth; ///< where the goal is
-    std::vector<Burn> burns; ///< flown in order of time; burns before the start are skipped
+    Body destination = Body::Earth; ///< where the goal is
+    std::vector<Burn> burns;        ///< flown in order of time; burns before the start are skipped
     /// Predictions look at least this far past the last burn, or the last
     /// flyby (s), if more than VoyageOptions::horizon: a puzzle far out sets
     /// its longest trip.
@@ -205,15 +205,15 @@ struct VoyageSample {
     double mass = 0.0; ///< kg
     /// Parked around this planet until the next sample: in between, the
     /// ship follows Kepler's equations around it (see sampleAt).
-    std::optional<Planet> parked;
+    std::optional<Body> parked;
 };
 
 struct BurnReport {
-    Burn burn;                    ///< as planned
-    std::optional<Planet> planet; ///< directions relative to this planet; none: the Sun
-    double deltaV = 0.0;          ///< m/s actually given
-    double propellantUsed = 0.0;  ///< kg
-    bool shortOfFuel = false;     ///< the tank ran dry part way
+    Burn burn;                   ///< as planned
+    std::optional<Body> planet;  ///< directions relative to this planet; none: the Sun
+    double deltaV = 0.0;         ///< m/s actually given
+    double propellantUsed = 0.0; ///< kg
+    bool shortOfFuel = false;    ///< the tank ran dry part way
 };
 
 /// The closest the path comes to the Earth.
@@ -243,7 +243,7 @@ struct PlanetPass {
     /// A true closest approach (the distance stopped shrinking there), not
     /// just where the flight started, burned or ended.
     bool turning = false;
-    Planet planet = Planet::Earth;
+    Body planet = Body::Earth;
     double epoch = 0.0;
     double distance = 0.0;  ///< m, from the planet's centre
     double speed = 0.0;     ///< m/s, relative to the planet
@@ -259,7 +259,7 @@ struct PlanetPass {
 
 /// The pass by `planet` of a ship at (r, v) heliocentric at `epoch`
 /// (best at the closest approach).
-PlanetPass passAt(Planet planet, double epoch, const Vec3& r, const Vec3& v);
+PlanetPass passAt(Body planet, double epoch, const Vec3& r, const Vec3& v);
 
 struct VoyageResult {
     std::vector<VoyageSample> samples;
@@ -267,10 +267,10 @@ struct VoyageResult {
     VoyageEnd end = VoyageEnd::Horizon;
     bool goalMet = false;
     double endEpoch = 0.0;
-    std::optional<double> arrival;   ///< entered the destination's sphere of influence
-    std::optional<Planet> hitPlanet; ///< the planet it crashed into
-    EarthApproach closest;           ///< to the Earth, over the whole flight
-    /// The closest the path comes to each planet (index: Planet), and each
+    std::optional<double> arrival; ///< entered the destination's sphere of influence
+    std::optional<Body> hitPlanet; ///< the planet it crashed into
+    EarthApproach closest;         ///< to the Earth, over the whole flight
+    /// The closest the path comes to each planet (index: Body), and each
     /// closest approach inside a planet's sphere of influence, in order.
     std::array<PlanetPass, 8> closestPasses;
     std::vector<PlanetPass> flybys;

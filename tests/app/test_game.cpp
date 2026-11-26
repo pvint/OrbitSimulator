@@ -155,14 +155,14 @@ private slots:
             QVERIFY(aimed);
             messages.append(m);
         });
-        const double rj = orbit::planetRadius(orbit::Planet::Jupiter);
-        session.aimBurn(index, {orbit::Planet::Jupiter, 15.0 * rj, orbit::FlybySide::Faster});
+        const double rj = orbit::bodyRadius(orbit::Body::Jupiter);
+        session.aimBurn(index, {orbit::Body::Jupiter, 15.0 * rj, orbit::FlybySide::Faster});
         session.waitForIdle();
         QCOMPARE(messages.size(), 1);
         QVERIFY2(messages[0].contains(QStringLiteral("You pass Jupiter")), qPrintable(messages[0]));
         QCOMPARE(session.hintsUsed(), 0);
-        const auto pass = orbit::passAfter(*session.prediction(), orbit::Planet::Jupiter,
-                                           session.burns()[0].epoch);
+        const auto pass =
+            orbit::passAfter(*session.prediction(), orbit::Body::Jupiter, session.burns()[0].epoch);
         QVERIFY(pass);
         QVERIFY2(std::abs(pass->distance / rj - 15.0) < 0.2,
                  qPrintable(messages[0] + QString::number(pass->distance / rj) +
@@ -177,7 +177,7 @@ private slots:
         // orbit around Mars.
         GameSession session;
         session.setPuzzle(orbit::makePuzzle(
-            {orbit::Difficulty::Hard, orbit::Region::Earth, true, orbit::Planet::Mars}, 3,
+            {orbit::Difficulty::Hard, orbit::Region::Earth, true, orbit::Body::Mars}, 3,
             orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0})));
         session.waitForIdle();
         QVERIFY(!session.prediction()->goalMet);
@@ -192,7 +192,7 @@ private slots:
         QCOMPARE(session.prediction()->end, orbit::VoyageEnd::OrbitingPlanet);
         QVERIFY(messages.first().contains(QStringLiteral("leaves your orbit")));
         // The departure burn's directions are relative to the Earth.
-        QCOMPARE(session.prediction()->burns.front().planet, orbit::Planet::Earth);
+        QCOMPARE(session.prediction()->burns.front().planet, orbit::Body::Earth);
     }
 };
 

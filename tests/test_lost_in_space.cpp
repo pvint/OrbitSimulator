@@ -30,7 +30,7 @@ double epoch2027() { return epochFromCalendar({2027, 1, 1, 0, 0, 0.0}); }
 Voyage driftingShip() {
     Voyage v;
     v.startEpoch = epoch2027();
-    const Vec3 earth = planetPosition(Planet::Earth, v.startEpoch);
+    const Vec3 earth = bodyPosition(Body::Earth, v.startEpoch);
     v.position = -1.1 * earth; // the far side of the Sun
     v.velocity =
         std::sqrt(kMuSun / norm(v.position)) * normalized(cross(Vec3{0, 0, 1}, v.position));
@@ -86,9 +86,9 @@ TEST_CASE("Burn directions: prograde speeds up, normal tilts, radial turns outwa
 
     // Near the Earth, directions are taken relative to it.
     const double t = voyage.startEpoch;
-    const Vec3 nearEarth = planetPosition(Planet::Earth, t) + Vec3{1e8, 0, 0};
-    CHECK(burnFrameAt(t, nearEarth, planetVelocity(Planet::Earth, t) + Vec3{0, 500, 0}).planet ==
-          Planet::Earth);
+    const Vec3 nearEarth = bodyPosition(Body::Earth, t) + Vec3{1e8, 0, 0};
+    CHECK(burnFrameAt(t, nearEarth, bodyVelocity(Body::Earth, t) + Vec3{0, 500, 0}).planet ==
+          Body::Earth);
 }
 
 TEST_CASE("A ship with no plan just coasts: energy around the Sun barely changes", "[voyage]") {
@@ -221,23 +221,22 @@ TEST_CASE("Regions: names and keys go both ways", "[lost-in-space]") {
 
 TEST_CASE("A puzzle near a planet starts near it, outside its sphere of influence",
           "[lost-in-space]") {
-    const auto [region, planet] =
-        GENERATE(table<Region, Planet>({{Region::Venus, Planet::Venus},
-                                        {Region::Mars, Planet::Mars},
-                                        {Region::Jupiter, Planet::Jupiter},
-                                        {Region::Saturn, Planet::Saturn},
-                                        {Region::Uranus, Planet::Uranus},
-                                        {Region::Neptune, Planet::Neptune}}));
+    const auto [region, planet] = GENERATE(table<Region, Body>({{Region::Venus, Body::Venus},
+                                                                {Region::Mars, Body::Mars},
+                                                                {Region::Jupiter, Body::Jupiter},
+                                                                {Region::Saturn, Body::Saturn},
+                                                                {Region::Uranus, Body::Uranus},
+                                                                {Region::Neptune, Body::Neptune}}));
     CAPTURE(regionName(region));
     const double t = epoch2027();
     const Puzzle puzzle = makePuzzle(Difficulty::Easy, 7, t, region);
     CHECK(puzzle.region == region);
-    const double fromPlanet = norm(puzzle.voyage.position - planetPosition(planet, t));
-    const double fromSun = norm(planetPosition(planet, t));
+    const double fromPlanet = norm(puzzle.voyage.position - bodyPosition(planet, t));
+    const double fromSun = norm(bodyPosition(planet, t));
     CHECK(fromPlanet > 3.0 * sphereOfInfluence(planet, t));
     CHECK(fromPlanet < 0.4 * fromSun); // within about 20° along its orbit
     // About the planet's speed: it shares the orbit, give or take a push.
-    CHECK_THAT(norm(puzzle.voyage.velocity), WithinRel(norm(planetVelocity(planet, t)), 0.05));
+    CHECK_THAT(norm(puzzle.voyage.velocity), WithinRel(norm(bodyVelocity(planet, t)), 0.05));
 }
 
 TEST_CASE("The search for a way home grows with the distance from the Sun", "[lost-in-space]") {
@@ -270,7 +269,7 @@ TEST_CASE("Coming home from Jupiter: brake before the air, or burn up", "[lost-i
     EarthApproach slowPass;
     slowPass.valid = true;
     slowPass.distance = kRadiusEarth + 500e3;
-    slowPass.speed = std::sqrt(3000.0 * 3000.0 + 2.0 * planetMu(Planet::Earth) / slowPass.distance);
+    slowPass.speed = std::sqrt(3000.0 * 3000.0 + 2.0 * bodyMu(Body::Earth) / slowPass.distance);
     CHECK_THAT(approachSpeed(slowPass), WithinRel(3000.0, 1e-9));
 }
 
@@ -287,9 +286,9 @@ TEST_CASE("Parked in orbit: Kepler's equations, and the ship stays put", "[lost-
     // A puzzle in low Earth orbit, no burns: the prediction stays in the
     // 200 km orbit for years without integrating thousands of orbits.
     const Puzzle puzzle =
-        makePuzzle({Difficulty::Easy, Region::Earth, true, Planet::Mars}, 5, epoch2027());
+        makePuzzle({Difficulty::Easy, Region::Earth, true, Body::Mars}, 5, epoch2027());
     REQUIRE(puzzle.inOrbit);
-    CHECK(puzzle.destination == Planet::Mars);
+    CHECK(puzzle.destination == Body::Mars);
     CHECK(puzzle.voyage.goal == Goal::ReachPlanet);
     const VoyageResult coast = flyVoyage(puzzle.voyage);
     CHECK(coast.end == VoyageEnd::Horizon);
@@ -299,29 +298,29 @@ TEST_CASE("Parked in orbit: Kepler's equations, and the ship stays put", "[lost-
     for (const double hours : {0.3, 7.7, 1000.1}) {
         const double t = puzzle.voyage.startEpoch + hours * 3600.0;
         const VoyageSample s = sampleAt(coast, t);
-        CHECK_THAT(norm(s.r - planetPosition(Planet::Earth, t)), WithinRel(lowOrbit, 1e-6));
-        CHECK(s.parked == Planet::Earth);
+        CHECK_THAT(norm(s.r - bodyPosition(Body::Earth, t)), WithinRel(lowOrbit, 1e-6));
+        CHECK(s.parked == Body::Earth);
     }
     CHECK(parkedAround(puzzle.voyage.startEpoch, puzzle.voyage.position, puzzle.voyage.velocity) ==
-          Planet::Earth);
+          Body::Earth);
     // Burn directions in orbit are relative to the Earth.
     CHECK(burnFrameAt(puzzle.voyage.startEpoch, puzzle.voyage.position, puzzle.voyage.velocity)
-              .planet == Planet::Earth);
+              .planet == Body::Earth);
 }
 
 TEST_CASE("The Oberth effect: leaving low orbit costs less than v∞", "[lost-in-space][orbit]") {
     // From 200 km, v∞ = 3 km/s for Mars costs √(v∞² + 2μ/r) − √(μ/r)
     // ≈ 3.6 km/s: the escape itself (3.2 km/s more than orbit) is mostly
     // paid for by the depth of the Earth's gravity.
-    const ParkingOrbit leo = parkingOrbit(Planet::Earth);
-    const double cost = departureCost(Planet::Earth, leo, 3000.0);
+    const ParkingOrbit leo = parkingOrbit(Body::Earth);
+    const double cost = departureCost(Body::Earth, leo, 3000.0);
     CHECK_THAT(cost, WithinAbs(3600.0, 50.0));
     // Twice the v∞ for much less than twice the cost.
-    CHECK(departureCost(Planet::Earth, leo, 6000.0) < 1.7 * cost);
+    CHECK(departureCost(Body::Earth, leo, 6000.0) < 1.7 * cost);
     // A giant's long ellipse: a small burn at its low point.
-    const ParkingOrbit jupiter = parkingOrbit(Planet::Jupiter);
+    const ParkingOrbit jupiter = parkingOrbit(Body::Jupiter);
     CHECK(jupiter.apoapsis > 40.0 * jupiter.periapsis);
-    CHECK(departureCost(Planet::Jupiter, jupiter, 6000.0) < 1500.0);
+    CHECK(departureCost(Body::Jupiter, jupiter, 6000.0) < 1500.0);
 }
 
 TEST_CASE("Flying into a planet ends the flight", "[lost-in-space][orbit]") {
@@ -330,20 +329,20 @@ TEST_CASE("Flying into a planet ends the flight", "[lost-in-space][orbit]") {
     Voyage voyage;
     voyage.startEpoch = t;
     const Vec3 out = normalized(Vec3{1.0, 2.0, 0.5});
-    voyage.position = planetPosition(Planet::Mars, t) + 3.0e8 * out;
-    voyage.velocity = planetVelocity(Planet::Mars, t) - 3000.0 * out;
+    voyage.position = bodyPosition(Body::Mars, t) + 3.0e8 * out;
+    voyage.velocity = bodyVelocity(Body::Mars, t) - 3000.0 * out;
     voyage.goal = Goal::ReachPlanet;
-    voyage.destination = Planet::Jupiter;
+    voyage.destination = Body::Jupiter;
     const VoyageResult result = flyVoyage(voyage);
     CHECK(result.end == VoyageEnd::HitPlanet);
-    CHECK(result.hitPlanet == Planet::Mars);
+    CHECK(result.hitPlanet == Body::Mars);
     CHECK_FALSE(result.goalMet);
 }
 
 TEST_CASE("Leaving the Earth: every destination's puzzles can be solved", "[lost-in-space][out]") {
-    const Planet to = GENERATE(Planet::Venus, Planet::Mars, Planet::Jupiter, Planet::Saturn);
+    const Body to = GENERATE(Body::Venus, Body::Mars, Body::Jupiter, Body::Saturn);
     const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
-    CAPTURE(planetName(to), difficultyName(difficulty));
+    CAPTURE(bodyName(to), difficultyName(difficulty));
     const Puzzle puzzle = makePuzzle({difficulty, Region::Earth, true, to}, 3, epoch2027());
     CHECK(puzzle.voyage.goal == goalFor(difficulty, to));
     CHECK(puzzle.plan.departure - puzzle.voyage.startEpoch < 31.0 * kDay);
@@ -354,9 +353,9 @@ TEST_CASE("Home from orbit around another planet", "[lost-in-space][orbit]") {
     const Region from = GENERATE(Region::Mars, Region::Venus, Region::Jupiter);
     const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
     CAPTURE(regionName(from), difficultyName(difficulty));
-    const Puzzle puzzle = makePuzzle({difficulty, from, true, Planet::Earth}, 4, epoch2027());
+    const Puzzle puzzle = makePuzzle({difficulty, from, true, Body::Earth}, 4, epoch2027());
     REQUIRE(puzzle.inOrbit);
-    const Planet home = *regionPlanet(from);
+    const Body home = *regionPlanet(from);
     CHECK(parkedAround(puzzle.voyage.startEpoch, puzzle.voyage.position, puzzle.voyage.velocity) ==
           home);
     checkPuzzle(puzzle);
@@ -365,8 +364,25 @@ TEST_CASE("Home from orbit around another planet", "[lost-in-space][orbit]") {
 TEST_CASE("Specs are made sensible", "[lost-in-space]") {
     // The Earth always in orbit, a drifting place never, and never to the
     // planet you start at.
-    CHECK(settledSpec({Difficulty::Easy, Region::Earth, false, Planet::Mars}).inOrbit);
-    CHECK_FALSE(settledSpec({Difficulty::Easy, Region::AsteroidBelt, true, Planet::Earth}).inOrbit);
-    CHECK(settledSpec({Difficulty::Easy, Region::Mars, true, Planet::Mars}).to == Planet::Earth);
-    CHECK(settledSpec({Difficulty::Easy, Region::Earth, true, Planet::Earth}).to == Planet::Mars);
+    CHECK(settledSpec({Difficulty::Easy, Region::Earth, false, Body::Mars}).inOrbit);
+    CHECK_FALSE(settledSpec({Difficulty::Easy, Region::AsteroidBelt, true, Body::Earth}).inOrbit);
+    CHECK(settledSpec({Difficulty::Easy, Region::Mars, true, Body::Mars}).to == Body::Earth);
+    CHECK(settledSpec({Difficulty::Easy, Region::Earth, true, Body::Earth}).to == Body::Mars);
+}
+
+TEST_CASE("Which bodies a ship can park around", "[lost-in-space][moons]") {
+    // Big moons yes; small ones close to a giant no (the planet's pull
+    // reaches almost to their surface).
+    for (const Body body : {Body::Earth, Body::Moon, Body::Titan, Body::Ganymede, Body::Triton,
+                            Body::Iapetus, Body::Titania}) {
+        CAPTURE(bodyName(body));
+        CHECK(canPark(body));
+        CHECK(parkingOrbit(body).periapsis > bodyRadius(body));
+    }
+    for (const Body body : {Body::Mimas, Body::Enceladus, Body::Miranda}) {
+        CAPTURE(bodyName(body));
+        CHECK_FALSE(canPark(body));
+    }
+    // Titan's orbit clears its haze.
+    CHECK(parkingOrbit(Body::Titan).periapsis - bodyRadius(Body::Titan) > 1200e3);
 }

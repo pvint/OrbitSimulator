@@ -89,12 +89,12 @@ std::optional<Region> regionFromKey(std::string_view key);
 /// For people: "Between the planets", "Near Venus", ...
 std::string_view regionName(Region region);
 /// The planet a region is about, if any.
-std::optional<Planet> regionPlanet(Region region);
+std::optional<Body> regionPlanet(Region region);
 
 /// The goal at each difficulty. Going home: Easy, reach the Earth; Normal,
 /// re-enter inside the corridor; Hard, end in orbit around the Earth. To
 /// another planet: reach it; pass close (a flyby probe); end in orbit.
-Goal goalFor(Difficulty difficulty, Planet destination = Planet::Earth);
+Goal goalFor(Difficulty difficulty, Body destination = Body::Earth);
 
 /// An orbit around a planet, by its low and high points (m from the
 /// centre; equal for a circle).
@@ -105,21 +105,24 @@ struct ParkingOrbit {
 /// Where a puzzle "in orbit" starts: 200 km up around the Earth and
 /// Mercury, 300 km around Venus and Mars (above their air), and a long
 /// ellipse from 1.1 to 50 radii around a giant planet (like Juno's).
-ParkingOrbit parkingOrbit(Planet planet);
+ParkingOrbit parkingOrbit(Body planet);
+/// Can a ship park around it? Not if a low orbit wouldn't lie well inside
+/// its sphere of influence (small moons close to a giant planet).
+bool canPark(Body body);
 /// How far out the orbit braked into on arrival reaches (m): half the
 /// Moon's distance at the Earth; elsewhere a fifth of the sphere of
 /// influence, or 100 radii if less.
-double captureApoapsis(Planet planet, double epoch, const VoyageOptions& options = {});
+double captureApoapsis(Body planet, double epoch, const VoyageOptions& options = {});
 /// The closest approach to aim for at a planet other than the Earth (m,
 /// from its centre): 10 radii to reach it, 2 for a close pass, 1.1 to brake
 /// into orbit.
-double aimPeriapsis(Goal goal, Planet planet);
+double aimPeriapsis(Goal goal, Body planet);
 
 /// The Oberth effect: leaving a parking orbit from its low point r_p on a
 /// path that ends up v∞ from the planet takes √(v∞² + 2μ/r_p) − v_p (m/s),
 /// v_p = √(2μ/r_p − 2μ/(r_p + r_a)) the speed there now. Deep in a
 /// planet's gravity, a little extra speed becomes a lot of v∞.
-double departureCost(Planet planet, const ParkingOrbit& orbit, double vInfinity);
+double departureCost(Body planet, const ParkingOrbit& orbit, double vInfinity);
 
 /// Δv needed near the Earth, arriving with speed v∞ relative to it (m/s):
 ///   ReachEarth  nothing.
@@ -132,7 +135,7 @@ double departureCost(Planet planet, const ParkingOrbit& orbit, double vInfinity)
 double arrivalCost(Goal goal, double vInfinity, const VoyageOptions& options = {});
 /// The same for any destination; at another planet, only PlanetOrbit costs
 /// anything: braking at 1.1 radii into an ellipse out to captureApoapsis.
-double arrivalCost(Goal goal, double vInfinity, Planet destination,
+double arrivalCost(Goal goal, double vInfinity, Body destination,
                    const VoyageOptions& options = {});
 
 /// The fastest v∞ (m/s) that a re-entry can arrive with, keeping a little
@@ -174,7 +177,7 @@ std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const V
 /// orbit to be set up to suit; or, given `points` round an orbit already
 /// set, the cheapest escapeFrom one of them).
 struct DepartureFrom {
-    std::optional<Planet> planet;
+    std::optional<Body> planet;
     ParkingOrbit orbit;
     std::vector<TwoBodyState> points; ///< relative to the planet
 };
@@ -194,7 +197,7 @@ std::vector<TwoBodyState> orbitPoints(const TwoBodyState& rel, double mu, int co
 
 /// The cheapest transfer to `to`, as cheapestWayHome.
 std::optional<TransferPlan> cheapestTransfer(double epoch, const Vec3& r, const Vec3& v,
-                                             const DepartureFrom& from, Planet to, Goal goal,
+                                             const DepartureFrom& from, Body to, Goal goal,
                                              double window, double longestFlight);
 
 /// How long to search for a way home from (r, v) around the Sun.
@@ -209,7 +212,7 @@ struct SearchSpan {
     /// years.
     double longestFlight = 0.0;
 };
-SearchSpan searchSpan(const Vec3& r, const Vec3& v, Planet to = Planet::Earth);
+SearchSpan searchSpan(const Vec3& r, const Vec3& v, Body to = Body::Earth);
 
 /// What to play: from where (drifting, or in orbit around the region's
 /// planet), to where, how hard.
@@ -217,7 +220,7 @@ struct PuzzleSpec {
     Difficulty difficulty = Difficulty::Easy;
     Region from = Region::BetweenPlanets;
     bool inOrbit = false;
-    Planet to = Planet::Earth;
+    Body to = Body::Earth;
 };
 /// The spec made sensible: in orbit only around a planet (always around
 /// the Earth), and not to the planet it starts at.
@@ -227,7 +230,7 @@ struct Puzzle {
     Difficulty difficulty = Difficulty::Easy;
     Region region = Region::BetweenPlanets;
     bool inOrbit = false;
-    Planet destination = Planet::Earth;
+    Body destination = Body::Earth;
     std::uint64_t seed = 0;
     Voyage voyage;       ///< the ship where it starts, no burns yet
     TransferPlan plan;   ///< the cheapest way there found
