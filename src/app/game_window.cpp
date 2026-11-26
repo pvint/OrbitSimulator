@@ -21,11 +21,13 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QPushButton>
 #include <QQuickItem>
 #include <QQuickWidget>
 #include <QRandomGenerator>
+#include <QSettings>
 #include <QStyle>
 #include <QTimeZone>
 #include <QVBoxLayout>
@@ -84,6 +86,20 @@ QString signedSpeed(double metresPerSecond) {
 
 QString planetText(orbit::Planet planet) {
     return QString::fromUtf8(orbit::planetName(planet).data());
+}
+
+/// The planet's name inside a sentence: "the Earth", "Mars" (`start`: at
+/// the start of one, "The Earth").
+QString planetInText(orbit::Planet planet, bool start = false) {
+    if (planet != orbit::Planet::Earth) return planetText(planet);
+    return start ? QObject::tr("The Earth") : QObject::tr("the Earth");
+}
+
+/// The cards the player has asked not to see again.
+QStringList hiddenCardKeys() {
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("game/hiddenCards"));
+    return settings.childKeys();
 }
 
 /// Where the ship is, to fit "You're %1".
@@ -187,6 +203,10 @@ GameWindow::GameWindow(QWidget* parent)
     m_view->setResizeMode(QQuickWidget::SizeRootObjectToView);
     m_view->setSource(QUrl(QStringLiteral("qrc:/qt/qml/OrbitSim/qml/VoyageScene.qml")));
     m_view->setMinimumSize(500, 400);
+    // Clicking the view gives it the keyboard; arrows it doesn't use come
+    // up to the window, which steps the clock.
+    m_view->setFocusPolicy(Qt::StrongFocus);
+    setFocusPolicy(Qt::StrongFocus);
     left->addWidget(m_view, 1);
     left->addWidget(m_timeline);
     buildControls(left);
@@ -212,7 +232,8 @@ GameWindow::GameWindow(QWidget* parent)
     connect(m_session, &GameSession::aimReady, this, [this](bool aimed, const QString& message) {
         // Show the whole new path once it is predicted.
         if (aimed) m_framePending = true;
-        showCard(aimed ? tr("Aimed") : tr("Can't aim there"), message, tr("OK"));
+        showCard(aimed ? tr("Aimed") : tr("Can't aim there"), message, tr("OK"),
+                 aimed ? QStringLiteral("aimed") : QString());
     });
     connect(m_session, &GameSession::busyChanged, this, [this](bool busy) {
         if (!m_scene) return;
@@ -280,6 +301,7 @@ void GameWindow::buildControls(QBoxLayout* layout) {
         setFlying(false);
         if (!m_scene) return;
         m_scene->setProperty("cardMode", QStringLiteral("start"));
+        m_scene->setProperty("cardsHidden", !hiddenCardKeys().isEmpty());
         m_scene->setProperty("cardTitle", tr("Lost in space"));
         m_scene->setProperty("cardText", tr("Where to this time?"));
     });
@@ -317,7 +339,9 @@ void GameWindow::connectScene() {
     }
     connect(m_scene, SIGNAL(startChosen(int, bool, int, int)), this,
             SLOT(chooseStart(int, bool, int, int)));
-    connect(m_scene, SIGNAL(cardAccepted()), this, SLOT(acceptCard()));
+    connect(m_scene, SIGNAL(cardAccepted(bool)), this, SLOT(acceptCard(bool)));
+    connect(m_scene, SIGNAL(hiddenCardsReset()), this, SLOT(showHiddenCards()));
+    m_scene->setProperty("cardsHidden", !hiddenCardKeys().isEmpty());
 
     m_scene->setProperty(
         "cardText",
@@ -338,8 +362,17 @@ void GameWindow::chooseStart(int region, bool inOrbit, int destination, int diff
     startPuzzle(spec, QRandomGenerator::global()->generate64());
 }
 
-void GameWindow::acceptCard() {
+void GameWindow::acceptCard(bool hideFromNowOn) {
+    if (hideFromNowOn && !m_cardKey.isEmpty()) {
+        QSettings().setValue(QStringLiteral("game/hiddenCards/") + m_cardKey, true);
+    }
+    m_cardKey.clear();
     if (m_scene) m_scene->setProperty("cardMode", QString());
+}
+
+void GameWindow::showHiddenCards() {
+    QSettings().remove(QStringLiteral("game/hiddenCards"));
+    if (m_scene) m_scene->setProperty("cardsHidden", false);
 }
 
 void GameWindow::startPuzzle(const orbit::PuzzleSpec& spec, std::uint64_t seed) {
@@ -386,14 +419,14 @@ void GameWindow::onPuzzleChanged() {
     if (m_welcomePending) {
         m_welcomePending = false;
         showCard(puzzle.destination == orbit::Planet::Earth ? tr("Lost!") : tr("Ready to go"),
-                 welcomeText(puzzle), tr("Let's go"));
+                 welcomeText(puzzle), tr("Let's go"), QStringLiteral("welcome"));
     }
 }
 
 /// Where you are, what you have, and what to do.
 QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
     const orbit::Voyage& v = puzzle.voyage;
-    const QString to = planetText(v.destination);
+    const QString to = planetInText(v.destination);
     const double fromTarget =
         orbit::norm(v.position - orbit::planetPosition(v.destination, v.startEpoch));
     QString where;
@@ -407,17 +440,17 @@ QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
             orbit::elementsFromState(rel, relV, orbit::planetMu(home), radius);
         where = el.apoapsis < 1.05 * el.periapsis
                     ? tr("You're in orbit around %1, %2 up, going round every %3.")
-                          .arg(planetText(home), display::longDistance(el.periapsis - radius),
+                          .arg(planetInText(home), display::longDistance(el.periapsis - radius),
                                periodText(el.period))
                     : tr("You're in a long orbit around %1, from %2 to %3 above it, going "
                          "round every %4.")
-                          .arg(planetText(home), display::longDistance(el.periapsis - radius),
+                          .arg(planetInText(home), display::longDistance(el.periapsis - radius),
                                display::longDistance(el.apoapsis - radius), periodText(el.period));
         where += QLatin1Char(' ') +
                  tr("%1 is %2 away. To leave, burn at the right point in your orbit: deep in "
                     "a planet's gravity, a little extra speed becomes a lot once you're out "
                     "(the Oberth effect).")
-                     .arg(to, display::longDistance(fromTarget));
+                     .arg(planetInText(v.destination, true), display::longDistance(fromTarget));
     } else {
         const orbit::OrbitalElements el =
             orbit::elementsFromState(v.position, v.velocity, orbit::kMuSun, orbit::kRadiusSun);
@@ -436,12 +469,49 @@ QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
                .arg(display::speed(puzzle.budget), goalText(v.goal, v.destination));
 }
 
-void GameWindow::showCard(const QString& title, const QString& text, const QString& button) {
+void GameWindow::showCard(const QString& title, const QString& text, const QString& button,
+                          const QString& key) {
     if (!m_scene || !m_cardsEnabled) return;
+    if (!key.isEmpty() && hiddenCardKeys().contains(key)) return;
+    m_cardKey = key;
+    m_scene->setProperty("cardHideable", !key.isEmpty());
     m_scene->setProperty("cardTitle", title);
     m_scene->setProperty("cardText", text);
     m_scene->setProperty("cardButton", button);
     m_scene->setProperty("cardMode", QStringLiteral("message"));
+}
+
+/// ←/→ step the clock by a tenth of a second of flying at the chosen speed,
+/// ↑/↓ by a whole second's worth (forwards, backwards); with Shift, ten
+/// times finer (for timing a burn in a low orbit).
+void GameWindow::keyPressEvent(QKeyEvent* event) {
+    double seconds = 0.0;
+    switch (event->key()) {
+    case Qt::Key_Right:
+        seconds = 0.1;
+        break;
+    case Qt::Key_Left:
+        seconds = -0.1;
+        break;
+    case Qt::Key_Up:
+        seconds = 1.0;
+        break;
+    case Qt::Key_Down:
+        seconds = -1.0;
+        break;
+    default:
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    if (!m_session->hasPuzzle()) {
+        event->ignore();
+        return;
+    }
+    if (event->modifiers() & Qt::ShiftModifier) seconds /= 10.0;
+    setFlying(false);
+    m_endingShown = false; // looking around by hand: the ending card may come again
+    m_session->setNow(m_session->now() + seconds * m_speed->currentData().toDouble() * kDay);
+    event->accept();
 }
 
 void GameWindow::setFlying(bool flying) {

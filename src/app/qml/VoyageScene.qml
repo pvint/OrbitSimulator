@@ -98,7 +98,12 @@ Item {
     }
 
     signal startChosen(int region, bool inOrbit, int destination, int difficulty)
-    signal cardAccepted()
+    /// The message card can be hidden for good ("Don't show this again"),
+    /// and some cards already are (the start card offers to show them again).
+    property bool cardHideable: false
+    property bool cardsHidden: false
+    signal cardAccepted(bool hideFromNowOn)
+    signal hiddenCardsReset()
 
     // For C++ to fill in.
     property alias path: pathGeometry
@@ -656,11 +661,44 @@ Item {
                                                 root.destinationIndex, index)
                 }
             }
-            Button {
+            Text {
+                visible: root.cardMode === "start" && root.cardsHidden
+                objectName: "link-show-hidden"
+                text: qsTr("Show the messages you hid again")
+                color: "#60a5fa"
+                font.pixelSize: 12
+                font.underline: linkArea.containsMouse
+                MouseArea {
+                    id: linkArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.hiddenCardsReset()
+                }
+            }
+            RowLayout {
                 visible: root.cardMode === "message"
-                Layout.alignment: Qt.AlignRight
-                text: root.cardButton
-                onClicked: root.cardAccepted()
+                Layout.fillWidth: true
+                CheckBox {
+                    id: hideBox
+                    visible: root.cardHideable
+                    objectName: "check-hide-card"
+                    contentItem: Text {
+                        leftPadding: hideBox.indicator.width + 6
+                        text: qsTr("Don't show this again")
+                        color: "#94a3b8"
+                        font.pixelSize: 12
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: root.cardButton
+                    onClicked: {
+                        root.cardAccepted(hideBox.visible && hideBox.checked)
+                        hideBox.checked = false
+                    }
+                }
             }
         }
     }
@@ -671,6 +709,6 @@ Item {
         anchors.margins: 8
         color: "#64748b"
         font.pixelSize: 11
-        text: qsTr("Drag to turn · right-drag to pan · wheel to zoom · planets not to scale")
+        text: qsTr("Drag to turn · right-drag to pan · wheel to zoom · ←/→ step time, ↑/↓ further, Shift finer · planets not to scale")
     }
 }

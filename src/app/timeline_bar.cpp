@@ -18,6 +18,9 @@ constexpr int kLabelSpace = 90; ///< least pixels between two date labels
 } // namespace
 
 TimelineBar::TimelineBar(QWidget* parent) : QWidget(parent) {
+    // Clicked, it takes the keyboard, and the window steps the clock with
+    // the arrows.
+    setFocusPolicy(Qt::ClickFocus);
     setObjectName(QStringLiteral("timeline-bar"));
     setMinimumHeight(40);
     setCursor(Qt::PointingHandCursor);

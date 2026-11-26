@@ -38,7 +38,13 @@ public:
 
     // Connected by name to VoyageScene.qml's signals.
     Q_SLOT void chooseStart(int region, bool inOrbit, int destination, int difficulty);
-    Q_SLOT void acceptCard();
+    Q_SLOT void acceptCard(bool hideFromNowOn);
+    Q_SLOT void showHiddenCards();
+
+protected:
+    /// Arrows step the clock (see the .cpp); keys a focused control uses
+    /// itself (spin boxes, sliders) never get here.
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void buildControls(class QBoxLayout* layout);
@@ -59,7 +65,10 @@ private:
     void updateInfo(double now, const orbit::VoyageSample& ship);
     QString closestPassRow(orbit::Planet planet) const;
     void updateStatus();
-    void showCard(const QString& title, const QString& text, const QString& button);
+    /// A message card. With a `key`, it offers "Don't show this again", and
+    /// isn't shown once the player has said so (kept in the settings).
+    void showCard(const QString& title, const QString& text, const QString& button,
+                  const QString& key = {});
     void showEnding();
     static QString welcomeText(const orbit::Puzzle& puzzle);
 
@@ -86,6 +95,7 @@ private:
     bool m_endingShown = false;
     bool m_welcomePending = false;
     bool m_cardsEnabled = true;
+    QString m_cardKey; ///< the card showing now, if it can be hidden
     /// Frame the whole path when the next current prediction comes.
     bool m_framePending = false;
     /// The sample the flown part of the path reaches (to recolour only when
