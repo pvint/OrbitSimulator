@@ -50,10 +50,17 @@ prototype settled the physics model and the UI ideas; this is the full version.
   on a random orbit around the Sun gets home on its fuel (Game ▸ Lost in
   Space, `orbitsim --game`). Plan instant burns, fly, hints. Easy / Normal
   / Hard = reach the Earth / re-entry corridor / Earth orbit.
-- **Next:** show the user the game and ask. Candidates: a start screen
-  (game, launch a rocket, tour, workbench = today's panels), burn handles
-  in 3D, "go to a point on a path", interplanetary rocket transfers,
-  scripting, a first release.
+- **Lost in space grew (decisions 36, 37, 2026-11-25):** start anywhere
+  (between the planets, near or in orbit around any planet, the asteroid
+  belt; around the Earth always in orbit) and go home or to any planet
+  (reach / close pass / orbit). Flyby tools for gravity assists ("Aim at
+  a planet…", flyby markers), "Don't show this again" cards, arrow keys
+  step time. `--puzzle normal:earth:saturn`, `hard:mars:orbit`.
+- **Next (user, 2026-11-25):** a better overall plan, probably scrapping
+  the old workbench app; a free-roam mode (pick a body, start in orbit,
+  no goal); famous missions' trajectories to play with (noted, not
+  started). Older candidates: burn handles in 3D, "go to a point on a
+  path", scripting, a first release.
 - The app flies a rocket of one to three stages from any site and date,
   through the air, to low orbit or to the Moon, with built-in plans or a
   custom flight program, or follows a natural body past the Earth or
