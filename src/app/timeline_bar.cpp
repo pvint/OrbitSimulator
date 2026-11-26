@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -56,7 +57,7 @@ double TimelineBar::epochAt(double x) const {
     return m_start + f * (m_end - m_start);
 }
 
-void TimelineBar::paintEvent(QPaintEvent*) {
+void TimelineBar::paintEvent(QPaintEvent* /*event*/) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     const QRectF t = track();
@@ -83,7 +84,9 @@ void TimelineBar::paintEvent(QPaintEvent*) {
     p.setFont(font());
     p.setPen(palette().color(QPalette::Text));
     const QFontMetrics fm(font());
-    for (double e = m_start; e <= m_end + 1.0; e += step * kDay) {
+    const auto ticks = static_cast<int>(std::floor((m_end + 1.0 - m_start) / (step * kDay)));
+    for (int i = 0; i <= ticks; ++i) {
+        const double e = m_start + i * step * kDay;
         const double x = xAt(e);
         p.drawLine(QPointF(x, t.bottom() + 1), QPointF(x, t.bottom() + 5));
         const QString label = display::date(e);
