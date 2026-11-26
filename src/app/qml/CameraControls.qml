@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Mouse control of a 3D scene's orbiting camera. Left drag turns the camera
 // round the centre; right or middle drag (or Shift + left drag) slides the
-// view; the wheel zooms. The scene supplies yaw, pitch, distance, panOffset,
-// minDistance and maxDistance.
+// view; the wheel zooms towards the point under the pointer. The scene
+// supplies yaw, pitch, distance, panOffset, target, minDistance and
+// maxDistance.
 
 import QtQuick
 import QtQuick3D
@@ -38,10 +39,16 @@ MouseArea {
         }
     }
     // Each wheel notch zooms by the same factor, so it feels the same at
-    // every scale.
+    // every scale. Towards the pointer: the whole camera rig is scaled about
+    // the point under it (at the centre's depth), so that point stays put
+    // on screen while everything else closes in on it.
     onWheel: wheel => {
-        const factor = Math.pow(1.0015, -wheel.angleDelta.y)
-        scene.distance = Math.max(scene.minDistance,
-                                  Math.min(scene.maxDistance, scene.distance * factor))
+        let factor = Math.pow(1.0015, -wheel.angleDelta.y)
+        const wanted = Math.max(scene.minDistance,
+                                Math.min(scene.maxDistance, scene.distance * factor))
+        factor = wanted / scene.distance
+        const under = view.mapTo3DScene(Qt.vector3d(wheel.x, wheel.y, scene.distance))
+        scene.panOffset = scene.panOffset.plus(under.minus(scene.target).times(1 - factor))
+        scene.distance = wanted
     }
 }

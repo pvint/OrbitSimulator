@@ -42,6 +42,9 @@ public:
     Q_SLOT void chooseStart(int region, bool inOrbit, int destination, int difficulty);
     Q_SLOT void acceptCard(bool hideFromNowOn);
     Q_SLOT void showHiddenCards();
+    /// Centre the view on what was double-clicked (index as the scene's
+    /// hoverIndex: planets, the Sun, the ship, burns, flybys).
+    Q_SLOT void centreOn(int index);
 
 protected:
     /// Arrows step the clock (see the .cpp); keys a focused control uses
@@ -58,6 +61,11 @@ private:
     void setFlying(bool flying);
     void jumpToNextBurn();
     void resetView(bool wholePath = false);
+    /// What "Centre" offers: the Sun, you, the Earth, the destination, and
+    /// any other planet double-clicked; selects `body` (or the Sun: -2,
+    /// you: -1).
+    void setCentreChoices(int select);
+    void onCentreChanged();
     void updatePlanetOrbits();
     void updateBelt(double now);
     void updatePath();

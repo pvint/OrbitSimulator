@@ -30,8 +30,16 @@ Item {
     property vector3d arrivalShip: Qt.vector3d(0, 0, 0)
     property vector3d arrivalEarth: Qt.vector3d(0, 0, 0)
     property string arrivalLabel
-    /// What the camera circles: 0 = the Sun, 1 = the ship, 2 = the Earth.
+    /// What the camera circles: 0 = the Sun, 1 = the ship, 2 = a planet
+    /// (followPlanet, orbit::Body order).
     property int followTarget: 0
+    property int followPlanet: 2
+    /// Each planet's sphere of influence (scene units): where its gravity
+    /// takes over from the Sun's. Drawn as a ring in the ecliptic and a
+    /// faint sphere, brighter for the destination.
+    property var influenceRadii: []
+    /// Double-clicking an object asks to centre on it (index as hoverIndex).
+    signal centreRequested(int index)
     /// What hovering shows, as rich text: the eight planets, then the Sun,
     /// then the ship (ten strings). Burns come after, in burnInfoTexts.
     property var infoTexts: []
@@ -110,6 +118,7 @@ Item {
     property alias arrivalLine: arrivalLineGeometry
     property alias startOrbit: startOrbitGeometry
     property alias belt: beltGeometry
+    property alias unitCircle: unitCircleGeometry
     function planetOrbit(index) { return planetOrbits.objectAt(index) }
 
     readonly property var planetNames: [qsTr("Mercury"), qsTr("Venus"), qsTr("Earth"), qsTr("Mars"),
@@ -128,17 +137,14 @@ Item {
     property vector3d panOffset: Qt.vector3d(0, 0, 0)
     readonly property vector3d earthPosition: planetPositions.length > 2 ? planetPositions[2]
                                                                          : Qt.vector3d(0, 0, 0)
-    readonly property vector3d destinationPosition:
-        planetPositions.length > destinationIndex ? planetPositions[destinationIndex]
-                                                  : Qt.vector3d(0, 0, 0)
-    /// What the camera circles: 0 the Sun, 1 the ship, 2 the Earth, 3 the
-    /// destination.
-    readonly property vector3d centrePoint: followTarget === 1 ? shipPosition
-                                          : followTarget === 2 ? earthPosition
-                                          : followTarget === 3 ? destinationPosition
-                                          : Qt.vector3d(0, 0, 0)
+    readonly property vector3d centrePoint:
+        followTarget === 1 ? shipPosition
+        : followTarget === 2 && planetPositions.length > followPlanet ? planetPositions[followPlanet]
+        : Qt.vector3d(0, 0, 0)
     readonly property vector3d target: centrePoint.plus(panOffset)
-    readonly property real minDistance: followTarget === 0 ? 2 * sunRadius : 0.02
+    /// As close as 2,000 km; but not inside the Sun when circling it.
+    readonly property real minDistance:
+        followTarget === 0 && panOffset.length() < 2 * sunRadius ? 2 * sunRadius : 0.002
     readonly property real maxDistance: 40000
 
     function lookAt(p, fromDistance) {
@@ -203,17 +209,47 @@ Item {
         }
         Repeater3D {
             model: root.planetPositions
-            delegate: Model {
+            delegate: Node {
+                id: planetNode
                 required property var modelData
                 required property int index
-                source: "#Sphere"
                 position: modelData
-                // The Earth a little larger: it's where you're going.
-                readonly property real size: root.markerScale * (index === 2 ? 1.4 : 1.0)
-                scale: Qt.vector3d(size, size, size)
-                materials: PrincipledMaterial {
-                    lighting: PrincipledMaterial.NoLighting
-                    baseColor: root.planetColors[index]
+                readonly property real influence: root.influenceRadii[index] ?? 0
+                readonly property bool destination: index === root.destinationIndex
+                Model {
+                    source: "#Sphere"
+                    // The destination a little larger: it's where you're going.
+                    readonly property real size: root.markerScale * (planetNode.destination ? 1.4 : 1.0)
+                    scale: Qt.vector3d(size, size, size)
+                    materials: PrincipledMaterial {
+                        lighting: PrincipledMaterial.NoLighting
+                        baseColor: root.planetColors[planetNode.index]
+                    }
+                }
+                // Its sphere of influence: a ring in the ecliptic, and a
+                // faint sphere (only seen when zoomed in near it).
+                Model {
+                    visible: planetNode.influence > 0
+                    geometry: unitCircleGeometry
+                    scale: Qt.vector3d(planetNode.influence, planetNode.influence, planetNode.influence)
+                    materials: PrincipledMaterial {
+                        lighting: PrincipledMaterial.NoLighting
+                        vertexColorsEnabled: true
+                        baseColor: root.planetColors[planetNode.index]
+                        opacity: planetNode.destination ? 0.9 : 0.45
+                    }
+                }
+                Model {
+                    visible: planetNode.influence > 0
+                    source: "#Sphere"
+                    readonly property real size: planetNode.influence / 50 // #Sphere has radius 50
+                    scale: Qt.vector3d(size, size, size)
+                    materials: PrincipledMaterial {
+                        lighting: PrincipledMaterial.NoLighting
+                        baseColor: root.planetColors[planetNode.index]
+                        opacity: planetNode.destination ? 0.07 : 0.035
+                        depthDrawMode: Material.NeverDepthDraw
+                    }
                 }
             }
         }
@@ -292,6 +328,10 @@ Item {
                 }
             }
         }
+
+        // A circle of radius 1 in the ecliptic, scaled for each sphere of
+        // influence (filled from C++).
+        PolylineGeometry { id: unitCircleGeometry }
 
         // The asteroid belt: faint dots (see asteroid_belt.hpp).
         Model {
@@ -433,6 +473,7 @@ Item {
         scene: root
         camera: camera
         view: view
+        onDoubleClicked: if (root.hoverIndex >= 0) root.centreRequested(root.hoverIndex)
     }
 
     // --- heads-up display ----------------------------------------------
@@ -719,6 +760,6 @@ Item {
         anchors.margins: 8
         color: "#64748b"
         font.pixelSize: 11
-        text: qsTr("Drag to turn · right-drag to pan · wheel to zoom · ←/→ step time, ↑/↓ further, Shift finer · planets not to scale")
+        text: qsTr("Drag to turn · right-drag to pan · wheel to zoom where you point · double-click to centre · ←/→ step time, ↑/↓ further · planets not to scale")
     }
 }

@@ -28,6 +28,7 @@
 #include <QQuickWidget>
 #include <QRandomGenerator>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QStyle>
 #include <QTimeZone>
 #include <QVBoxLayout>
@@ -83,6 +84,10 @@ QString signedSpeed(double metresPerSecond) {
     return (metresPerSecond < 0.0 ? QStringLiteral("−") : QStringLiteral("+")) +
            display::speed(std::abs(metresPerSecond));
 }
+
+/// The "Centre" choices that aren't planets.
+constexpr int kCentreSun = -2;
+constexpr int kCentreShip = -1;
 
 QString planetText(orbit::Body planet) { return QString::fromUtf8(orbit::bodyName(planet).data()); }
 
@@ -275,7 +280,7 @@ void GameWindow::buildControls(QBoxLayout* layout) {
     m_speed->setCurrentIndex(2);
     m_centre = new QComboBox(bar);
     m_centre->setObjectName(QStringLiteral("combo-centre"));
-    m_centre->addItems({tr("Centre: Sun"), tr("Centre: You"), tr("Centre: Earth")});
+    setCentreChoices(kCentreSun);
     m_newGame = new QPushButton(tr("New game"), bar);
     m_newGame->setObjectName(QStringLiteral("button-new-game"));
 
@@ -303,16 +308,7 @@ void GameWindow::buildControls(QBoxLayout* layout) {
         m_scene->setProperty("cardTitle", tr("Lost in space"));
         m_scene->setProperty("cardText", tr("Where to this time?"));
     });
-    connect(m_centre, &QComboBox::currentIndexChanged, this, [this](int index) {
-        if (!m_scene) return;
-        m_scene->setProperty("followTarget", index);
-        if (index == 0) {
-            resetView();
-        } else {
-            m_scene->setProperty("panOffset", QVector3D());
-            m_scene->setProperty("distance", 40.0); // million km
-        }
-    });
+    connect(m_centre, &QComboBox::currentIndexChanged, this, &GameWindow::onCentreChanged);
 }
 
 void GameWindow::connectScene() {
@@ -340,6 +336,24 @@ void GameWindow::connectScene() {
             SLOT(chooseStart(int, bool, int, int)));
     connect(m_scene, SIGNAL(cardAccepted(bool)), this, SLOT(acceptCard(bool)));
     connect(m_scene, SIGNAL(hiddenCardsReset()), this, SLOT(showHiddenCards()));
+    connect(m_scene, SIGNAL(centreRequested(int)), this, SLOT(centreOn(int)));
+    // The circle that each sphere of influence is drawn with, and their sizes.
+    if (auto* circle =
+            qobject_cast<PolylineGeometry*>(m_scene->property("unitCircle").value<QObject*>())) {
+        QList<QVector3D> points;
+        constexpr int kPoints = 128;
+        for (int i = 0; i <= kPoints; ++i) {
+            const double a = 2.0 * std::numbers::pi * i / kPoints;
+            points.append(scene::fromHeliocentric({std::cos(a) * scene::kSolarMetresPerUnit,
+                                                   std::sin(a) * scene::kSolarMetresPerUnit, 0.0}));
+        }
+        circle->setPoints(points, QList<QColor>(points.size(), Qt::white));
+    }
+    QVariantList radii;
+    for (const orbit::Body planet : orbit::kAllPlanets) {
+        radii.append(orbit::sphereOfInfluence(planet, epochNow()) / scene::kSolarMetresPerUnit);
+    }
+    m_scene->setProperty("influenceRadii", radii);
     m_scene->setProperty("cardsHidden", !hiddenCardKeys().isEmpty());
 
     m_scene->setProperty(
@@ -397,14 +411,9 @@ void GameWindow::onPuzzleChanged() {
         m_scene->setProperty("goalText", goalText(v.goal, v.destination));
         m_scene->setProperty("destinationIndex", static_cast<int>(v.destination));
     }
-    // "Centre" offers the destination too, when it isn't the Earth.
-    while (m_centre->count() > 3) m_centre->removeItem(3);
-    if (v.destination != orbit::Body::Earth) {
-        m_centre->addItem(tr("Centre: %1").arg(planetText(v.destination)));
-    }
     updatePlanetOrbits();
     updateStartOrbit();
-    m_centre->setCurrentIndex(0);
+    setCentreChoices(kCentreSun);
     resetView();
     // A clock that flies the way home in a minute and a half or so: the
     // slowest speed that does, and not slower than 20 days a second.
@@ -513,6 +522,70 @@ void GameWindow::keyPressEvent(QKeyEvent* event) {
     event->accept();
 }
 
+void GameWindow::setCentreChoices(int select) {
+    const QSignalBlocker block(m_centre);
+    m_centre->clear();
+    m_centre->addItem(tr("Centre: Sun"), kCentreSun);
+    m_centre->addItem(tr("Centre: You"), kCentreShip);
+    QList<int> planets{static_cast<int>(orbit::Body::Earth)};
+    if (m_session->hasPuzzle()) {
+        planets.append(static_cast<int>(m_session->puzzle().voyage.destination));
+    }
+    if (select >= 0) planets.append(select);
+    for (const int p : planets) {
+        if (m_centre->findData(p) >= 0) continue;
+        m_centre->addItem(tr("Centre: %1").arg(planetText(static_cast<orbit::Body>(p))), p);
+    }
+    m_centre->setCurrentIndex(std::max(0, m_centre->findData(select)));
+}
+
+/// Follow the choice: the Sun (the whole view), you, or a planet, close
+/// enough to see its sphere of influence.
+void GameWindow::onCentreChanged() {
+    if (!m_scene) return;
+    const int choice = m_centre->currentData().toInt();
+    m_scene->setProperty("panOffset", QVector3D());
+    if (choice == kCentreSun) {
+        resetView();
+        return;
+    }
+    if (choice == kCentreShip) {
+        m_scene->setProperty("followTarget", 1);
+        m_scene->setProperty("distance", 40.0); // million km
+        return;
+    }
+    const auto planet = static_cast<orbit::Body>(choice);
+    m_scene->setProperty("followTarget", 2);
+    m_scene->setProperty("followPlanet", choice);
+    m_scene->setProperty("distance", 3.0 * orbit::sphereOfInfluence(planet, m_session->now()) /
+                                         scene::kSolarMetresPerUnit);
+}
+
+void GameWindow::centreOn(int index) {
+    if (index < 0) return;
+    constexpr int kPlanets = static_cast<int>(orbit::kAllPlanets.size());
+    int choice = kCentreSun;
+    if (index < kPlanets) {
+        choice = index;
+    } else if (index == kPlanets + 1) {
+        choice = kCentreShip;
+    } else if (index > kPlanets + 1) {
+        // A burn: centre on you; a flyby: on its planet.
+        const int burns = m_session->burnCount();
+        const int flyby = index - kPlanets - 2 - burns;
+        choice = kCentreShip;
+        if (const auto* p = m_session->prediction(); p && flyby >= 0) {
+            QList<orbit::PlanetPass> shown;
+            for (const orbit::PlanetPass& pass : p->flybys) {
+                if (pass.planet != m_session->puzzle().voyage.destination) shown.append(pass);
+            }
+            if (flyby < shown.size()) choice = static_cast<int>(shown.at(flyby).planet);
+        }
+    }
+    setCentreChoices(choice);
+    onCentreChanged();
+}
+
 void GameWindow::setFlying(bool flying) {
     m_flying = flying && m_session->hasPuzzle();
     m_fly->setText(m_flying ? tr("Pause") : tr("Fly"));
@@ -613,6 +686,8 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
                                                 orbit::kMuSun))) +
                 infoRow(tr("Mass"), bigMass(orbit::bodyMu(planet) / kG)) +
                 infoRow(tr("Radius"), display::distance(orbit::bodyRadius(planet))) +
+                infoRow(tr("Sphere of influence"),
+                        display::longDistance(orbit::sphereOfInfluence(planet, now))) +
                 infoRow(tr("Distance from you"), display::longDistance(orbit::norm(r - ship.r))) +
                 infoRow(tr("Speed vs you"), display::speed(orbit::norm(v - ship.v))) +
                 closestPassRow(planet)));
@@ -744,7 +819,7 @@ void GameWindow::updateStartOrbit() {
 void GameWindow::onPredictionChanged() {
     if (m_framePending && m_session->predictionCurrent()) {
         m_framePending = false;
-        m_centre->setCurrentIndex(0);
+        setCentreChoices(kCentreSun);
         resetView(true);
     }
     updateTimeline();
