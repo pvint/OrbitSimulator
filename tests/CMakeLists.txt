@@ -26,6 +26,7 @@ add_executable(orbit_core_tests
     test_natural_body.cpp
     test_moon.cpp
     test_moons.cpp
+    test_moon_trips.cpp
     test_orbit.cpp
     test_scenario.cpp
     test_simulation.cpp

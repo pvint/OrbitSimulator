@@ -601,6 +601,39 @@ by δ towards −B̂, so B̂ against the planet's velocity (as seen square to ŝ
 gains the most speed. If the path isn't heading there yet, Lambert's
 problem first picks the trip time that needs the smallest burn.
 
+**Going to a moon (`moon_transfer.hpp`).** A trip to Titan is planned in
+two pieces, as mission designers do ("patched conics"). Far from Saturn
+only the Sun matters, and the transfer aims at Saturn, to pass it at
+Titan's distance. Inside Saturn's sphere of influence only Saturn
+matters, and Titan is a target going round it. Arriving from far away at
+v∞, energy around the planet gives the speed at the moon's distance a,
+√(v∞² + 2μ/a), while the moon moves at √(μ/a): at best (grazing the moon's
+orbit, moving its way) the moon is met at the difference, nearly 4 km/s at
+Titan straight from the Earth, so a planet's gravity makes every arrival at
+its moons fast. The path crosses the moon's orbit at some moment, and the
+moon is somewhere else then: putting that right once there would take
+km/s, but a month earlier a few m/s moves the arrival by thousands of km,
+so the hint's second step is a correction a month out. It picks the
+moment to meet the moon where the gap to close, per second left to close
+it, is smallest, guesses the burn as that gap over the time (a straight
+line), and then finds the real burn with Newton's method on the full
+simulation: three equations (the miss in x, y and z at that moment) for
+three unknowns (the burn's components). The B-plane aim then finishes the
+job at the moon itself.
+
+From an orbit around the planet (from 200 km above the Earth to the Moon)
+the leg is a Lambert problem around the planet, with its μ instead of the
+Sun's: the porkchop search again, over departure points round the orbit
+and trip times around a Hohmann transfer's, π √(a³/μ) with a the average
+of the two distances (about five days to the Moon, starting at 10.9 km/s
+instead of the 7.8 km/s of the parking orbit: trans-lunar injection,
+3.1 km/s). The puzzle puts the orbit in the Moon's plane, turned so a
+Hohmann transfer an orbit or two after the start meets the Moon. Seen from
+the Sun, the path of a ship in orbit round the Earth is a smear along the
+Earth's own path; the game draws such trips as seen from the planet, each
+point where the ship is relative to the planet then, around where the
+planet is now.
+
 ## Integration (`integrator.hpp`)
 
 The equations of motion are integrated with **Dormand–Prince 5(4)**, an

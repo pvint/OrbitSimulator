@@ -116,8 +116,7 @@ QString planetText(orbit::Body planet) { return QString::fromUtf8(orbit::bodyNam
 /// The planet's name inside a sentence: "the Earth", "Mars" (`start`: at
 /// the start of one, "The Earth").
 QString planetInText(orbit::Body planet, bool start = false) {
-    if (planet != orbit::Body::Earth) return planetText(planet);
-    return start ? QObject::tr("The Earth") : QObject::tr("the Earth");
+    return display::bodyInText(planet, start);
 }
 
 /// The cards the player has asked not to see again.
@@ -155,7 +154,8 @@ QString regionPhrase(orbit::Region region) {
 }
 
 QString goalText(orbit::Goal goal, orbit::Body destination) {
-    const QString name = planetText(destination);
+    const QString name = display::bodyInText(destination);
+    const bool moon = orbit::isMoon(destination);
     switch (goal) {
     case orbit::Goal::ReachEarth:
         return GameWindow::tr("Get back to the Earth: come within 925,000 km of it, where its "
@@ -166,14 +166,25 @@ QString goalText(orbit::Goal goal, orbit::Body destination) {
     case orbit::Goal::EarthOrbit:
         return GameWindow::tr("Get home: brake into an orbit around the Earth, above the air.");
     case orbit::Goal::ReachPlanet:
+        if (moon) {
+            return GameWindow::tr("Get to %1: come within its sphere of influence, where its "
+                                  "gravity takes over from %2's.")
+                .arg(name, display::bodyInText(orbit::planetOf(destination)));
+        }
         return GameWindow::tr("Get to %1: come within its sphere of influence, where its "
                               "gravity takes over from the Sun's.")
             .arg(name);
     case orbit::Goal::ClosePass:
+        if (moon) {
+            return GameWindow::tr("Fly close past %1, within %2 of its radii.")
+                .arg(name)
+                .arg(orbit::VoyageOptions{}.closePassRadii);
+        }
         return GameWindow::tr("Fly close past %1, within %2 of its radii, like Voyager.")
             .arg(name)
             .arg(orbit::VoyageOptions{}.closePassRadii);
     case orbit::Goal::PlanetOrbit:
+        if (moon) return GameWindow::tr("Brake into an orbit around %1.").arg(name);
         return GameWindow::tr("Brake into an orbit around %1, like Cassini or Juno.").arg(name);
     }
     return {};
@@ -181,7 +192,7 @@ QString goalText(orbit::Goal goal, orbit::Body destination) {
 
 /// How the flight ended, with the planets named.
 QString endText(const orbit::VoyageResult& p, orbit::Body destination) {
-    const QString name = planetText(destination);
+    const QString name = display::bodyInText(destination);
     switch (p.end) {
     case orbit::VoyageEnd::ReachedPlanet:
         return GameWindow::tr("Reached %1").arg(name);
@@ -190,7 +201,8 @@ QString endText(const orbit::VoyageResult& p, orbit::Body destination) {
     case orbit::VoyageEnd::OrbitingPlanet:
         return GameWindow::tr("In orbit around %1").arg(name);
     case orbit::VoyageEnd::HitPlanet:
-        return GameWindow::tr("Crashed into %1").arg(planetText(p.hitPlanet.value_or(destination)));
+        return GameWindow::tr("Crashed into %1")
+            .arg(display::bodyInText(p.hitPlanet.value_or(destination)));
     default:
         return QString::fromUtf8(orbit::describe(p.end).data());
     }
@@ -296,10 +308,15 @@ void GameWindow::buildControls(QBoxLayout* layout) {
     m_next->setToolTip(tr("Jump ahead to the next burn."));
     m_speed = new QComboBox(bar);
     m_speed->setObjectName(QStringLiteral("combo-speed"));
+    // Hours for trips among a planet's moons, days to years between the
+    // planets.
+    m_speed->addItem(tr("1 hour a second"), 1.0 / 24.0);
+    m_speed->addItem(tr("6 hours a second"), 0.25);
     for (const int days : {1, 5, 20, 60, 180, 365}) {
-        m_speed->addItem(days == 1 ? tr("1 day a second") : tr("%1 days a second").arg(days), days);
+        m_speed->addItem(days == 1 ? tr("1 day a second") : tr("%1 days a second").arg(days),
+                         static_cast<double>(days));
     }
-    m_speed->setCurrentIndex(2);
+    m_speed->setCurrentIndex(4);
     m_centre = new QComboBox(bar);
     m_centre->setObjectName(QStringLiteral("combo-centre"));
     setCentreChoices(kCentreSun);
@@ -373,6 +390,18 @@ void GameWindow::connectScene() {
     }
     m_scene->setProperty("bodyNames", names);
     m_scene->setProperty("bodyColors", colors);
+    // For the start card: each planet's moons (body indices, innermost
+    // first), and which bodies a ship can orbit.
+    QVariantList planetMoons;
+    for (const orbit::Body planet : orbit::kAllPlanets) {
+        QVariantList moons;
+        for (const orbit::Body moon : orbit::moonsOf(planet)) moons.append(static_cast<int>(moon));
+        planetMoons.append(QVariant(moons));
+    }
+    QVariantList parkable;
+    for (const orbit::Body body : orbit::kAllBodies) parkable.append(orbit::canPark(body));
+    m_scene->setProperty("planetMoons", planetMoons);
+    m_scene->setProperty("bodyParkable", parkable);
     QVariantList moonPlanets;
     QVariantList moonOrbitRadii;
     QVariantList moonInfluence;
@@ -411,19 +440,18 @@ void GameWindow::connectScene() {
     m_scene->setProperty(
         "cardText",
         tr("Plan burns, watch where they take you, and get where you're going on the fuel "
-           "you have. The physics is real: the Sun and every planet pull on you all the way."));
+           "you have. The physics is real: the Sun, the planets and their moons all pull on you."));
     resetView();
 }
 
 void GameWindow::chooseStart(int region, bool inOrbit, int destination, int difficulty) {
     const int lastRegion = static_cast<int>(orbit::kAllRegions.size()) - 1;
-    const int lastPlanet = static_cast<int>(orbit::kAllPlanets.size()) - 1;
+    const int lastBody = static_cast<int>(orbit::kBodyCount) - 1;
     orbit::PuzzleSpec spec;
     spec.difficulty = static_cast<orbit::Difficulty>(std::clamp(difficulty, 0, 2));
     spec.from = orbit::kAllRegions.at(static_cast<std::size_t>(std::clamp(region, 0, lastRegion)));
     spec.inOrbit = inOrbit;
-    spec.to =
-        orbit::kAllPlanets.at(static_cast<std::size_t>(std::clamp(destination, 0, lastPlanet)));
+    spec.to = orbit::kAllBodies.at(static_cast<std::size_t>(std::clamp(destination, 0, lastBody)));
     startPuzzle(spec, QRandomGenerator::global()->generate64());
 }
 
@@ -465,15 +493,41 @@ void GameWindow::onPuzzleChanged() {
     }
     updatePlanetOrbits();
     updateStartOrbit();
-    setCentreChoices(kCentreSun);
-    resetView();
-    // A clock that flies the way home in a minute and a half or so: the
-    // slowest speed that does, and not slower than 20 days a second.
+    if (m_scene && orbit::isMoon(v.destination) &&
+        orbit::parkedAround(v.startEpoch, v.position, v.velocity) ==
+            orbit::planetOf(v.destination)) {
+        // A trip among a planet's moons: centred on the planet, the moon's
+        // orbit filling the view.
+        const orbit::Body planet = orbit::planetOf(v.destination);
+        m_drawFrame = planet;
+        // The ship's orbit around the Sun means little here.
+        if (m_startOrbit) m_startOrbit->setPoints({}, {});
+        setCentreChoices(static_cast<int>(planet));
+        m_scene->setProperty("followTarget", 2);
+        m_scene->setProperty("followPlanet", static_cast<int>(planet));
+        QMetaObject::invokeMethod(
+            m_scene, "lookAt",
+            Q_ARG(QVariant,
+                  QVariant::fromValue(scene::fromPhysics({0.0, -0.45, 1.0}).normalized())),
+            Q_ARG(QVariant, 3.5 * orbit::moonOrbit(v.destination).semiMajorAxis /
+                                scene::kSolarMetresPerUnit));
+    } else {
+        m_drawFrame.reset();
+        setCentreChoices(kCentreSun);
+        resetView();
+    }
+    // A clock that flies the way there in a minute and a half or so: the
+    // slowest speed that does, and not slower than 20 days a second between
+    // the planets; a trip of days among a planet's moons in half a minute.
     const double tripDays = (puzzle.plan.arrival - v.startEpoch) / kDay;
+    const bool local = tripDays < 60.0;
     for (int i = 0; i < m_speed->count(); ++i) {
         const double daysPerSecond = m_speed->itemData(i).toDouble();
         m_speed->setCurrentIndex(i);
-        if (daysPerSecond >= 20.0 && tripDays / daysPerSecond <= 90.0) break;
+        if (local ? tripDays / daysPerSecond <= 30.0
+                  : daysPerSecond >= 20.0 && tripDays / daysPerSecond <= 90.0) {
+            break;
+        }
     }
 
     if (m_welcomePending) {
@@ -482,6 +536,13 @@ void GameWindow::onPuzzleChanged() {
                  welcomeText(puzzle), tr("Let's go"), QStringLiteral("welcome"));
     }
 }
+
+namespace {
+/// The body the voyage starts parked around, if any.
+std::optional<orbit::Body> parkedHome(const orbit::Voyage& v) {
+    return orbit::parkedAround(v.startEpoch, v.position, v.velocity);
+}
+} // namespace
 
 /// Where you are, what you have, and what to do.
 QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
@@ -506,11 +567,23 @@ QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
                          "round every %4.")
                           .arg(planetInText(home), display::longDistance(el.periapsis - radius),
                                display::longDistance(el.apoapsis - radius), periodText(el.period));
-        where += QLatin1Char(' ') +
-                 tr("%1 is %2 away. To leave, burn at the right point in your orbit: deep in "
-                    "a planet's gravity, a little extra speed becomes a lot once you're out "
-                    "(the Oberth effect).")
-                     .arg(planetInText(v.destination, true), display::longDistance(fromTarget));
+        if (orbit::isMoon(v.destination) && orbit::planetOf(v.destination) == home) {
+            // Its own moon: a transfer inside the planet's gravity.
+            const double a = orbit::moonOrbit(v.destination).semiMajorAxis;
+            const double moonPeriod =
+                2.0 * std::numbers::pi * std::sqrt(a * a * a / orbit::bodyMu(home));
+            where += QLatin1Char(' ') +
+                     tr("%1 is %2 away, going round %3 every %4. Speed up at the right moment "
+                        "in your orbit and you climb out to where it will be a few days later.")
+                         .arg(planetInText(v.destination, true), display::longDistance(fromTarget),
+                              planetInText(home), periodText(moonPeriod));
+        } else {
+            where += QLatin1Char(' ') +
+                     tr("%1 is %2 away. To leave, burn at the right point in your orbit: deep "
+                        "in a planet's gravity, a little extra speed becomes a lot once you're "
+                        "out (the Oberth effect).")
+                         .arg(planetInText(v.destination, true), display::longDistance(fromTarget));
+        }
     } else {
         const orbit::OrbitalElements el =
             orbit::elementsFromState(v.position, v.velocity, orbit::kMuSun, orbit::kRadiusSun);
@@ -521,6 +594,14 @@ QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
             tr("You're %1, %2 from the Sun and %3 from %4, on an orbit that takes %5.")
                 .arg(regionPhrase(puzzle.region), display::longDistance(orbit::norm(v.position)),
                      display::longDistance(fromTarget), to, around.arg(periodText(el.period)));
+    }
+    if (orbit::isMoon(v.destination) && orbit::planetOf(v.destination) != parkedHome(v)) {
+        // Another planet's moon: two steps.
+        where += QLatin1Char(' ') +
+                 tr("%1 goes round %2: get to %2 first, then aim for %1 once you're near "
+                    "(Hint does each step).")
+                     .arg(planetInText(v.destination, true),
+                          planetInText(orbit::planetOf(v.destination)));
     }
     return where + QLatin1Char(' ') +
            tr("You have <b>%1</b> of Δv in the tanks: that's how much you can change your "
@@ -939,7 +1020,8 @@ void GameWindow::updatePath() {
     const double now = m_session->now();
     const auto split = static_cast<std::size_t>(
         std::ranges::upper_bound(samples, now, {}, &orbit::VoyageSample::epoch) - samples.begin());
-    if (split == m_pathSplit) return;
+    // Seen from a planet, the whole path moves with it.
+    if (split == m_pathSplit && !m_drawFrame) return;
     m_pathSplit = split;
 
     QList<QVector3D> points;
@@ -970,7 +1052,7 @@ void GameWindow::updatePath() {
             constexpr int kTurn = 96;
             for (int k = 0; k <= kTurn; ++k) {
                 const double t = samples[i].epoch + span * k / kTurn;
-                points.append(scene::fromHeliocentric(orbit::sampleAt(*prediction, t).r));
+                points.append(drawn(orbit::sampleAt(*prediction, t).r, t));
                 colors.append(color);
             }
             i = last;
@@ -982,7 +1064,7 @@ void GameWindow::updatePath() {
                                         samples[i - 1].epoch == samples[i].epoch))) {
             ++burn;
         }
-        points.append(scene::fromHeliocentric(samples[i].r));
+        points.append(drawn(samples[i].r, samples[i].epoch));
         colors.append(i < split ? kFlownColor : kSegmentColors.at(burn % kSegmentColors.size()));
     }
     m_path->setPoints(points, colors);
@@ -1010,7 +1092,7 @@ void GameWindow::updateMarkers() {
     for (int i = 0; i < m_session->burnCount(); ++i) {
         const orbit::Burn& b = m_session->burns()[static_cast<std::size_t>(i)];
         positions.append(
-            QVariant::fromValue(scene::fromHeliocentric(orbit::sampleAt(*prediction, b.epoch).r)));
+            QVariant::fromValue(drawn(orbit::sampleAt(*prediction, b.epoch).r, b.epoch)));
         fired.append(m_session->isLocked(i));
     }
     m_scene->setProperty("burnPositions", positions);
@@ -1063,8 +1145,8 @@ void GameWindow::updateMarkers() {
             orbit::isMoon(pass.planet) ? planetText(orbit::planetOf(pass.planet)) : tr("Sun");
         const double gain = pass.sunSpeedAfter - pass.sunSpeedBefore;
         const double radius = orbit::bodyRadius(pass.planet);
-        flybyPositions.append(QVariant::fromValue(scene::fromHeliocentric(
-            orbit::bodyPosition(pass.planet, pass.epoch) + pass.relativePosition)));
+        flybyPositions.append(QVariant::fromValue(drawn(
+            orbit::bodyPosition(pass.planet, pass.epoch) + pass.relativePosition, pass.epoch)));
         flybyLabels.append(tr("%1 flyby, %2").arg(name, signedSpeed(gain)));
         QString rows =
             infoRow(tr("When"), display::date(pass.epoch)) +
@@ -1090,12 +1172,13 @@ void GameWindow::updateMarkers() {
     m_scene->setProperty("arrivalVisible", show);
     if (show) {
         const orbit::Vec3 target = orbit::bodyPosition(to, c.epoch);
-        const QVector3D ship = scene::fromHeliocentric(target + c.relativePosition);
+        const QVector3D ship = drawn(target + c.relativePosition, c.epoch);
+        const QVector3D body = drawn(target, c.epoch);
         m_scene->setProperty("arrivalShip", ship);
-        m_scene->setProperty("arrivalEarth", scene::fromHeliocentric(target));
+        m_scene->setProperty("arrivalEarth", body);
         // Close in, how high above the ground matters; far out, how far.
         const bool near = c.distance < orbit::sphereOfInfluence(to, c.epoch);
-        const QString name = planetText(to);
+        const QString name = display::bodyInText(to);
         m_scene->setProperty(
             "arrivalLabel",
             near ? tr("closest to %1: %2 up, %3")
@@ -1105,7 +1188,7 @@ void GameWindow::updateMarkers() {
                        .arg(name, display::longDistance(c.distance), display::date(c.epoch)));
         if (m_arrivalLine) {
             const QColor color(0x93, 0xc5, 0xfd);
-            m_arrivalLine->setPoints({ship, scene::fromHeliocentric(target)}, {color, color});
+            m_arrivalLine->setPoints({ship, body}, {color, color});
         }
     }
 }
@@ -1117,7 +1200,7 @@ void GameWindow::updateStatus() {
     using orbit::VoyageEnd;
     const orbit::Goal goal = m_session->puzzle().voyage.goal;
     const orbit::Body to = m_session->puzzle().voyage.destination;
-    const QString name = planetText(to);
+    const QString name = display::bodyInText(to);
     const orbit::PlanetPass& pass = p->closestPasses.at(static_cast<std::size_t>(to));
     QString text;
     QColor color(0xcb, 0xd5, 0xe1);
@@ -1226,6 +1309,13 @@ void GameWindow::onNowChanged() {
         now >= prediction->endEpoch && !m_endingShown) {
         showEnding();
     }
+}
+
+QVector3D GameWindow::drawn(const orbit::Vec3& r, double epoch) const {
+    if (!m_drawFrame) return scene::fromHeliocentric(r);
+    const double now = m_session->now();
+    return scene::fromHeliocentric(r - orbit::bodyPosition(*m_drawFrame, epoch) +
+                                   orbit::bodyPosition(*m_drawFrame, now));
 }
 
 void GameWindow::showEnding() {

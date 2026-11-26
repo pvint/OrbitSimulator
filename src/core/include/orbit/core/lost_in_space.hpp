@@ -93,7 +93,8 @@ std::optional<Body> regionPlanet(Region region);
 
 /// The goal at each difficulty. Going home: Easy, reach the Earth; Normal,
 /// re-enter inside the corridor; Hard, end in orbit around the Earth. To
-/// another planet: reach it; pass close (a flyby probe); end in orbit.
+/// another planet or a moon: reach it; pass close (a flyby probe); end in
+/// orbit (at a moon too small to orbit, canPark(), a close pass again).
 Goal goalFor(Difficulty difficulty, Body destination = Body::Earth);
 
 /// An orbit around a planet, by its low and high points (m from the
@@ -110,12 +111,13 @@ ParkingOrbit parkingOrbit(Body planet);
 /// its sphere of influence (small moons close to a giant planet).
 bool canPark(Body body);
 /// How far out the orbit braked into on arrival reaches (m): half the
-/// Moon's distance at the Earth; elsewhere a fifth of the sphere of
-/// influence, or 100 radii if less.
+/// Moon's distance at the Earth; at a moon, 0.35 of its sphere of
+/// influence; elsewhere a fifth of the sphere of influence, or 100 radii if
+/// less.
 double captureApoapsis(Body planet, double epoch, const VoyageOptions& options = {});
 /// The closest approach to aim for at a planet other than the Earth (m,
 /// from its centre): 10 radii to reach it, 2 for a close pass, 1.1 to brake
-/// into orbit.
+/// into orbit (at a moon, its parking orbit's height: above Titan's haze).
 double aimPeriapsis(Goal goal, Body planet);
 
 /// The Oberth effect: leaving a parking orbit from its low point r_p on a
@@ -195,7 +197,9 @@ std::optional<Escape> escapeFrom(const TwoBodyState& at, const Vec3& vInfinity, 
 /// `count` points evenly spaced in time round the orbit through `rel`.
 std::vector<TwoBodyState> orbitPoints(const TwoBodyState& rel, double mu, int count);
 
-/// The cheapest transfer to `to`, as cheapestWayHome.
+/// The cheapest transfer to `to`, as cheapestWayHome. To a moon: to its
+/// planet, the arrival priced at moonApproachSpeed() (moon_transfer.hpp),
+/// and TransferPlan::vInfinity is that speed relative to the moon.
 std::optional<TransferPlan> cheapestTransfer(double epoch, const Vec3& r, const Vec3& v,
                                              const DepartureFrom& from, Body to, Goal goal,
                                              double window, double longestFlight);
@@ -223,7 +227,8 @@ struct PuzzleSpec {
     Body to = Body::Earth;
 };
 /// The spec made sensible: in orbit only around a planet (always around
-/// the Earth), and not to the planet it starts at.
+/// the Earth, and around a planet going to one of its moons), and not to
+/// the planet it starts at.
 PuzzleSpec settledSpec(PuzzleSpec spec);
 
 struct Puzzle {
@@ -243,7 +248,9 @@ Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch,
                   Region region = Region::BetweenPlanets);
 /// Any puzzle. Starting in orbit, the game starts 10 to 30 days before the
 /// cheapest departure, the orbit set up as if launched for it: the escape
-/// starts at its low point, in its plane.
+/// starts at its low point, in its plane. In orbit around a planet going to
+/// one of its moons, an orbit or two before a Hohmann transfer to it, in the
+/// moon's plane.
 Puzzle makePuzzle(const PuzzleSpec& spec, std::uint64_t seed, double epoch);
 
 // --- Hints ---------------------------------------------------------------
@@ -255,8 +262,10 @@ Puzzle makePuzzle(const PuzzleSpec& spec, std::uint64_t seed, double epoch);
 std::optional<Burn> burnTowardsEarth(const Voyage& voyage, double epoch, double arrival,
                                      const VoyageOptions& options = {});
 /// The same, to the voyage's destination (aimed at aimPeriapsis away from
-/// a planet other than the Earth). Nothing inside a planet's sphere of
-/// influence: see transferBurn.
+/// a planet other than the Earth; to a moon, at its planet, to pass at the
+/// moon's distance going round the way it does). Nothing inside a planet's
+/// sphere of influence: see transferBurn, and planToMoon for the last leg
+/// to a moon.
 std::optional<Burn> burnTowards(const Voyage& voyage, double epoch, double arrival,
                                 const VoyageOptions& options = {});
 
@@ -275,7 +284,9 @@ std::optional<Burn> transferBurn(const Voyage& voyage, double departure, double 
                                  const VoyageOptions& options = {});
 
 /// Fine-tunes burn `index` so the path meets the destination as the goal
-/// wants: refineAim for the Earth, aimFlyby at aimPeriapsis elsewhere.
+/// wants: refineAim for the Earth, aimFlyby at aimPeriapsis elsewhere. To
+/// a moon not yet in sight (no pass within three of its spheres of
+/// influence), aimFlyby at its planet, passing at the moon's distance.
 std::optional<Burn> aimAtDestination(const Voyage& voyage, std::size_t index,
                                      const VoyageOptions& options = {});
 

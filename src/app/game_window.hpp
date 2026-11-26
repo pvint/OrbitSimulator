@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 class BurnPlanner;
@@ -119,4 +120,12 @@ private:
     /// The sample the flown part of the path reaches (to recolour only when
     /// it moves).
     std::size_t m_pathSplit = 0;
+    /// On a trip among a planet's moons, the path and its markers are drawn
+    /// as seen from the planet (see drawn()).
+    std::optional<orbit::Body> m_drawFrame;
+    /// Where to draw a point the ship passes at `epoch`: where it is, or,
+    /// with a planet as the frame, where it is relative to the planet then,
+    /// around where the planet is now. A parked orbit is then a closed loop
+    /// round the planet, not a smear along the planet's own path.
+    QVector3D drawn(const orbit::Vec3& r, double epoch) const;
 };

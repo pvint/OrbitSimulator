@@ -28,6 +28,7 @@ add_library(orbit_core STATIC
     src/guidance.cpp
     src/integrator.cpp
     src/lost_in_space.cpp
+    src/moon_transfer.cpp
     src/lunar_targeting.cpp
     src/mission_parameters.cpp
     src/natural_body.cpp

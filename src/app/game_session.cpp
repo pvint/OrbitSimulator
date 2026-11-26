@@ -3,6 +3,7 @@
 
 #include "display_format.hpp"
 #include "orbit/core/constants.hpp"
+#include "orbit/core/moon_transfer.hpp"
 #include "orbit/core/solar_system.hpp"
 
 #include <QCoreApplication>
@@ -27,7 +28,7 @@ constexpr double kCorrectionLead = 20.0 * kDay;
 QString planetText(orbit::Body planet) { return QString::fromUtf8(orbit::bodyName(planet).data()); }
 
 QString goalPhrase(orbit::Goal goal, orbit::Body destination) {
-    const QString name = planetText(destination);
+    const QString name = display::bodyInText(destination);
     switch (goal) {
     case orbit::Goal::ReachEarth:
         return QObject::tr("reaching the Earth");
@@ -348,6 +349,36 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
     const bool reaches =
         prediction.arrival.has_value() || (closest.valid && closest.distance < soi);
 
+    if (!reaches && isMoon(to)) {
+        // To a moon, once in (or on the way into) its planet's sphere of
+        // influence: the last leg, inside the planet's system.
+        if (const auto leg = planToMoon(voyage, now, prediction)) {
+            std::erase_if(voyage.burns, [&](const Burn& b) { return b.epoch >= leg->from; });
+            const bool replaced = voyage.burns.size() < burns.size();
+            voyage.burns.push_back(leg->burn);
+            auto index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, leg->burn.epoch));
+            if (const auto tuned = aimAtDestination(voyage, index)) {
+                voyage.burns[index] = *tuned;
+                index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, tuned->epoch));
+            }
+            const Burn& first = voyage.burns[index];
+            const QString planet = display::bodyInText(planetOf(to));
+            QString message =
+                tr("%1 goes round %2 every %3. The cheapest way to meet it leaves on %4 with a "
+                   "burn of %5 and gets there on %6, arriving at %7 relative to it.")
+                    .arg(display::bodyInText(to, true), planet,
+                         display::duration(kTwoPi *
+                                           std::sqrt(std::pow(moonOrbit(to).semiMajorAxis, 3) /
+                                                     bodyMu(planetOf(to)))),
+                         display::date(first.epoch), display::speed(burnSize(first)),
+                         display::date(leg->plan.arrival), display::speed(leg->plan.vInfinity));
+            if (replaced) {
+                message += QLatin1Char(' ') + tr("(It replaces the burns you had planned.)");
+            }
+            return {voyage.burns, static_cast<int>(index), message};
+        }
+    }
+
     if (!reaches) {
         // Start again from here: the cheapest transfer from where the ship
         // is now (or from the planet it's parked around), replacing the
@@ -400,6 +431,14 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
                      "%4. Fly there and it fires.")
                       .arg(name, display::date(first.epoch), display::speed(burnSize(first)),
                            display::date(plan->arrival));
+        if (isMoon(to)) {
+            message = tr("To get to %1, get to %2 first: the cheapest way leaves on %3 with a "
+                         "burn of %4 and arrives on %5, crossing %1's orbit. Once you're near "
+                         "%2, press Hint again to meet %1 itself.")
+                          .arg(display::bodyInText(to), display::bodyInText(planetOf(to)),
+                               display::date(first.epoch), display::speed(burnSize(first)),
+                               display::date(plan->arrival));
+        }
         if (replaced) message += QLatin1Char(' ') + tr("(It replaces the burns you had planned.)");
         return {voyage.burns, static_cast<int>(index), message};
     }

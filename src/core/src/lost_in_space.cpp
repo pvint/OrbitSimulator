@@ -5,6 +5,7 @@
 #include "orbit/core/constants.hpp"
 #include "orbit/core/ephemeris.hpp"
 #include "orbit/core/flyby.hpp"
+#include "orbit/core/moon_transfer.hpp"
 #include "orbit/core/solar_system.hpp"
 #include "orbit/core/two_body.hpp"
 
@@ -226,6 +227,10 @@ std::optional<TransferPlan> transfer(const TwoBodyState& ship, const DepartureFr
         plan.departureCost = best;
     }
     plan.vInfinity = norm(lambert->v2 - e.v);
+    // A moon: the transfer goes to its planet, and the arrival is priced at
+    // the speed it meets the moon with, falling in from v∞
+    // (moon_transfer.hpp).
+    if (isMoon(to)) plan.vInfinity = moonApproachSpeed(plan.vInfinity, to);
     plan.arrivalCost = arrivalCost(goal, plan.vInfinity, to);
     return plan;
 }
@@ -344,6 +349,9 @@ std::optional<Body> regionPlanet(Region region) {
 
 Goal goalFor(Difficulty difficulty, Body destination) {
     const bool home = destination == Body::Earth;
+    // A moon too small to orbit so close to its planet: a close pass on
+    // tight fuel instead.
+    if (difficulty == Difficulty::Hard && !home && !canPark(destination)) return Goal::ClosePass;
     switch (difficulty) {
     case Difficulty::Easy:
         return home ? Goal::ReachEarth : Goal::ReachPlanet;
@@ -395,6 +403,12 @@ bool canPark(Body body) {
 
 double captureApoapsis(Body planet, double epoch, const VoyageOptions& options) {
     if (planet == Body::Earth) return 0.5 * options.captureMaxApogee;
+    // A moon: out to a little over a third of its sphere of influence (its
+    // planet would pull a wider orbit apart), above the low point at least.
+    if (isMoon(planet)) {
+        return std::max(0.35 * sphereOfInfluence(planet, epoch),
+                        aimPeriapsis(Goal::PlanetOrbit, planet));
+    }
     return std::min(0.2 * sphereOfInfluence(planet, epoch), 100.0 * bodyRadius(planet));
 }
 
@@ -406,7 +420,8 @@ double aimPeriapsis(Goal goal, Body planet) {
     case Goal::ClosePass:
         return 2.0 * radius;
     case Goal::PlanetOrbit:
-        return 1.1 * radius;
+        // A moon: as low as the parking orbit there (Titan: above its haze).
+        return isMoon(planet) ? parkingOrbit(planet).periapsis : 1.1 * radius;
     case Goal::ReachEarth:
         return kRadiusEarth + 1000e3;
     case Goal::Reentry:
@@ -500,7 +515,8 @@ std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const V
 std::optional<TransferPlan> cheapestTransfer(double epoch, const Vec3& r, const Vec3& v,
                                              const DepartureFrom& from, Body to, Goal goal,
                                              double window, double longestFlight) {
-    const PlanetTable target(to, epoch, window + longestFlight + 10.0 * kDay);
+    // To a moon: to its planet (see transfer()).
+    const PlanetTable target(planetOf(to), epoch, window + longestFlight + 10.0 * kDay);
     const TwoBodyState start{r, v};
     std::optional<TransferPlan> best;
     const auto consider = [&](const TwoBodyState& ship, double departure, double flight) {
@@ -576,6 +592,10 @@ PuzzleSpec settledSpec(PuzzleSpec spec) {
     const auto planet = regionPlanet(spec.from);
     if (!planet) spec.inOrbit = false;              // nothing to orbit
     if (planet == Body::Earth) spec.inOrbit = true; // never "near" the Earth
+    // Its own moons are fine (from the Earth to the Moon), from an orbit
+    // around it: drifting away from it first would mean years round the Sun
+    // to catch it up.
+    if (planet && isMoon(spec.to) && planetOf(spec.to) == *planet) spec.inOrbit = true;
     if (planet == spec.to) spec.to = spec.to == Body::Earth ? Body::Mars : Body::Earth;
     return spec;
 }
@@ -634,6 +654,62 @@ Puzzle orbitPuzzle(Puzzle puzzle, const Setup& setup, Random& random, double epo
     return puzzle;
 }
 
+/// A puzzle starting in orbit around a planet, going to one of its moons
+/// (from the Earth to the Moon). The orbit lies in the moon's plane, going
+/// round the same way, and is turned so that a Hohmann transfer from its
+/// low point, an orbit or two after the start, would meet the moon: half
+/// an ellipse from the low point r_p out to the moon's distance r_m, which
+/// takes π √(a³/μ) with a = (r_p + r_m)/2 (Kepler's third law). The low
+/// point is then opposite where the moon will be on arrival. The fuel is
+/// priced with the cheapest transfer found from the start
+/// (cheapestMoonTransfer), which may not be that one.
+Puzzle moonPuzzle(Puzzle puzzle, const Setup& setup, Random& random, double epoch) {
+    const Body moon = puzzle.destination;
+    const Body home = planetOf(moon);
+    const double mu = bodyMu(home);
+    const ParkingOrbit orbit = parkingOrbit(home);
+    const double a = 0.5 * (orbit.periapsis + orbit.apoapsis);
+    const double period = kTwoPi * std::sqrt(a * a * a / mu);
+    const double departure = epoch + random.uniform(0.6, 2.5) * period;
+    const Vec3 pole = moonOrbitNormal(moon, departure);
+
+    // Where the moon will be on arrival depends on the trip time, which
+    // depends on its distance then: a few rounds settle it.
+    double arrival = departure;
+    Vec3 moonAt = moonFromPlanet(moon, departure).r;
+    for (int i = 0; i < 4; ++i) {
+        const double transferA = 0.5 * (orbit.periapsis + norm(moonAt));
+        arrival = departure + kPi * std::sqrt(transferA * transferA * transferA / mu);
+        moonAt = moonFromPlanet(moon, arrival).r;
+    }
+    const Vec3 inPlane = moonAt - dot(moonAt, pole) * pole;
+    const Vec3 pHat = -normalized(inPlane);
+    const Vec3 qHat = cross(pole, pHat);
+    const double vPark =
+        std::sqrt(2.0 * mu / orbit.periapsis - 2.0 * mu / (orbit.periapsis + orbit.apoapsis));
+    const TwoBodyState rel =
+        propagateKepler({orbit.periapsis * pHat, vPark * qHat}, epoch - departure, mu);
+
+    puzzle.voyage.startEpoch = epoch;
+    puzzle.voyage.position = bodyPosition(home, epoch) + rel.r;
+    puzzle.voyage.velocity = bodyVelocity(home, epoch) + rel.v;
+    // Priced around the departure set up (a later one may be a little
+    // cheaper, but waiting days in orbit is no game).
+    const double window = (departure - epoch) + 0.5 * period;
+    const auto plan = cheapestMoonTransfer(epoch, rel, moon, puzzle.voyage.goal, window);
+    if (!plan) return puzzle;
+    puzzle.plan = *plan;
+    // Predictions look weeks ahead, not years: three times the trip, or
+    // two of the moon's orbits, or a month.
+    const double moonA = moonOrbit(moon).semiMajorAxis;
+    const double moonPeriod = kTwoPi * std::sqrt(moonA * moonA * moonA / mu);
+    puzzle.voyage.horizon =
+        std::max({30.0 * kDay, 3.0 * (plan->arrival - epoch), 2.0 * moonPeriod});
+    puzzle.budget = setup.margin * plan->total() + setup.reserve;
+    fillTanks(puzzle);
+    return puzzle;
+}
+
 } // namespace
 
 Puzzle makePuzzle(const PuzzleSpec& spec, std::uint64_t seed, double epoch) {
@@ -651,6 +727,9 @@ Puzzle makePuzzle(const PuzzleSpec& spec, std::uint64_t seed, double epoch) {
     puzzle.seed = seed;
     puzzle.voyage.goal = goal;
     puzzle.voyage.destination = to;
+    if (settled.inOrbit && isMoon(to) && regionPlanet(region) == planetOf(to)) {
+        return moonPuzzle(puzzle, setup, random, epoch);
+    }
     if (settled.inOrbit) return orbitPuzzle(puzzle, setup, random, epoch);
     // The difficulty sets the cost range only for the old game: lost
     // between the planets, going home.
@@ -723,8 +802,13 @@ std::optional<Burn> burnTowards(const Voyage& voyage, double epoch, double arriv
         return std::nullopt; // the Sun-only Lambert solution means nothing here
     }
     const Body to = voyage.destination;
-    const Vec3 targetR = bodyPosition(to, arrival);
-    const Vec3 targetV = bodyVelocity(to, arrival);
+    // A moon: aim at its planet, to pass at the moon's distance from it,
+    // going round the way the moon does (the last leg comes later,
+    // planToMoon).
+    const Body planet = planetOf(to);
+    const Vec3 targetR = bodyPosition(planet, arrival);
+    const Vec3 targetV = bodyVelocity(planet, arrival);
+    const Vec3 pole = isMoon(to) ? moonOrbitNormal(to, arrival) : Vec3{0.0, 0.0, 1.0};
 
     // Aim beside the planet, square to the arrival direction, on the side
     // that makes the pass go round it the way it turns (anticlockwise seen
@@ -737,11 +821,17 @@ std::optional<Burn> burnTowards(const Voyage& voyage, double epoch, double arriv
         if (!solution) return std::nullopt;
         lambert = *solution;
         const Vec3 vInfinity = lambert.v2 - targetV;
-        const Vec3 side = normalized(cross(normalized(vInfinity), Vec3{0.0, 0.0, 1.0}));
-        const double b =
-            to == Body::Earth
-                ? aimImpactParameter(voyage.goal, norm(vInfinity), options)
-                : impactParameter(aimPeriapsis(voyage.goal, to), norm(vInfinity), bodyMu(to));
+        Vec3 side = cross(normalized(vInfinity), pole);
+        if (norm(side) < 1e-6) side = cross(normalized(vInfinity), Vec3{0.0, 0.0, 1.0});
+        side = normalized(side);
+        double b = 0.0;
+        if (to == Body::Earth) {
+            b = aimImpactParameter(voyage.goal, norm(vInfinity), options);
+        } else if (isMoon(to)) {
+            b = impactParameter(moonOrbit(to).semiMajorAxis, norm(vInfinity), bodyMu(planet));
+        } else {
+            b = impactParameter(aimPeriapsis(voyage.goal, to), norm(vInfinity), bodyMu(to));
+        }
         target = targetR + b * side;
     }
     return burnFromVector(epoch, lambert.v1 - here.v, burnFrameAt(epoch, here.r, here.v));
@@ -834,9 +924,9 @@ std::optional<Burn> transferBurn(const Voyage& voyage, double departure, double 
     // Climbing out of a parked orbit: the v∞ that Lambert's problem asks
     // for, from the planet's centre, and the best point to burn for it
     // within half an orbit either side of the planned day.
-    const auto lambert =
-        solveLambert(bodyPosition(*planet, departure), bodyPosition(voyage.destination, arrival),
-                     arrival - departure, kMuSun);
+    const auto lambert = solveLambert(bodyPosition(*planet, departure),
+                                      bodyPosition(planetOf(voyage.destination), arrival),
+                                      arrival - departure, kMuSun);
     if (!lambert) return std::nullopt;
     const Vec3 vInfinity = lambert->v1 - bodyVelocity(*planet, departure);
     const TwoBodyState rel{here.r - bodyPosition(*planet, departure),
@@ -852,9 +942,22 @@ std::optional<Burn> transferBurn(const Voyage& voyage, double departure, double 
 
 std::optional<Burn> aimAtDestination(const Voyage& voyage, std::size_t index,
                                      const VoyageOptions& options) {
-    if (voyage.destination == Body::Earth) return refineAim(voyage, index, options);
-    const FlybyAim aim{voyage.destination, aimPeriapsis(voyage.goal, voyage.destination),
-                       FlybySide::Keep};
+    const Body to = voyage.destination;
+    if (to == Body::Earth) return refineAim(voyage, index, options);
+    if (isMoon(to)) {
+        // Heading for the moon already (within three of its spheres of
+        // influence): aim at it. Else at its planet, to pass at the moon's
+        // distance; the leg to the moon is planned once there.
+        VoyageOptions fly = options;
+        fly.stopAtGoal = false;
+        const VoyageResult flown = flyVoyage(voyage, fly);
+        const PlanetPass& pass = flown.closestPasses.at(static_cast<std::size_t>(to));
+        if (!pass.valid || pass.distance > 3.0 * sphereOfInfluence(to, pass.epoch)) {
+            const FlybyAim aim{planetOf(to), moonOrbit(to).semiMajorAxis, FlybySide::Keep};
+            return aimFlyby(voyage, index, aim, options).burn;
+        }
+    }
+    const FlybyAim aim{to, aimPeriapsis(voyage.goal, to), FlybySide::Keep};
     return aimFlyby(voyage, index, aim, options).burn;
 }
 
@@ -874,6 +977,7 @@ std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
     trial.velocity = start.v;
     trial.ship = voyage.ship;
     trial.lookAhead = voyage.lookAhead;
+    trial.horizon = voyage.horizon;
     trial.ship.propellant = std::max(0.0, start.mass - voyage.ship.dryMass);
     trial.goal = Goal::EarthOrbit;
     trial.burns = {original};
@@ -968,8 +1072,8 @@ std::optional<Burn> captureBurn(const Voyage& voyage, const VoyageOptions& optio
         const auto pass = passAfter(flyVoyage(trial, options), planet, voyage.startEpoch);
         if (!pass || pass->vInfinity <= 0.0) return std::nullopt;
         if (pass->distance > sphereOfInfluence(planet, pass->epoch)) return std::nullopt;
-        if (pass->distance < options.orbitMinPeriapsisRadii * bodyRadius(planet)) {
-            return std::nullopt; // into the planet
+        if (pass->distance < lowestOrbit(planet, options)) {
+            return std::nullopt; // into the planet (or Titan's haze)
         }
         const double mu = bodyMu(planet);
         const double rp = pass->distance;

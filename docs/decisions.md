@@ -795,6 +795,45 @@ close-ups; G7 landing where there's air. See the roadmap in CLAUDE.md.
   of influence are drawn, the wheel zooms towards the pointer, and
   double-click centres on things.
 
+### 39. Trips to a moon: patched conics, then Newton with everything (2026-11-26)
+
+G3's second half: any of the 18 moons as a destination (starting at a
+moon comes next).
+
+- **Two steps, as missions plan them.** Far out, the Sun-only porkchop
+  aims at the moon's planet, to pass it at the moon's distance, and prices
+  the arrival at the speed the moon is met with (√(v∞² + 2μ/a) − √(μ/a),
+  `moonApproachSpeed`). Then the last leg (`planToMoon`): from an orbit
+  around the planet, a planet-only Lambert porkchop; on a path through the
+  planet's system, a correction a month before the path crosses the moon's
+  orbit. Each is then corrected with the full simulation (`homeIn`,
+  Newton on the 3D miss at the meeting time), and the B-plane aim
+  (`aimFlyby`) finishes at the moon. The hint does one step per press and
+  says so ("get to Saturn first ... press Hint again").
+- **Why not plan the last leg once inside the sphere of influence?** It
+  was tried first. At the sphere's edge the Sun pulls about as hard as the
+  planet, so a planet-only Lambert leg misses by a lot (Uranus's moons were
+  never reached), and deeper in, meeting a moon that is on the wrong side
+  of the planet costs km/s (2.3 km/s at Callisto). A month out, with the
+  full simulation, it costs a few hundred m/s at most.
+- **A planet's own moon always starts in orbit around it** (`settledSpec`):
+  "near Jupiter, going to Ganymede" meant drifting away and coming back
+  years later. The orbit lies in the moon's plane, an orbit or two before
+  a Hohmann transfer to it.
+- **A moon too small to orbit (Mimas, Enceladus, Miranda): Hard is a close
+  pass on tight fuel** (`goalFor`). Orbits around a moon reach out to 0.35
+  of its sphere of influence, and Titan's stay above its haze.
+- **Predictions among a planet's moons look weeks ahead, not years**
+  (`Voyage::horizon`): flying four years among Saturn's moons took most of
+  a 27 s hint.
+- **Seen from the planet.** On such a trip the camera follows the planet
+  and the path is drawn relative to it (`GameWindow::drawn`); otherwise a
+  ship waiting in orbit smears along the planet's path round the Sun.
+  Clock speeds of an hour and six hours a second were added.
+- **The start card**: the planets, then "Or one of its moons:" for the one
+  picked; picking the planet you start at offers its moons (from the
+  Earth, the Moon). `--puzzle normal:earth:moon`, `hard:earth:titan`.
+
 ---
 
 ## Open questions

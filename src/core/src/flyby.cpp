@@ -218,6 +218,7 @@ FlybyAimResult aimFlybyFrom(const Voyage& voyage, std::size_t index, const Flyby
     trial.ship.propellant = std::max(0.0, start.mass - voyage.ship.dryMass);
     trial.goal = Goal::EarthOrbit; // don't stop on reaching the Earth's neighbourhood
     trial.lookAhead = voyage.lookAhead;
+    trial.horizon = voyage.horizon;
     trial.burns.assign(burns.begin() + static_cast<std::ptrdiff_t>(index), burns.end());
     const BurnFrame frame = burnFrameAt(original.epoch, start.r, start.v);
     const auto withBurn = [&](const Components& x) {

@@ -155,6 +155,11 @@ struct Voyage {
     /// flyby (s), if more than VoyageOptions::horizon: a puzzle far out sets
     /// its longest trip.
     double lookAhead = 0.0;
+    /// If more than zero, predictions look this far ahead instead of
+    /// VoyageOptions::horizon (lookAhead still counts if longer): a trip
+    /// among a planet's moons wants weeks, not years, and each day close
+    /// in among moons takes many steps to fly.
+    double horizon = 0.0;
 };
 
 struct VoyageOptions {

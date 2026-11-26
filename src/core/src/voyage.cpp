@@ -515,7 +515,8 @@ VoyageResult VoyageFlight::run() {
     std::ranges::stable_sort(burns, {}, &Burn::epoch);
 
     const double lastEvent = burns.empty() ? m_voyage->startEpoch : burns.back().epoch;
-    m_lookAhead = std::max(m_opt->horizon, m_voyage->lookAhead);
+    const double horizon = m_voyage->horizon > 0.0 ? m_voyage->horizon : m_opt->horizon;
+    m_lookAhead = std::max(horizon, m_voyage->lookAhead);
     m_end = m_opt->stopAt ? *m_opt->stopAt : lastEvent + m_lookAhead;
 
     const Ship& ship = m_voyage->ship;

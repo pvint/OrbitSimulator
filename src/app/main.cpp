@@ -36,8 +36,9 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
     window.show();
     if (parser.isSet(o.puzzle)) {
         // Any order: a difficulty, where from, "orbit" to start in orbit
-        // there, where to (a second planet), a seed (e.g. "hard:jupiter:4",
-        // "normal:earth:saturn", "easy:mars:orbit").
+        // there, where to (a second planet, or a moon), a seed (e.g.
+        // "hard:jupiter:4", "normal:earth:saturn", "easy:mars:orbit",
+        // "normal:earth:moon", "hard:jupiter:orbit:europa").
         orbit::PuzzleSpec spec;
         spec.difficulty = orbit::Difficulty::Normal;
         bool haveFrom = false;
@@ -62,6 +63,9 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
                 } else if (planet) {
                     spec.to = *planet;
                 }
+            } else if (const auto moon = orbit::bodyFromKey(word.toStdString());
+                       moon && orbit::isMoon(*moon)) {
+                spec.to = *moon; // a moon is only ever where to
             }
         }
         window.startPuzzle(spec, seed);
@@ -127,8 +131,9 @@ int main(int argc, char* argv[]) {
         QStringLiteral("Start the game with this puzzle, in any order: easy, normal or hard; "
                        "where from (between, mercury, venus, earth, mars, belt, jupiter, "
                        "saturn, uranus, neptune); \"orbit\" to start in orbit there; where "
-                       "to (a second planet, else the Earth); a seed (hard:jupiter:42, "
-                       "normal:earth:saturn, easy:mars:orbit)."),
+                       "to (a second planet or a moon, else the Earth); a seed "
+                       "(hard:jupiter:42, normal:earth:saturn, easy:mars:orbit, "
+                       "normal:earth:moon, hard:earth:titan)."),
         QStringLiteral("puzzle"));
     const QCommandLineOption hint(QStringLiteral("hint"),
                                   QStringLiteral("With --puzzle: take a hint straight away."));

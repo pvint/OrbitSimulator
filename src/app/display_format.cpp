@@ -125,4 +125,16 @@ QColor outcomeColor(orbit::Outcome outcome) {
     return Qt::white;
 }
 
+QString bodyInText(orbit::Body body, bool start) {
+    switch (body) {
+    case orbit::Body::Earth:
+        return start ? QObject::tr("The Earth") : QObject::tr("the Earth");
+    case orbit::Body::Moon:
+        return start ? QObject::tr("The Moon") : QObject::tr("the Moon");
+    default:
+        break;
+    }
+    return QString::fromUtf8(orbit::bodyName(body).data());
+}
+
 } // namespace display

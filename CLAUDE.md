@@ -70,16 +70,21 @@ prototype settled the physics model and the UI ideas; this is the full version.
   pointer (down to 2,000 km); double-click centres on a planet, the Sun,
   the ship or a flyby; "Centre" lists Sun / You / Earth / destination /
   any planet double-clicked.
-- **In progress: G3, moons as bodies.** Part 1 done (commit da74b12):
-  `Planet` renamed `Body`, 18 major moons with real sizes, masses and
-  orbits (phases illustrative), moon spheres of influence, parking orbits
-  (Titan's above its haze), `canPark` (not Mimas, Enceladus, Miranda;
-  check Tethys). Still to do: moons in the flight (gravity inside the
-  planet's sphere, Closest/Surface events, `closestPasses` sized
-  kBodyCount, `dominantPlanet` must pick the smallest sphere containing
-  the ship, parked Kepler mode only below a planet's innermost moon),
-  moons as starts and destinations on the start card (C++ should feed
-  QML the body list), puzzles at moons.
+- **In progress: G3, moons as bodies.** Done: `Planet` renamed `Body`,
+  18 major moons (real sizes, masses, orbits; phases illustrative), their
+  spheres of influence, parking orbits (Titan's above its haze),
+  `canPark`; moons in the flight (they pull inside their planet's sphere,
+  bend paths, can be hit or orbited); moons drawn (orbits, spheres,
+  labels, hover cards); **moons as destinations** (decision 39,
+  2026-11-26): `moon_transfer.hpp` (`moonApproachSpeed`,
+  `cheapestMoonTransfer`, `planToMoon`: the last leg, homed in with the
+  full simulation), puzzles to any moon, hints in two steps (the planet,
+  then a correction a month out), a planet's own moon starts in orbit
+  around it, `Voyage::horizon` (weeks, among moons), the path drawn as
+  seen from the planet on such trips, "Or one of its moons:" on the start
+  card, `--puzzle normal:earth:moon`. Still to do: **moons as starts** (in
+  orbit around a moon: escape the moon, then the planet; nested
+  departure costs), then puzzles from moon to moon.
 - **Then, in order:** G4 free roam (pick a body, start in orbit, no goal,
   unlimited fuel); G5 close-ups (textures already found: Mercury, Mars,
   Titan, Io, Europa, Ganymede, Callisto from the USGS map server
@@ -126,6 +131,7 @@ build/dev/src/app/orbitsim            # the app (the game)
 build/dev/src/app/orbitsim --screenshot out.png   # render the window to a file and quit
 build/dev/src/app/orbitsim --puzzle hard:4 --hint --no-cards --screenshot out.png
 build/dev/src/app/orbitsim --puzzle normal:earth:saturn   # from low Earth orbit to Saturn
+build/dev/src/app/orbitsim --puzzle hard:earth:moon        # from low Earth orbit into lunar orbit
 build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
 build/dev/src/cli/orbitsim-cli --vehicle natural-body        # Apophis 2029 flyby
 build/dev/src/cli/orbitsim-cli        # CLI
@@ -225,7 +231,7 @@ Each milestone ends with something that runs.
 | D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
 | G1 | Lost in space: the game (puzzles from anywhere to anywhere, hints, flyby tools); decisions 35–37 | done |
 | G2 | One app (decision 38): the game window is the app; the old workbench UI is deleted (core physics, CLI and tests kept; the rocket launch to come back later as a mode) | done |
-| G3 | Moons as bodies: all 18 major moons (the Moon, the Galilean moons, Saturn's seven, Uranus's five, Triton): ephemerides, gravity, start/destination | part 1 (bodies, orbits) done |
+| G3 | Moons as bodies: all 18 major moons (the Moon, the Galilean moons, Saturn's seven, Uranus's five, Triton): ephemerides, gravity, start/destination | bodies, flight, drawing, destinations done; starts at moons to do |
 | G4 | Free roam: pick a body, start in orbit, no goal, unlimited fuel | |
 | G5 | Close-ups: textured bodies at true size, lit by the Sun, Saturn's rings, seen when the camera is near them | |
 | G6 | The asteroid belt, drawn | done |
@@ -253,7 +259,9 @@ prograde/radial/normal relative to the Earth inside its SOI, else the Sun,
 `VoyageEnd`, `closest` Earth approach, entry speed/angle, Δv left,
 `closestPasses` per planet, `flybys`), `voyageStateAt`, `passAt`.
 `flyby.hpp`: `bPlane`, `impactParameter`, `FlybySide`, `aimFlyby`,
-`passAfter`.
+`passAfter`. `moon_transfer.hpp`: `moonApproachSpeed`, `moonDistance`,
+`moonOrbitNormal`, `cheapestMoonTransfer` (planet-only porkchop),
+`planToMoon` → `MoonLeg` (burn homed in with the full simulation).
 `lost_in_space.hpp`: `Region`, `makePuzzle(difficulty, seed, epoch, region)`,
 `cheapestWayHome` (porkchop), `searchSpan` (window and longest trip by
 distance), hints `burnTowardsEarth`, `refineAim` (B-plane Newton with the

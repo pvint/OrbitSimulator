@@ -194,6 +194,54 @@ private slots:
         // The departure burn's directions are relative to the Earth.
         QCOMPARE(session.prediction()->burns.front().planet, orbit::Body::Earth);
     }
+
+    void hintsTakeYouIntoOrbitAroundTheMoon() {
+        // From 200 km up to an orbit around the Moon: the transfer, timed so
+        // the Moon is there on arrival, then braking at the low point.
+        GameSession session;
+        session.setPuzzle(orbit::makePuzzle(
+            {orbit::Difficulty::Hard, orbit::Region::Earth, true, orbit::Body::Moon}, 7,
+            orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0})));
+        session.waitForIdle();
+        QVERIFY(!session.prediction()->goalMet);
+        QStringList messages;
+        connect(&session, &GameSession::hintReady, this,
+                [&messages](const QString& m) { messages.append(m); });
+        for (int i = 0; i < 4 && !session.prediction()->goalMet; ++i) {
+            session.requestHint();
+            session.waitForIdle();
+        }
+        QVERIFY2(session.prediction()->goalMet, qPrintable(messages.join(QLatin1Char('\n'))));
+        QCOMPARE(session.prediction()->end, orbit::VoyageEnd::OrbitingPlanet);
+        QVERIFY2(messages.first().contains(QStringLiteral("The Moon goes round the Earth")),
+                 qPrintable(messages.first()));
+        QVERIFY(session.prediction()->deltaVLeft > 0.0);
+    }
+
+    void hintsTakeYouToTitanInTwoSteps() {
+        // Another planet's moon: to Saturn first, crossing Titan's orbit,
+        // then a correction a month out that meets Titan itself.
+        GameSession session;
+        session.setPuzzle(orbit::makePuzzle(
+            {orbit::Difficulty::Normal, orbit::Region::Earth, true, orbit::Body::Titan}, 3,
+            orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0})));
+        session.waitForIdle();
+        QStringList messages;
+        connect(&session, &GameSession::hintReady, this,
+                [&messages](const QString& m) { messages.append(m); });
+        for (int i = 0; i < 4 && !session.prediction()->goalMet; ++i) {
+            session.requestHint();
+            session.waitForIdle();
+        }
+        QVERIFY2(session.prediction()->goalMet, qPrintable(messages.join(QLatin1Char('\n'))));
+        QCOMPARE(session.prediction()->end, orbit::VoyageEnd::PassedClose);
+        QVERIFY2(messages.size() >= 2, qPrintable(messages.join(QLatin1Char('\n'))));
+        QVERIFY2(messages[0].contains(QStringLiteral("get to Saturn first")),
+                 qPrintable(messages[0]));
+        QVERIFY2(messages[1].contains(QStringLiteral("Titan goes round Saturn")),
+                 qPrintable(messages[1]));
+        QCOMPARE(session.burnCount(), 2);
+    }
 };
 
 QTEST_MAIN(GameTests)

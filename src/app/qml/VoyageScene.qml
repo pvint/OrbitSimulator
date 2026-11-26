@@ -31,6 +31,10 @@ Item {
     property var moonPlanets: []
     property var moonOrbitRadii: []
     property var moonInfluenceRadii: []
+    /// For the start card: each planet's moons (orbit::Body indices,
+    /// innermost first), and whether a ship can orbit each body.
+    property var planetMoons: []
+    property var bodyParkable: []
     /// What hovering a moon shows.
     property var moonInfoTexts: []
     /// Where each burn happens (vector3d), whether it has fired, and the
@@ -79,8 +83,9 @@ Item {
     property string cardText
     property string cardButton: qsTr("OK")
 
-    /// The last game's choices (orbit::Region's and orbit::Planet's order),
-    /// kept for the next: where from, in orbit there or not, where to.
+    /// The last game's choices (orbit::Region's and orbit::Body's order),
+    /// kept for the next: where from, in orbit there or not, where to (a
+    /// planet or a moon).
     property int regionIndex: 0
     property bool inOrbit: false
     property int destinationIndex: 2
@@ -94,7 +99,7 @@ Item {
         { name: qsTr("Venus"), planet: 1,
           about: qsTr("Closer to the Sun than the Earth: speed up to climb out to its orbit. About half a year to the Earth.") },
         { name: qsTr("Earth"), planet: 2,
-          about: qsTr("Home: start in a low orbit, 200 km up, and set off for another planet.") },
+          about: qsTr("Home: start in a low orbit, 200 km up, and set off for the Moon or another planet.") },
         { name: qsTr("Mars"), planet: 3,
           about: qsTr("Further out than the Earth: slow down to fall in towards the Sun. About a year to the Earth.") },
         { name: qsTr("Asteroid belt"), planet: -1,
@@ -109,10 +114,30 @@ Item {
           about: qsTr("The edge of the planets, thirty times further out. Thirty years the direct way: look for a gravity assist.") }
     ]
     readonly property int startPlanet: regions[regionIndex].planet
-    /// In orbit: always around the Earth, never where there's no planet.
-    readonly property bool startsInOrbit: startPlanet === 2 || (startPlanet >= 0 && inOrbit)
+    /// In orbit: always around the Earth, and around a planet going to one
+    /// of its moons; never where there's no planet.
+    readonly property bool startsInOrbit: startPlanet === 2
+                                          || (startPlanet >= 0 && (inOrbit || destinationPlanet === startPlanet))
     readonly property bool goingHome: destinationIndex === 2
     readonly property string destinationName: bodyNames[destinationIndex] ?? ""
+    /// The destination's planet: itself, or the one a moon goes round.
+    readonly property int destinationPlanet: destinationIndex < 8
+                                             ? destinationIndex
+                                             : (moonPlanets[destinationIndex - 8] ?? 2)
+    readonly property bool toMoon: destinationIndex >= 8
+    readonly property var destinationMoons: planetMoons[destinationPlanet] ?? []
+    /// A body's name in a sentence: "the Earth", "the Moon", "Titan".
+    function nameInText(body, start) {
+        if (body === 2) return start ? qsTr("The Earth") : qsTr("the Earth")
+        if (body === 8) return start ? qsTr("The Moon") : qsTr("the Moon")
+        return bodyNames[body] ?? ""
+    }
+    /// Picking a planet as where to; picking the one you start at offers
+    /// its moons instead (from the Earth, the Moon).
+    function chooseDestinationPlanet(index) {
+        if (index !== startPlanet) destinationIndex = index
+        else if ((planetMoons[index] ?? []).length > 0) destinationIndex = planetMoons[index][0]
+    }
     /// Picking where from: not to the same planet (from the Earth, Mars).
     function chooseRegion(index) {
         regionIndex = index
@@ -754,7 +779,7 @@ Item {
                 id: orbitBox
                 visible: root.cardMode === "start" && root.startPlanet >= 0
                 objectName: "check-in-orbit"
-                enabled: root.startPlanet !== 2
+                enabled: root.startPlanet !== 2 && root.destinationPlanet !== root.startPlanet
                 checked: root.startsInOrbit
                 onToggled: root.inOrbit = checked
                 contentItem: Text {
@@ -788,11 +813,48 @@ Item {
                         required property int index
                         objectName: "button-destination-" + index
                         text: index === 2 ? qsTr("Earth (home)") : modelData
-                        chosen: index === root.destinationIndex
+                        chosen: index === root.destinationPlanet
                         enabled: index !== root.startPlanet
-                        onClicked: root.destinationIndex = index
+                                 || (root.planetMoons[index] ?? []).length > 0
+                        onClicked: root.chooseDestinationPlanet(index)
                     }
                 }
+            }
+            // ...or one of its moons...
+            Flow {
+                visible: root.cardMode === "start" && root.destinationMoons.length > 0
+                Layout.fillWidth: true
+                spacing: 6
+                Text {
+                    height: 28
+                    text: root.destinationMoons.length === 1 ? qsTr("Or its moon:")
+                                                              : qsTr("Or one of its moons:")
+                    color: "#94a3b8"
+                    font.pixelSize: 12
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Repeater {
+                    model: root.cardMode === "start" ? root.destinationMoons : []
+                    delegate: Chip {
+                        required property int modelData
+                        objectName: "button-destination-" + modelData
+                        text: root.bodyNames[modelData] ?? ""
+                        chosen: modelData === root.destinationIndex
+                        onClicked: root.destinationIndex = modelData
+                    }
+                }
+            }
+            Text {
+                visible: root.cardMode === "start" && root.toMoon
+                Layout.fillWidth: true
+                text: root.destinationPlanet === root.startPlanet
+                      ? qsTr("%1 goes round %2, and so do you: wait for the right moment in your orbit, then set off to meet it.")
+                            .arg(root.nameInText(root.destinationIndex, true)).arg(root.nameInText(root.destinationPlanet, false))
+                      : qsTr("%1 goes round %2: get to %2 first, then aim for %1 once you're near.")
+                            .arg(root.nameInText(root.destinationIndex, true)).arg(root.nameInText(root.destinationPlanet, false))
+                color: "#94a3b8"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
             }
             // ...and how hard.
             Heading { text: qsTr("How hard?"); Layout.topMargin: 2 }
@@ -801,6 +863,13 @@ Item {
                     { name: qsTr("Easy"), goal: qsTr("Reach the Earth's neighbourhood. Plenty of fuel.") },
                     { name: qsTr("Normal"), goal: qsTr("Hit the atmosphere at just the right angle to land.") },
                     { name: qsTr("Hard"), goal: qsTr("Brake into orbit around the Earth. Fuel is tight.") }
+                ] : root.toMoon ? [
+                    { name: qsTr("Easy"), goal: qsTr("Reach %1's neighbourhood. Plenty of fuel.").arg(root.nameInText(root.destinationIndex, false)) },
+                    { name: qsTr("Normal"), goal: qsTr("Fly close past %1.").arg(root.nameInText(root.destinationIndex, false)) },
+                    root.bodyParkable[root.destinationIndex]
+                        ? { name: qsTr("Hard"), goal: qsTr("Brake into orbit around %1. Fuel is tight.").arg(root.nameInText(root.destinationIndex, false)) }
+                        : { name: qsTr("Hard"), goal: qsTr("Fly close past %1 on tight fuel (too small to orbit so near %2).")
+                                                          .arg(root.nameInText(root.destinationIndex, false)).arg(root.nameInText(root.destinationPlanet, false)) }
                 ] : [
                     { name: qsTr("Easy"), goal: qsTr("Reach %1's neighbourhood. Plenty of fuel.").arg(root.destinationName) },
                     { name: qsTr("Normal"), goal: qsTr("Fly close past %1, like Voyager.").arg(root.destinationName) },
