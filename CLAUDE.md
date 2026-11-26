@@ -56,17 +56,42 @@ prototype settled the physics model and the UI ideas; this is the full version.
   (reach / close pass / orbit). Flyby tools for gravity assists ("Aim at
   a planet…", flyby markers), "Don't show this again" cards, arrow keys
   step time. `--puzzle normal:earth:saturn`, `hard:mars:orbit`.
-- **Next (user, 2026-11-25):** a better overall plan, probably scrapping
-  the old workbench app; a free-roam mode (pick a body, start in orbit,
-  no goal); famous missions' trajectories to play with (noted, not
-  started). Older candidates: burn handles in 3D, "go to a point on a
-  path", scripting, a first release.
-- **One app (G2, decision 38):** the game window is the app. The old
-  workbench UI (panels, sweeps, plots, globe view, demo tour) was deleted;
-  it's in git history (before branch `one-app`). The core still flies
-  rockets of one to three stages from any site through the air to orbit
-  or the Moon, and follows natural bodies, from `orbitsim-cli` and the
-  tests; the launch is to come back as a mode in the game later.
+- **One app (G2, decision 38, branch `one-app`, not merged or pushed):**
+  the game window is the app. The old workbench UI (panels, sweeps,
+  plots, globe view, demo tour) was deleted; it's in git history (before
+  commit df88df1). The core still flies rockets of one to three stages
+  from any site through the air to orbit or the Moon, and follows natural
+  bodies, from `orbitsim-cli` and the tests; the launch is to come back
+  as a mode in the game later (the user: "keep this in mind").
+- **Done on `one-app` since (2026-11-25/26):** the asteroid belt drawn
+  (G6); hints from a set orbit price departures from its best point;
+  each planet's sphere of influence drawn (ring + faint sphere, brighter
+  for the destination, size on its card); the wheel zooms towards the
+  pointer (down to 2,000 km); double-click centres on a planet, the Sun,
+  the ship or a flyby; "Centre" lists Sun / You / Earth / destination /
+  any planet double-clicked.
+- **In progress: G3, moons as bodies.** Part 1 done (commit da74b12):
+  `Planet` renamed `Body`, 18 major moons with real sizes, masses and
+  orbits (phases illustrative), moon spheres of influence, parking orbits
+  (Titan's above its haze), `canPark` (not Mimas, Enceladus, Miranda;
+  check Tethys). Still to do: moons in the flight (gravity inside the
+  planet's sphere, Closest/Surface events, `closestPasses` sized
+  kBodyCount, `dominantPlanet` must pick the smallest sphere containing
+  the ship, parked Kepler mode only below a planet's innermost moon),
+  moons as starts and destinations on the start card (C++ should feed
+  QML the body list), puzzles at moons.
+- **Then, in order:** G4 free roam (pick a body, start in orbit, no goal,
+  unlimited fuel); G5 close-ups (textures already found: Mercury, Mars,
+  Titan, Io, Europa, Ganymede, Callisto from the USGS map server
+  (planetarymaps.usgs.gov WMS, simple cylindrical); Jupiter PIA07782
+  (assets.science.nasa.gov); Saturn, Neptune, Venus and Saturn's and
+  Uranus's moons from github.com/nasa/NASA-3D-Resources; Uranus, Venus's
+  clouds and Saturn's rings to be painted from real data; record each in
+  tools/make_planet_textures.sh; close-ups need a floating origin, as
+  floats at 1 au resolve only ~10 km); G7 landing where there's air
+  (Titan: Huygens came in at ~6 km/s). The user also wants famous
+  missions later, and asked whether landing on Titan after leaving the
+  Earth is too hard (no: it's an entry, like the Earth's).
 - **Open questions:** see the end of `docs/decisions.md` (scripting
   language, importing a body from JPL by name, code signing). Decision 33
   also notes a known 0.36° approximation: the Earth turns by the IERS
@@ -199,11 +224,11 @@ Each milestone ends with something that runs.
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
 | G1 | Lost in space: the game (puzzles from anywhere to anywhere, hints, flyby tools); decisions 35–37 | done |
-| G2 | One app (decision 38): the game window is the app; the old workbench UI is deleted (core physics, CLI and tests kept; the rocket launch to come back later as a mode) | |
-| G3 | Moons as bodies: the Moon, Io, Europa, Ganymede, Callisto, Titan (ephemerides, gravity, start/destination) | |
+| G2 | One app (decision 38): the game window is the app; the old workbench UI is deleted (core physics, CLI and tests kept; the rocket launch to come back later as a mode) | done |
+| G3 | Moons as bodies: all 18 major moons (the Moon, the Galilean moons, Saturn's seven, Uranus's five, Triton): ephemerides, gravity, start/destination | part 1 (bodies, orbits) done |
 | G4 | Free roam: pick a body, start in orbit, no goal, unlimited fuel | |
 | G5 | Close-ups: textured bodies at true size, lit by the Sun, Saturn's rings, seen when the camera is near them | |
-| G6 | The asteroid belt, drawn | |
+| G6 | The asteroid belt, drawn | done |
 | G7 | Landing where there's air: an entry goal at Titan, Mars, Venus (the Earth's re-entry generalised) | |
 | Later | Famous missions to replay and change (Voyager 2, Cassini, New Horizons, Juno, Apollo); landing on airless moons (powered descent); the rocket launch from the ground as a mode | |
 
@@ -212,8 +237,12 @@ Each milestone ends with something that runs.
 `GameWindow` (exe) holds `GameSession` (orbitsim_ui: puzzle, burns, clock,
 predictions and hints on worker threads), `BurnPlanner` (the side panel),
 `TimelineBar` and `qml/VoyageScene.qml` (the solar system, the path, markers,
-cards; `CameraControls.qml`). It fills `PolylineGeometry`s for the path and
-orbits and sets scene properties on each clock tick.
+spheres of influence, the asteroid belt, cards; `CameraControls.qml`:
+drag, pan, zoom towards the pointer, double-click). It fills
+`PolylineGeometry`s (lines, or points for the belt) and sets scene
+properties on each clock tick. Cards with a key can be hidden for good
+(QSettings `game/hiddenCards`). Arrow keys step the clock (GameWindow's
+keyPressEvent).
 
 ### Core API in brief (Lost in space)
 
@@ -249,10 +278,14 @@ panels, sweeps and saved files.
 
 ### Core API in brief (solar system)
 
-`solar_system.hpp`: `Planet`, `kAllPlanets`, `planetPosition/Velocity`
-(heliocentric ecliptic J2000; the Earth, not the barycentre),
-`planetOrbit` (elements), `planetMu/Radius`, `earthAndMoonHeliocentric`,
-`eclipticToEquatorial`. `orbit.hpp`: `eccentricAnomaly` (Kepler).
+`solar_system.hpp`: `Body` (planets, then 18 moons), `kAllPlanets`,
+`kMoons`, `kAllBodies`, `kBodyCount`, `isMoon`, `planetOf`,
+`bodyPosition/Velocity` (heliocentric ecliptic J2000; the Earth, not the
+barycentre; a moon = its planet + `moonOrbit`), `planetOrbit` (elements;
+a moon's planet's), `bodyMu/Radius/Name`, `sphereOfInfluence` (a moon's
+against its planet), `earthAndMoonHeliocentric`, `eclipticToEquatorial`.
+`asteroid_belt.hpp`: `makeAsteroidBelt`, `asteroidPosition`,
+`kirkwoodGaps`. `orbit.hpp`: `eccentricAnomaly` (Kepler).
 `NaturalBody::centre` (`BodyCentre::Earth`/`Sun`), `setBodyCentre`
 (converts, leaves a state vector), `centreMu`. `gravity.hpp`:
 `heliocentricGravity`. `SimResult::frame` (`ResultFrame`), `SimResult::solar`

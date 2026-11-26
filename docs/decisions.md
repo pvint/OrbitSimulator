@@ -782,6 +782,19 @@ better overall plan, "probably scrapping the old version".
 G2 one app; G6 the asteroid belt; G3 moons as bodies; G4 free roam; G5
 close-ups; G7 landing where there's air. See the roadmap in CLAUDE.md.
 
+**Since (2026-11-25/26):**
+- G2 and G6 done. The user then asked for **all the major moons**, not
+  just Titan and Jupiter's four: 18 round moons (Phobos and Deimos left
+  out: their spheres of influence lie inside them). `Planet` became
+  `Body`. Moons orbit in their planet's equatorial plane (IAU poles);
+  their phases are illustrative, which is fine for a game and said so.
+  Small moons close to a giant (Mimas, Enceladus, Miranda) can't be
+  orbited inside their spheres of influence (`canPark`).
+- The user couldn't zoom in close enough to adjust a pass near the
+  Earth, and wanted to see where a planet's gravity takes over: spheres
+  of influence are drawn, the wheel zooms towards the pointer, and
+  double-click centres on things.
+
 ---
 
 ## Open questions
