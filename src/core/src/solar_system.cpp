@@ -160,9 +160,27 @@ Vec3 poleOf(Body planet) {
         Vec3{std::cos(d) * std::cos(a), std::cos(d) * std::sin(a), std::sin(d)});
 }
 
+/// A giant planet's equatorial axes in the ecliptic frame: x along the line
+/// where its equator crosses the ecliptic, z its pole. Worked out once (the
+/// moons are asked for at every step of a flight near a giant planet).
+struct EquatorAxes {
+    Vec3 x, y, z;
+};
+const EquatorAxes& equatorOf(Body planet) {
+    static const std::array<EquatorAxes, 4> axes = [] {
+        std::array<EquatorAxes, 4> all{};
+        for (std::size_t i = 0; i < all.size(); ++i) {
+            const Vec3 z = poleOf(static_cast<Body>(index(Body::Jupiter) + i));
+            const Vec3 x = normalized(cross(Vec3{0.0, 0.0, 1.0}, z));
+            all.at(i) = {x, cross(z, x), z};
+        }
+        return all;
+    }();
+    return axes.at(index(planet) - index(Body::Jupiter));
+}
+
 /// A moon (not ours) relative to its planet: Kepler's equation on its mean
-/// elements, in the planet's equatorial plane, turned into the ecliptic
-/// (x along the line where the equator crosses the ecliptic).
+/// elements, in the planet's equatorial plane, turned into the ecliptic.
 PositionVelocity moonRelative(Body moon, double epoch) {
     const MoonRow& row = moonRow(moon);
     const double mu = bodyMu(row.planet);
@@ -174,10 +192,8 @@ PositionVelocity moonRelative(Body moon, double epoch) {
     const double nu = 2.0 * std::atan2(std::sqrt(1.0 + e) * std::sin(bigE / 2.0),
                                        std::sqrt(1.0 - e) * std::cos(bigE / 2.0));
     const PositionVelocity inPlane = stateFromElements(a, e, degToRad(row.iDeg), 0.0, 0.0, nu, mu);
-    const Vec3 z = poleOf(row.planet);
-    const Vec3 x = normalized(cross(Vec3{0.0, 0.0, 1.0}, z));
-    const Vec3 y = cross(z, x);
-    const auto turn = [&](const Vec3& w) { return w.x * x + w.y * y + w.z * z; };
+    const EquatorAxes& eq = equatorOf(row.planet);
+    const auto turn = [&](const Vec3& w) { return w.x * eq.x + w.y * eq.y + w.z * eq.z; };
     return {turn(inPlane.r), turn(inPlane.v)};
 }
 
@@ -219,6 +235,42 @@ MoonOrbit moonOrbit(Body moon) {
     }
     const MoonRow& row = moonRow(moon);
     return {row.aKm * 1e3, row.e, degToRad(row.iDeg), poleOf(row.planet)};
+}
+
+std::span<const Body> moonsOf(Body planet) {
+    // kMoons keeps each planet's moons together, innermost first.
+    const std::span<const Body> all(kMoons);
+    switch (planet) {
+    case Body::Earth:
+        return all.subspan(0, 1);
+    case Body::Jupiter:
+        return all.subspan(1, 4);
+    case Body::Saturn:
+        return all.subspan(5, 7);
+    case Body::Uranus:
+        return all.subspan(12, 5);
+    case Body::Neptune:
+        return all.subspan(17, 1);
+    default:
+        return {};
+    }
+}
+
+MoonState moonFromPlanet(Body moon, double epoch) {
+    if (moon == Body::Moon) {
+        constexpr double dt = 1800.0;
+        return {moonFromEarth(epoch),
+                (moonFromEarth(epoch + dt) - moonFromEarth(epoch - dt)) / (2.0 * dt)};
+    }
+    const PositionVelocity rel = moonRelative(moon, epoch);
+    return {rel.r, rel.v};
+}
+
+double planetMuAlone(Body planet) {
+    if (planet == Body::Earth) return bodyMu(planet);
+    double mu = bodyMu(planet);
+    for (const Body moon : moonsOf(planet)) mu -= bodyMu(moon);
+    return mu;
 }
 
 std::string_view bodyName(Body body) {

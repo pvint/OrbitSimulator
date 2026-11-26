@@ -52,50 +52,41 @@ Relative relativeTo(Body planet, double epoch, const Vec3& r, const Vec3& v) {
 enum class EventKind {
     SunImpact,      ///< g = r − R_sun
     EntryInterface, ///< g = d − (R_earth + 120 km), d = distance from the Earth
-    Arrival,        ///< g = d − (sphere of influence), for the destination
-    Closest,        ///< g = −(r_rel · v_rel): the distance to a planet stops shrinking
-    Surface,        ///< g = d − R: hitting a planet (the Earth has its air instead)
+    Arrival,        ///< g = d − reachRadius, for the destination
+    Closest,        ///< g = −(r_rel · v_rel): the distance to a body stops shrinking
+    Surface,        ///< g = d − R: hitting a planet or moon (the Earth has its air instead)
 };
 struct Event {
     EventKind kind;
     Body planet = Body::Earth; ///< for Closest and Surface
 };
-constexpr std::array kEvents{Event{EventKind::SunImpact},
-                             Event{EventKind::EntryInterface},
-                             Event{EventKind::Arrival},
-                             Event{EventKind::Surface, Body::Mercury},
-                             Event{EventKind::Surface, Body::Venus},
-                             Event{EventKind::Surface, Body::Mars},
-                             Event{EventKind::Surface, Body::Jupiter},
-                             Event{EventKind::Surface, Body::Saturn},
-                             Event{EventKind::Surface, Body::Uranus},
-                             Event{EventKind::Surface, Body::Neptune},
-                             Event{EventKind::Closest, Body::Mercury},
-                             Event{EventKind::Closest, Body::Venus},
-                             Event{EventKind::Closest, Body::Earth},
-                             Event{EventKind::Closest, Body::Mars},
-                             Event{EventKind::Closest, Body::Jupiter},
-                             Event{EventKind::Closest, Body::Saturn},
-                             Event{EventKind::Closest, Body::Uranus},
-                             Event{EventKind::Closest, Body::Neptune}};
 
-/// The longest step allowed here: a day near any planet (or the Sun), up to
-/// a month far from all of them, so that a step never carries the ship past
-/// a planet it could have flown close to.
-double maxStep(double t, const State& y) {
-    double nearest = norm(y.r);
-    for (const Body planet : kAllPlanets) {
-        nearest = std::min(nearest, norm(y.r - bodyPosition(planet, t)));
+/// All of them: the Sun, the Earth's air, the destination, and for every
+/// body its closest approaches and its surface.
+std::vector<Event> allEvents() {
+    std::vector<Event> events{
+        {EventKind::SunImpact}, {EventKind::EntryInterface}, {EventKind::Arrival}};
+    for (const Body body : kAllBodies) {
+        if (body != Body::Earth) events.push_back({EventKind::Surface, body});
     }
-    return std::clamp(0.2 * nearest / kFastestClosing, kMaxStep, kMaxFarStep);
+    for (const Body body : kAllBodies) events.push_back({EventKind::Closest, body});
+    return events;
 }
 
-/// The planets' positions and velocities at the last two epochs asked for:
-/// the events ask about the same moments again and again (the end of one
-/// step is the start of the next).
+/// Near a moon, a step is held to this fraction of the time to reach it at
+/// the speed relative to it, so that no step carries the ship past it
+/// unseen; but not below kShortestMoonStep (the step size control takes over
+/// there, as the moon's pull grows).
+constexpr double kMoonStepFraction = 0.25;
+constexpr double kShortestMoonStep = 60.0; ///< s
+
+/// The planets' and moons' positions and velocities at the last two epochs
+/// asked for: the events ask about the same moments again and again (the
+/// end of one step is the start of the next). A moon is its planet plus
+/// its own orbit, so the planet is looked up once.
 class PlanetCache {
 public:
-    const TwoBodyState& at(Body planet, double t) const {
+    const TwoBodyState& at(Body body, double t) const {
         Slot* slot = nullptr;
         for (Slot& s : m_slots) {
             if (s.t == t) slot = &s;
@@ -106,23 +97,53 @@ public:
             slot->t = t;
             slot->known.fill(false);
         }
-        const auto i = static_cast<std::size_t>(planet);
-        if (!slot->known.at(i)) {
-            slot->states.at(i) = {bodyPosition(planet, t), bodyVelocity(planet, t)};
-            slot->known.at(i) = true;
-        }
-        return slot->states.at(i);
+        return fill(*slot, body, t);
     }
 
 private:
     struct Slot {
         double t = -1e300;
-        std::array<bool, 8> known{};
-        std::array<TwoBodyState, 8> states{};
+        std::array<bool, kBodyCount> known{};
+        std::array<TwoBodyState, kBodyCount> states{};
     };
+    const TwoBodyState& fill(Slot& slot, Body body, double t) const {
+        const auto i = static_cast<std::size_t>(body);
+        if (slot.known.at(i)) return slot.states.at(i);
+        if (isMoon(body)) {
+            const TwoBodyState planet = fill(slot, planetOf(body), t);
+            const MoonState moon = moonFromPlanet(body, t);
+            slot.states.at(i) = {planet.r + moon.r, planet.v + moon.v};
+        } else {
+            slot.states.at(i) = {bodyPosition(body, t), bodyVelocity(body, t)};
+        }
+        slot.known.at(i) = true;
+        return slot.states.at(i);
+    }
     mutable std::array<Slot, 2> m_slots{};
     mutable std::size_t m_next = 0;
 };
+
+/// Each planet's sphere of influence at the start (index: Body).
+std::array<double, kAllPlanets.size()> planetSpheres(double epoch) {
+    std::array<double, kAllPlanets.size()> radii{};
+    for (const Body planet : kAllPlanets) {
+        radii.at(static_cast<std::size_t>(planet)) = sphereOfInfluence(planet, epoch);
+    }
+    return radii;
+}
+
+/// Can a ship parked around `body` with its far point at `apoapsis` be
+/// moved by Kepler's equations alone? Not if it reaches out among the
+/// moons: it must stay three of the innermost moon's spheres of influence
+/// inside that moon's low point.
+bool keplerWillDo(Body body, double apoapsis) {
+    const auto moons = moonsOf(body);
+    if (moons.empty()) return true;
+    const Body inner = moons.front();
+    const MoonOrbit orbit = moonOrbit(inner);
+    const double innerLow = orbit.semiMajorAxis * (1.0 - orbit.eccentricity);
+    return apoapsis < innerLow - 3.0 * sphereOfInfluence(inner, 0.0);
+}
 
 class VoyageFlight {
 public:
@@ -133,8 +154,9 @@ public:
                   return State{y.v, heliocentricGravity(y.r, t, true), 0.0};
               },
               options.tolerances),
-          m_soi(sphereOfInfluence(Body::Earth, voyage.startEpoch)),
-          m_destinationSoi(sphereOfInfluence(voyage.destination, voyage.startEpoch)) {}
+          m_events(allEvents()), m_spheres(planetSpheres(voyage.startEpoch)),
+          m_destinationSoi(sphereOfInfluence(voyage.destination, voyage.startEpoch)),
+          m_destinationReach(reachRadius(voyage.destination, voyage.startEpoch)) {}
 
     VoyageResult run();
 
@@ -142,8 +164,10 @@ private:
     const Voyage* m_voyage;
     const VoyageOptions* m_opt;
     DormandPrince45 m_stepper;
-    double m_soi;            ///< the Earth's
-    double m_destinationSoi; ///< the destination's
+    std::vector<Event> m_events;
+    std::array<double, kAllPlanets.size()> m_spheres; ///< each planet's sphere of influence
+    double m_destinationSoi;                          ///< the destination's
+    double m_destinationReach;                        ///< reachRadius of the destination
     PlanetCache m_planets;
     double m_t = 0.0;
     State m_y;
@@ -158,7 +182,12 @@ private:
         const TwoBodyState& p = m_planets.at(planet, t);
         return {y.r - p.r, y.v - p.v};
     }
+    /// Inside the planet's sphere of influence (where its moons matter)?
+    bool inSystem(Body planet, double t, const State& y) const {
+        return norm(relative(planet, t, y).r) < m_spheres.at(static_cast<std::size_t>(planet));
+    }
     double g(Event event, double t, const State& y) const;
+    double maxStep(double t, const State& y) const;
     bool coastParked(double tEnd);
     double findCrossing(Event event, double t0, double t1) const;
     double outputInterval(double t, const State& y) const;
@@ -180,7 +209,7 @@ double VoyageFlight::g(Event event, double t, const State& y) const {
     case EventKind::EntryInterface:
         return norm(relative(Body::Earth, t, y).r) - (kRadiusEarth + m_opt->entryInterfaceAltitude);
     case EventKind::Arrival:
-        return norm(relative(m_voyage->destination, t, y).r) - m_destinationSoi;
+        return norm(relative(m_voyage->destination, t, y).r) - m_destinationReach;
     case EventKind::Closest: {
         const Relative rel = relative(event.planet, t, y);
         return -dot(rel.r, rel.v);
@@ -203,12 +232,43 @@ double VoyageFlight::findCrossing(Event event, double t0, double t1) const {
     return far;
 }
 
+/// The longest step allowed here: a day near any planet (or the Sun), up to
+/// a month far from all of them, so that a step never carries the ship past
+/// a planet it could have flown close to; and among a planet's moons, a
+/// fraction of the time to reach each one.
+double VoyageFlight::maxStep(double t, const State& y) const {
+    double nearest = norm(y.r);
+    double step = kMaxFarStep;
+    for (const Body planet : kAllPlanets) {
+        const double d = norm(relative(planet, t, y).r);
+        nearest = std::min(nearest, d);
+        if (d > m_spheres.at(static_cast<std::size_t>(planet))) continue;
+        for (const Body moon : moonsOf(planet)) {
+            const Relative rel = relative(moon, t, y);
+            const double closing = std::max(norm(rel.v), 1.0);
+            step = std::min(step,
+                            std::max(kShortestMoonStep, kMoonStepFraction * norm(rel.r) / closing));
+        }
+    }
+    return std::min(step, std::clamp(0.2 * nearest / kFastestClosing, kMaxStep, kMaxFarStep));
+}
+
+/// Samples close enough to draw the path smoothly: a fraction of √(r³/μ)
+/// around the Sun, or around a planet or moon whose sphere of influence the
+/// ship is in, whichever is shorter.
 double VoyageFlight::outputInterval(double t, const State& y) const {
     const double r = norm(y.r);
     double interval = kOutputFraction * std::sqrt(r * r * r / kMuSun);
-    const double d = norm(y.r - bodyPosition(Body::Earth, t));
-    if (d < m_soi) {
-        interval = std::min(interval, kOutputFraction * std::sqrt(d * d * d / bodyMu(Body::Earth)));
+    const auto around = [&](Body body) {
+        const double d = norm(relative(body, t, y).r);
+        interval = std::min(interval, kOutputFraction * std::sqrt(d * d * d / bodyMu(body)));
+    };
+    for (const Body planet : kAllPlanets) {
+        if (!inSystem(planet, t, y)) continue;
+        around(planet);
+        for (const Body moon : moonsOf(planet)) {
+            if (norm(relative(moon, t, y).r) < sphereOfInfluence(moon, t)) around(moon);
+        }
     }
     return std::clamp(interval, kMinOutputInterval, kMaxOutputInterval);
 }
@@ -235,21 +295,27 @@ void VoyageFlight::notePass(Body planet, bool atMinimum) {
     pass.turning = atMinimum;
     PlanetPass& closest = m_out.closestPasses.at(static_cast<std::size_t>(planet));
     if (!closest.valid || pass.distance < closest.distance) closest = pass;
-    if (atMinimum && pass.distance < sphereOfInfluence(planet, m_t)) {
-        m_out.flybys.push_back(pass);
-        // Look as far ahead past a flyby as past a burn (not for a ship
-        // circling the planet: only a pass that leaves again).
-        if (!m_opt->stopAt && pass.vInfinity > 0.0) {
-            m_end = std::max(
-                m_end, std::min(m_t + m_lookAhead, m_voyage->startEpoch + kLongestPrediction));
-        }
+    // A flyby: a pass that comes in and leaves again (not each low point of
+    // a ship going round and round).
+    if (!atMinimum || pass.vInfinity <= 0.0 || pass.distance >= sphereOfInfluence(planet, m_t)) {
+        return;
+    }
+    m_out.flybys.push_back(pass);
+    // Look as far ahead past a flyby as past a burn. A moon's only if the
+    // ship isn't still going round its planet afterwards: then nothing
+    // more is to come from it.
+    const bool leaves =
+        !isMoon(planet) || passAt(planetOf(planet), m_t, m_y.r, m_y.v).vInfinity > 0.0;
+    if (!m_opt->stopAt && leaves) {
+        m_end =
+            std::max(m_end, std::min(m_t + m_lookAhead, m_voyage->startEpoch + kLongestPrediction));
     }
 }
 
-/// The closest to each planet so far (at the start, after a burn, and at
+/// The closest to each body so far (at the start, after a burn, and at
 /// the end: the closest may be there rather than at a turning point).
 void VoyageFlight::notePasses() {
-    for (const Body planet : kAllPlanets) notePass(planet, false);
+    for (const Body body : kAllBodies) notePass(body, false);
 }
 
 /// Parked around a planet: move by Kepler's equations to tEnd (or the end
@@ -260,6 +326,7 @@ bool VoyageFlight::coastParked(double tEnd) {
     if (!planet) return false;
     const double mu = bodyMu(*planet);
     const Relative start = relative(*planet, m_t, m_y);
+    if (!keplerWillDo(*planet, elementsFromState(start.r, start.v, mu, 0.0).apoapsis)) return false;
     const double t0 = m_t;
     const double end = std::min(tEnd, m_end);
     if (m_out.samples.empty() || m_out.samples.back().epoch != m_t) addSample();
@@ -298,10 +365,21 @@ bool VoyageFlight::coastTo(double tEnd) {
         h = result.nextStep;
         if (!result.accepted) continue;
 
-        // The earliest event within the step, if any.
+        // The earliest event within the step, if any. A moon's only matter
+        // inside its planet's sphere of influence.
         double tStop = m_t + hStep;
         std::optional<Event> fired;
-        for (const Event event : kEvents) {
+        std::array<bool, kAllPlanets.size()> among{};
+        for (const Body planet : kAllPlanets) {
+            among.at(static_cast<std::size_t>(planet)) =
+                !moonsOf(planet).empty() &&
+                (inSystem(planet, m_t, m_y) || inSystem(planet, m_t + hStep, result.y));
+        }
+        for (const Event event : m_events) {
+            if (isMoon(event.planet) &&
+                !among.at(static_cast<std::size_t>(planetOf(event.planet)))) {
+                continue;
+            }
             if (g(event, m_t, m_y) <= 0.0 || g(event, m_t + hStep, result.y) > 0.0) continue;
             const double crossing = findCrossing(event, m_t, m_t + hStep);
             if (!fired || crossing < tStop) {
@@ -415,17 +493,12 @@ std::optional<VoyageEnd> VoyageFlight::settled() const {
     if (norm(rel.r) > m_destinationSoi) return std::nullopt;
     const double radius = bodyRadius(planet);
     const OrbitalElements el = elementsFromState(rel.r, rel.v, bodyMu(planet), radius);
-    if (!el.bound) return std::nullopt;
+    if (!el.bound || el.periapsis < lowestOrbit(planet, *m_opt)) return std::nullopt;
     if (planet == Body::Earth) {
-        if (el.periapsisAltitude >= m_opt->captureMinPerigeeAltitude &&
-            el.apoapsis <= m_opt->captureMaxApogee) {
-            return VoyageEnd::Captured;
-        }
+        if (el.apoapsis <= m_opt->captureMaxApogee) return VoyageEnd::Captured;
         return std::nullopt;
     }
-    if (el.periapsis >= m_opt->orbitMinPeriapsisRadii * radius && el.apoapsis <= m_destinationSoi) {
-        return VoyageEnd::OrbitingPlanet;
-    }
+    if (el.apoapsis <= m_destinationSoi) return VoyageEnd::OrbitingPlanet;
     return std::nullopt;
 }
 
@@ -494,7 +567,8 @@ PlanetPass passAt(Body planet, double epoch, const Vec3& r, const Vec3& v) {
     pass.relativeVelocity = rel.v;
     pass.distance = norm(rel.r);
     pass.speed = norm(rel.v);
-    pass.sunSpeedBefore = pass.sunSpeedAfter = norm(v);
+    pass.sunSpeedBefore = pass.sunSpeedAfter =
+        isMoon(planet) ? norm(v - bodyVelocity(planetOf(planet), epoch)) : norm(v);
 
     // The path around the planet as if only it pulled: a hyperbola if the
     // ship comes from far away and leaves again (energy v²/2 − μ/r > 0).
@@ -517,8 +591,11 @@ PlanetPass passAt(Body planet, double epoch, const Vec3& r, const Vec3& v) {
     pass.turnAngle = 2.0 * std::asin(1.0 / e);
     // Around the Sun, the planet's velocity plus v∞ each way: the pass
     // leaves the speed relative to the planet unchanged but turns it, so
-    // the speed around the Sun changes (patched conics).
-    const Vec3 planetV = bodyVelocity(planet, epoch);
+    // the speed around the Sun changes (patched conics). A moon does the
+    // same around its planet.
+    const Vec3 planetV = isMoon(planet)
+                             ? bodyVelocity(planet, epoch) - bodyVelocity(planetOf(planet), epoch)
+                             : bodyVelocity(planet, epoch);
     pass.sunSpeedBefore = norm(planetV + pass.vInfinity * in);
     pass.sunSpeedAfter = norm(planetV + pass.vInfinity * out);
     return pass;
@@ -537,22 +614,47 @@ double burnSize(const Burn& burn) {
                      burn.normal * burn.normal);
 }
 
-std::optional<Body> dominantPlanet(double epoch, const Vec3& r) {
+double reachRadius(Body body, double epoch) {
+    return std::max(sphereOfInfluence(body, epoch), 10.0 * bodyRadius(body));
+}
+
+double lowestOrbit(Body body, const VoyageOptions& options) {
+    const double radius = bodyRadius(body);
+    switch (body) {
+    case Body::Earth:
+        return radius + options.captureMinPerigeeAltitude;
+    case Body::Titan: // its haze reaches about 1,200 km up
+        return radius + 1200e3;
+    default:
+        return options.orbitMinPeriapsisRadii * radius;
+    }
+}
+
+std::optional<Body> dominantBody(double epoch, const Vec3& r) {
+    // The planet first (their spheres don't overlap), then one of its
+    // moons, whose spheres lie inside the planet's.
     std::optional<Body> best;
+    Vec3 bestPosition;
     double bestFraction = 1.0;
     for (const Body planet : kAllPlanets) {
-        const double fraction =
-            norm(r - bodyPosition(planet, epoch)) / sphereOfInfluence(planet, epoch);
+        const Vec3 p = bodyPosition(planet, epoch);
+        const double fraction = norm(r - p) / sphereOfInfluence(planet, epoch);
         if (fraction < bestFraction) {
             best = planet;
+            bestPosition = p;
             bestFraction = fraction;
         }
+    }
+    if (!best) return best;
+    for (const Body moon : moonsOf(*best)) {
+        const Vec3 m = bestPosition + moonFromPlanet(moon, epoch).r;
+        if (norm(r - m) < sphereOfInfluence(moon, epoch)) return moon;
     }
     return best;
 }
 
 std::optional<Body> parkedAround(double epoch, const Vec3& r, const Vec3& v) {
-    const auto planet = dominantPlanet(epoch, r);
+    const auto planet = dominantBody(epoch, r);
     if (!planet) return std::nullopt;
     const Relative rel = relativeTo(*planet, epoch, r, v);
     const double radius = bodyRadius(*planet);
@@ -591,7 +693,7 @@ VoyageSample sampleAt(const VoyageResult& result, double epoch) {
 BurnFrame burnFrameAt(double epoch, const Vec3& r, const Vec3& v) {
     BurnFrame frame;
     Relative rel{r, v};
-    if (const auto planet = dominantPlanet(epoch, r)) {
+    if (const auto planet = dominantBody(epoch, r)) {
         frame.planet = planet;
         rel = relativeTo(*planet, epoch, r, v);
     }

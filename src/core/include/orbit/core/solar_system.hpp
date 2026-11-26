@@ -33,6 +33,7 @@
 
 #include <array>
 #include <numbers>
+#include <span>
 #include <string_view>
 
 namespace orbit {
@@ -125,6 +126,23 @@ struct MoonOrbit {
     Vec3 pole;                ///< the planet's north pole, ecliptic J2000 unit vector
 };
 MoonOrbit moonOrbit(Body moon);
+
+/// The moons that go round a planet, innermost first (none for a moon,
+/// Mercury, Venus or Mars).
+std::span<const Body> moonsOf(Body planet);
+
+/// A moon's position (m) and velocity (m/s) relative to its planet's
+/// centre, in ecliptic J2000 axes.
+struct MoonState {
+    Vec3 r;
+    Vec3 v;
+};
+MoonState moonFromPlanet(Body moon, double epoch);
+
+/// A planet's own μ, without its moons: bodyMu() lumps a giant planet and
+/// its moons together (that is how they pull from far away); close in,
+/// each moon pulls from where it is. (The Earth's is already its own.)
+double planetMuAlone(Body planet);
 
 /// Heliocentric ecliptic J2000 position of the Moon (m).
 Vec3 moonHeliocentric(double epoch);

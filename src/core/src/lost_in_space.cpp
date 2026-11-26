@@ -719,7 +719,7 @@ std::optional<Burn> burnTowards(const Voyage& voyage, double epoch, double arriv
                                 const VoyageOptions& options) {
     if (arrival <= epoch) return std::nullopt;
     const VoyageSample here = voyageStateAt(burnsBefore(voyage, epoch, false), epoch, options);
-    if (dominantPlanet(epoch, here.r)) {
+    if (dominantBody(epoch, here.r)) {
         return std::nullopt; // the Sun-only Lambert solution means nothing here
     }
     const Body to = voyage.destination;
@@ -792,25 +792,36 @@ std::optional<Burn> departureBurn(const Voyage& voyage, double earliest, const V
                              here.v - bodyVelocity(*planet, earliest)};
     const OrbitalElements el = elementsFromState(start.r, start.v, mu, bodyRadius(*planet));
 
-    // Try points round one orbit (see escapeFrom): the cheapest wins.
+    // Try points round one orbit (see escapeFrom): the cheapest wins. Then
+    // look again more finely either side of it: on a long ellipse around a
+    // giant the ship sweeps past its low point in an hour, and a point even
+    // ten minutes off it has the velocity well off square to the radius.
     constexpr int kPoints = 720;
     double bestCost = 0.0;
-    std::optional<Burn> best;
-    for (int k = 0; k < kPoints; ++k) {
-        const double t = earliest + el.period * k / kPoints;
+    std::optional<double> bestTime;
+    Vec3 bestDeltaV;
+    const auto consider = [&](double t) {
         const TwoBodyState rel = propagateKepler(start, t - earliest, mu);
         const auto escape = escapeFrom(rel, vInfinity, mu);
-        if (!escape) continue;
-        const Vec3 deltaV = escape->deltaV;
-        const double cost = escape->cost;
-        if (!best || cost < bestCost) {
-            bestCost = cost;
-            const Vec3 r0 = bodyPosition(*planet, t) + rel.r;
-            const Vec3 v0 = bodyVelocity(*planet, t) + rel.v;
-            best = burnFromVector(t, deltaV, burnFrameAt(t, r0, v0));
-        }
+        if (!escape || (bestTime && escape->cost >= bestCost)) return;
+        bestCost = escape->cost;
+        bestTime = t;
+        bestDeltaV = escape->deltaV;
+    };
+    const double step = el.period / kPoints;
+    for (int k = 0; k < kPoints; ++k) consider(earliest + step * k);
+    if (!bestTime) return std::nullopt;
+    const double coarse = *bestTime;
+    constexpr int kFine = 100;
+    for (int k = -kFine; k <= kFine; ++k) {
+        const double t = coarse + step * k / kFine;
+        if (t >= earliest) consider(t);
     }
-    return best;
+    const double t = *bestTime;
+    const TwoBodyState rel = propagateKepler(start, t - earliest, mu);
+    const Vec3 r0 = bodyPosition(*planet, t) + rel.r;
+    const Vec3 v0 = bodyVelocity(*planet, t) + rel.v;
+    return burnFromVector(t, bestDeltaV, burnFrameAt(t, r0, v0));
 }
 
 std::optional<Burn> transferBurn(const Voyage& voyage, double departure, double arrival,

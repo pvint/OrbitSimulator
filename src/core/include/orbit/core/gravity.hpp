@@ -25,6 +25,8 @@ Vec3 gravityAcceleration(const Vec3& r, double epoch, bool thirdBodies, double m
 /// ecliptic J2000 frame: the Sun, a = −μ_sun r/|r|³, plus the eight planets
 /// and the Moon, each pulling by the same tidal formula (the Sun is pulled
 /// by them too, and only the difference moves the body relative to it).
+/// Inside a giant planet's sphere of influence its moons pull one by one
+/// (from further away, a planet and its moons pull as one point).
 /// Without third bodies, only the Sun pulls.
 Vec3 heliocentricGravity(const Vec3& r, double epoch, bool thirdBodies);
 

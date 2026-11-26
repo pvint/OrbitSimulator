@@ -572,6 +572,24 @@ behind (as at the end of a Hohmann transfer outwards) speeds up whichever
 way it turns. The energy comes from the planet, which slows by an amount
 far too small to notice.
 
+**Moons.** The 18 round moons each go round their planet on JPL's mean
+elements, in the planet's equatorial plane (Saturn's tipped 27° to its
+orbit, Uranus's 98°, Triton going backwards), at the mean motion
+n = √(μ_planet / a³). Each has its own sphere of influence, set against its
+planet's pull instead of the Sun's: `a (m_moon / m_planet)^(2/5)`, about
+66,000 km for the Moon, 43,000 km for Titan, and so small for Mimas that it
+barely clears the surface. From outside a giant planet's sphere of
+influence the planet and its moons pull as one mass; inside it, the planet
+pulls on its own and each moon from where it is. Everything above about
+passes works the same around a planet: a close pass by a moon turns the
+velocity *relative to the moon*, and since the moon is moving around its
+planet, the speed around the planet changes. Galileo, Cassini and Juno used
+dozens of moon flybys to tour their planets on little fuel. A ship inside a
+moon's sphere of influence burns relative to the moon, can crash into it,
+and can be parked around it. A low orbit is moved by Kepler's equations
+(around a planet, only if it stays well inside the innermost moon's orbit);
+further out the moons' pulls matter, and the flight is integrated.
+
 The game records each closest approach inside a planet's sphere of
 influence, with these numbers from the hyperbola at that moment (the
 "patched conic" estimate: within a few percent of the full simulation's

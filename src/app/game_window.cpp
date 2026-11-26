@@ -701,7 +701,7 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
     // The ship's orbit as it is now (where it would go with no more burns),
     // around the body whose pull dominates: a planet inside its sphere of
     // influence, otherwise the Sun.
-    const auto near = orbit::dominantPlanet(now, ship.r);
+    const auto near = orbit::dominantBody(now, ship.r);
     const orbit::OrbitalElements shipOrbit =
         near ? orbit::elementsFromState(ship.r - orbit::bodyPosition(*near, now),
                                         ship.v - orbit::bodyVelocity(*near, now),

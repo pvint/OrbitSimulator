@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // A voyage: a ship somewhere in the solar system (drifting around the Sun,
-// or in orbit around a planet), with a tank of propellant and a list of
-// planned burns, flown with every planet pulling, to a destination planet.
+// or in orbit around a planet or a moon), with a tank of propellant and a
+// list of planned burns, flown with every planet and moon pulling, to a
+// destination (a planet or a moon).
 // This is the physics of the "Lost in space" game: find your way back to
 // the Earth (or out to another planet) on the fuel you have.
 //
 // FRAME AND GRAVITY
 // Heliocentric ecliptic J2000 (solar_system.hpp), the Sun, the eight planets
-// and the Moon all pulling (heliocentricGravity). Near the Earth the same
-// sum still holds; the Earth's pull simply takes over, so a near miss is
-// bent, and an arrival curves in, exactly as it would.
+// and the Moon all pulling, and a giant planet's moons once the ship is
+// inside its sphere of influence (heliocentricGravity). Near the Earth the
+// same sum still holds; the Earth's pull simply takes over, so a near miss
+// is bent, and an arrival curves in, exactly as it would. The same goes for
+// a moon: inside a planet's sphere, a pass close to one of its moons is
+// bent by it (a moon can give a gravity assist too: Galileo, Cassini and
+// Juno toured their planets that way).
 //
 // BURNS ARE INSTANT
 // A burn changes the velocity at one moment, by Δv, and spends propellant
@@ -24,8 +29,9 @@
 //
 // BURN DIRECTIONS
 // Each burn is given in the ship's own directions, relative to the body it
-// is falling around at that moment (a planet inside its sphere of
-// influence, the Sun outside them all):
+// is falling around at that moment (the body whose sphere of influence it
+// is in, the smallest if there are two: a moon inside its planet's; the
+// Sun outside them all):
 //   prograde   along the velocity: faster (negative: retrograde, slower).
 //              Raises (lowers) the far side of the orbit.
 //   radial     perpendicular to the velocity, in the orbit's plane, away
@@ -46,15 +52,21 @@
 // To another planet the goals are: reaching its sphere of influence; a
 // close pass (within VoyageOptions::closePassRadii of its radius, like the
 // Voyagers); or being left on a closed orbit around it, clear of the
-// surface (or cloud tops). Hitting any planet ends the flight.
+// surface (or cloud tops, or Titan's haze). Hitting any planet or moon ends
+// the flight. A moon's sphere of influence can be tiny (Mimas's barely
+// clears its surface), so reaching a moon means coming within its sphere
+// or ten of its radii, whichever is wider (reachRadius).
 //
 // PARKED IN ORBIT
-// A ship on a closed orbit well inside a planet's sphere of influence (its
+// A ship on a closed orbit well inside a body's sphere of influence (its
 // far point within half of it), with no burn coming, is moved by Kepler's
-// equations with only that planet pulling: exact for two bodies, and fast
+// equations with only that body pulling: exact for two bodies, and fast
 // where integrating would take thousands of steps per day in a low orbit.
-// The Sun's and moons' tugs on such an orbit over weeks or months are left
-// out (they change it by far less than any departure burn does).
+// The Sun's tug (and a moon's planet's) on such an orbit over weeks or
+// months is left out: it changes it by far less than any departure burn
+// does. Around a planet with moons this is only done if the orbit stays
+// well inside the innermost moon's (three of its spheres of influence
+// inside): further out the moons' pulls matter, and the flight integrates.
 #pragma once
 
 #include "orbit/core/angles.hpp"
@@ -107,11 +119,12 @@ struct Burn {
 /// The size of the burn, √(prograde² + radial² + normal²) (m/s).
 double burnSize(const Burn& burn);
 
-/// The planet whose sphere of influence the ship is in at (epoch, r), if
-/// any (the one it is deepest inside, as a fraction of its sphere).
-std::optional<Body> dominantPlanet(double epoch, const Vec3& r);
+/// The body whose sphere of influence the ship is in at (epoch, r), if any:
+/// a moon inside its own sphere, else the planet (the one it is deepest
+/// inside, as a fraction of its sphere).
+std::optional<Body> dominantBody(double epoch, const Vec3& r);
 
-/// The planet the ship is parked around: on a closed orbit with its far
+/// The body the ship is parked around: on a closed orbit with its far
 /// point within half the sphere of influence and its low point clear of
 /// the ground (and, for the Earth, of the air). See PARKED IN ORBIT.
 std::optional<Body> parkedAround(double epoch, const Vec3& r, const Vec3& v);
@@ -119,7 +132,7 @@ std::optional<Body> parkedAround(double epoch, const Vec3& r, const Vec3& v);
 /// The ship's own directions at a moment, relative to the body that
 /// dominates there (unit vectors, heliocentric ecliptic frame).
 struct BurnFrame {
-    std::optional<Body> planet; ///< relative to this planet; none: the Sun
+    std::optional<Body> planet; ///< relative to this body; none: the Sun
     Vec3 prograde;
     Vec3 radial;
     Vec3 normal;
@@ -177,6 +190,16 @@ struct VoyageOptions {
     Tolerances tolerances;
 };
 
+/// How close counts as reaching a body (Goal::ReachPlanet, ReachEarth): its
+/// sphere of influence, or ten of its radii if that is wider (small moons).
+double reachRadius(Body body, double epoch);
+
+/// The lowest point an orbit around the body may have and still count as
+/// staying (m from the centre): above the Earth's air
+/// (captureMinPerigeeAltitude), above Titan's haze (1,200 km up), and
+/// orbitMinPeriapsisRadii radii elsewhere.
+double lowestOrbit(Body body, const VoyageOptions& options = {});
+
 /// How the flight (or its prediction) ended.
 enum class VoyageEnd {
     Horizon,      ///< still out there when the prediction stops
@@ -191,7 +214,7 @@ enum class VoyageEnd {
     ReachedPlanet,  ///< entered the destination's sphere of influence (ends only that goal)
     PassedClose,    ///< passed the destination close (ends only that goal)
     OrbitingPlanet, ///< left on a closed orbit around the destination
-    HitPlanet,      ///< crashed into a planet (VoyageResult::hitPlanet)
+    HitPlanet,      ///< crashed into a planet or a moon (VoyageResult::hitPlanet)
 };
 std::string_view describe(VoyageEnd end);
 
@@ -203,14 +226,14 @@ struct VoyageSample {
     Vec3 r;            ///< m, heliocentric
     Vec3 v;            ///< m/s
     double mass = 0.0; ///< kg
-    /// Parked around this planet until the next sample: in between, the
+    /// Parked around this body until the next sample: in between, the
     /// ship follows Kepler's equations around it (see sampleAt).
     std::optional<Body> parked;
 };
 
 struct BurnReport {
     Burn burn;                   ///< as planned
-    std::optional<Body> planet;  ///< directions relative to this planet; none: the Sun
+    std::optional<Body> planet;  ///< directions relative to this body; none: the Sun
     double deltaV = 0.0;         ///< m/s actually given
     double propellantUsed = 0.0; ///< kg
     bool shortOfFuel = false;    ///< the tank ran dry part way
@@ -237,7 +260,8 @@ struct EarthApproach {
 /// Passing behind the planet (on the side it is moving away from) turns
 /// v∞ towards the planet's motion and speeds the ship up; passing in
 /// front slows it down. The closer the pass and the slower v∞, the
-/// bigger the turn.
+/// bigger the turn. A moon does the same around its planet: for a moon,
+/// the "speed around the Sun" below is the speed around its planet.
 struct PlanetPass {
     bool valid = false;
     /// A true closest approach (the distance stopped shrinking there), not
@@ -249,8 +273,9 @@ struct PlanetPass {
     double speed = 0.0;     ///< m/s, relative to the planet
     double vInfinity = 0.0; ///< m/s, far from the planet (0 if not a hyperbola)
     double turnAngle = 0.0; ///< radians, δ (0 if not a hyperbola)
-    /// Speed around the Sun on the way in and on the way out (m/s), as if
-    /// only the planet pulled during the pass (the same, if no hyperbola).
+    /// Speed around the Sun (a moon's planet) on the way in and on the way
+    /// out (m/s), as if only the planet (moon) pulled during the pass (the
+    /// same, if no hyperbola).
     double sunSpeedBefore = 0.0;
     double sunSpeedAfter = 0.0;
     Vec3 relativePosition; ///< m, from the planet's centre (ecliptic axes)
@@ -268,11 +293,12 @@ struct VoyageResult {
     bool goalMet = false;
     double endEpoch = 0.0;
     std::optional<double> arrival; ///< entered the destination's sphere of influence
-    std::optional<Body> hitPlanet; ///< the planet it crashed into
+    std::optional<Body> hitPlanet; ///< the planet or moon it crashed into
     EarthApproach closest;         ///< to the Earth, over the whole flight
-    /// The closest the path comes to each planet (index: Body), and each
-    /// closest approach inside a planet's sphere of influence, in order.
-    std::array<PlanetPass, 8> closestPasses;
+    /// The closest the path comes to each body (index: Body), and each
+    /// closest approach inside a body's sphere of influence on a path that
+    /// comes in from outside it and leaves again (a hyperbola), in order.
+    std::array<PlanetPass, kBodyCount> closestPasses;
     std::vector<PlanetPass> flybys;
     double entrySpeed = 0.0;     ///< m/s, at the entry interface, if reached
     double entryAngle = 0.0;     ///< radians, flight-path angle there
