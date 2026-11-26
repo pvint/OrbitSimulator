@@ -49,7 +49,7 @@ private:
     void onTick();
     void setFlying(bool flying);
     void jumpToNextBurn();
-    void resetView();
+    void resetView(bool wholePath = false);
     void updatePlanetOrbits();
     void updatePath();
     void updateStartOrbit();
@@ -57,6 +57,7 @@ private:
     void updateTimeline();
     void pickDate();
     void updateInfo(double now, const orbit::VoyageSample& ship);
+    QString closestPassRow(orbit::Planet planet) const;
     void updateStatus();
     void showCard(const QString& title, const QString& text, const QString& button);
     void showEnding();
@@ -84,6 +85,8 @@ private:
     bool m_endingShown = false;
     bool m_welcomePending = false;
     bool m_cardsEnabled = true;
+    /// Frame the whole path when the next current prediction comes.
+    bool m_framePending = false;
     /// The sample the flown part of the path reaches (to recolour only when
     /// it moves).
     std::size_t m_pathSplit = 0;

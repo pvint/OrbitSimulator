@@ -88,6 +88,12 @@ double keplerPeriod(double semiMajorAxis, double mu) {
     return 2.0 * std::numbers::pi * std::sqrt(semiMajorAxis * semiMajorAxis * semiMajorAxis / mu);
 }
 
+/// A change of speed with its sign: "+5,612 m/s", "−830 m/s".
+QString signedSpeed(double metresPerSecond) {
+    return (metresPerSecond < 0.0 ? QStringLiteral("−") : QStringLiteral("+")) +
+           display::speed(std::abs(metresPerSecond));
+}
+
 /// Where the ship is, to fit "You're %1".
 QString regionPhrase(orbit::Region region) {
     switch (region) {
@@ -177,6 +183,11 @@ GameWindow::GameWindow(QWidget* parent)
     connect(m_session, &GameSession::selectionChanged, this, &GameWindow::updateMarkers);
     connect(m_session, &GameSession::hintReady, this,
             [this](const QString& message) { showCard(tr("Hint"), message, tr("OK")); });
+    connect(m_session, &GameSession::aimReady, this, [this](bool aimed, const QString& message) {
+        // Show the whole new path once it is predicted.
+        if (aimed) m_framePending = true;
+        showCard(aimed ? tr("Aimed") : tr("Can't aim there"), message, tr("OK"));
+    });
     connect(m_session, &GameSession::busyChanged, this, [this](bool busy) {
         if (!m_scene) return;
         QString text;
@@ -429,6 +440,16 @@ void GameWindow::pickDate() {
 /// What the hover card says about each object, at this moment. The numbers
 /// are the ones you plan burns with: speeds (relative to the Sun, and to you)
 /// and how far away things are.
+/// The closest the predicted path comes to a planet, for its hover card.
+QString GameWindow::closestPassRow(orbit::Planet planet) const {
+    const auto* prediction = m_session->prediction();
+    if (!prediction) return {};
+    const orbit::PlanetPass& pass = prediction->closestPasses.at(static_cast<std::size_t>(planet));
+    if (!pass.valid) return {};
+    return infoRow(tr("Your closest pass"), tr("%1, %2").arg(display::longDistance(pass.distance),
+                                                             display::date(pass.epoch)));
+}
+
 void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
     // G, to turn a planet's μ = G·M back into a mass (CODATA 2018).
     constexpr double kG = 6.67430e-11;
@@ -452,7 +473,8 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
                 infoRow(tr("Mass"), bigMass(orbit::planetMu(planet) / kG)) +
                 infoRow(tr("Radius"), display::distance(orbit::planetRadius(planet))) +
                 infoRow(tr("Distance from you"), display::longDistance(orbit::norm(r - ship.r))) +
-                infoRow(tr("Speed vs you"), display::speed(orbit::norm(v - ship.v)))));
+                infoRow(tr("Speed vs you"), display::speed(orbit::norm(v - ship.v))) +
+                closestPassRow(planet)));
     }
     texts.append(card(tr("Sun"), infoRow(tr("Mass"), bigMass(kSunMass)) +
                                      infoRow(tr("Radius"), display::distance(orbit::kRadiusSun)) +
@@ -496,8 +518,8 @@ void GameWindow::jumpToNextBurn() {
 }
 
 /// From ecliptic north, tilted a little, far enough to see the ship's orbit
-/// and the Earth's.
-void GameWindow::resetView() {
+/// and the Earth's (and, with `wholePath`, all of the predicted path).
+void GameWindow::resetView(bool wholePath) {
     if (!m_scene) return;
     double reach = 1.2 * orbit::kAstronomicalUnit;
     if (m_session->hasPuzzle()) {
@@ -505,6 +527,9 @@ void GameWindow::resetView() {
         const orbit::OrbitalElements el =
             orbit::elementsFromState(v.position, v.velocity, orbit::kMuSun, orbit::kRadiusSun);
         reach = std::max(reach, el.bound ? el.apoapsis : orbit::norm(v.position));
+    }
+    if (const auto* p = m_session->prediction(); wholePath && p) {
+        for (const orbit::VoyageSample& s : p->samples) reach = std::max(reach, orbit::norm(s.r));
     }
     m_scene->setProperty("followTarget", 0);
     QMetaObject::invokeMethod(
@@ -553,6 +578,11 @@ void GameWindow::updateStartOrbit() {
 }
 
 void GameWindow::onPredictionChanged() {
+    if (m_framePending && m_session->predictionCurrent()) {
+        m_framePending = false;
+        m_centre->setCurrentIndex(0);
+        resetView(true);
+    }
     updateTimeline();
     m_pathSplit = static_cast<std::size_t>(-1);
     updatePath();
@@ -649,7 +679,42 @@ void GameWindow::updateMarkers() {
     m_scene->setProperty("burnInfoTexts", burnTexts);
     m_scene->setProperty("selectedBurn", m_session->selected());
 
+    // Flybys: each pass inside a planet's sphere of influence, with what it
+    // did to the speed around the Sun (the closest pass by the Earth is the
+    // arrival, shown on its own below).
     const orbit::EarthApproach& c = prediction->closest;
+    const QVariantList names = m_scene->property("planetNames").toList();
+    QVariantList flybyPositions;
+    QVariantList flybyLabels;
+    QVariantList flybyTexts;
+    for (const orbit::PlanetPass& pass : prediction->flybys) {
+        if (pass.planet == orbit::Planet::Earth && c.valid && pass.epoch == c.epoch) continue;
+        const QString name = names.value(static_cast<int>(pass.planet)).toString();
+        const double gain = pass.sunSpeedAfter - pass.sunSpeedBefore;
+        const double radius = orbit::planetRadius(pass.planet);
+        flybyPositions.append(QVariant::fromValue(scene::fromHeliocentric(
+            orbit::planetPosition(pass.planet, pass.epoch) + pass.relativePosition)));
+        flybyLabels.append(tr("%1 flyby, %2").arg(name, signedSpeed(gain)));
+        QString rows =
+            infoRow(tr("When"), display::date(pass.epoch)) +
+            infoRow(tr("Closest"), tr("%1 from its centre (%2 radii)")
+                                       .arg(display::longDistance(pass.distance))
+                                       .arg(QString::number(pass.distance / radius, 'f', 1))) +
+            infoRow(tr("Speed vs %1").arg(name), display::speed(pass.speed));
+        if (pass.vInfinity > 0.0) {
+            rows += infoRow(tr("Far from it (v∞)"), display::speed(pass.vInfinity)) +
+                    infoRow(tr("Path turned by"), display::angle(pass.turnAngle));
+        }
+        rows += infoRow(tr("Speed (Sun) before"), display::speed(pass.sunSpeedBefore)) +
+                infoRow(tr("Speed (Sun) after"), display::speed(pass.sunSpeedAfter)) +
+                infoRow(tr("Gained for free"), signedSpeed(gain));
+        flybyTexts.append(
+            QStringLiteral("<b>%1</b><table>%2</table>").arg(tr("%1 flyby").arg(name), rows));
+    }
+    m_scene->setProperty("flybyPositions", flybyPositions);
+    m_scene->setProperty("flybyLabels", flybyLabels);
+    m_scene->setProperty("flybyInfoTexts", flybyTexts);
+
     const bool show = c.valid && c.epoch > m_session->now();
     m_scene->setProperty("arrivalVisible", show);
     if (show) {
@@ -774,13 +839,34 @@ void GameWindow::showEnding() {
     const double days = (p->endEpoch - m_session->startEpoch()) / kDay;
     if (p->goalMet) {
         const double budget = m_session->puzzle().budget;
+        // Against the direct way home worked out at the start: a good
+        // gravity assist beats it.
+        const double used = budget - p->deltaVLeft;
+        const double direct = m_session->puzzle().plan.total();
+        QString compare = tr("The direct way home, worked out at the start, needed about %1; "
+                             "you used %2.")
+                              .arg(display::speed(direct), display::speed(used));
+        if (used < 0.95 * direct) compare += QLatin1Char(' ') + tr("<b>You beat it!</b>");
+        QStringList assists;
+        const QVariantList names = m_scene->property("planetNames").toList();
+        for (const orbit::PlanetPass& pass : p->flybys) {
+            if (pass.planet == orbit::Planet::Earth || pass.epoch > p->endEpoch) continue;
+            assists.append(
+                tr("%1 (%2)").arg(names.value(static_cast<int>(pass.planet)).toString(),
+                                  signedSpeed(pass.sunSpeedAfter - pass.sunSpeedBefore)));
+        }
+        if (!assists.isEmpty()) {
+            compare += QStringLiteral("<br><br>") +
+                       tr("Gravity assists: %1.").arg(assists.join(QStringLiteral(", ")));
+        }
         showCard(tr("Home!"),
                  tr("You made it in %1 days, with %2 of Δv left (%3 % of what you had). "
                     "Hints used: %4.")
-                     .arg(std::lround(days))
-                     .arg(display::speed(p->deltaVLeft))
-                     .arg(std::lround(100.0 * p->deltaVLeft / budget))
-                     .arg(m_session->hintsUsed()),
+                         .arg(std::lround(days))
+                         .arg(display::speed(p->deltaVLeft))
+                         .arg(std::lround(100.0 * p->deltaVLeft / budget))
+                         .arg(m_session->hintsUsed()) +
+                     QStringLiteral("<br><br>") + compare,
                  tr("OK"));
     } else {
         showCard(endingTitle(p->end),

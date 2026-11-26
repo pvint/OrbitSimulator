@@ -221,9 +221,12 @@ series it finds through properties on `qml/Plots.qml`.
 
 `two_body.hpp`: `propagateKepler`, `solveLambert` (universal variables).
 `voyage.hpp`: `Voyage` (start state, `Ship`, `Goal`, `Burn`s in
-prograde/radial/normal relative to the Earth inside its SOI, else the Sun),
-`flyVoyage` → `VoyageResult` (samples, burn reports, `VoyageEnd`,
-`closest` Earth approach, entry speed/angle, Δv left), `voyageStateAt`.
+prograde/radial/normal relative to the Earth inside its SOI, else the Sun,
+`lookAhead`), `flyVoyage` → `VoyageResult` (samples, burn reports,
+`VoyageEnd`, `closest` Earth approach, entry speed/angle, Δv left,
+`closestPasses` per planet, `flybys`), `voyageStateAt`, `passAt`.
+`flyby.hpp`: `bPlane`, `impactParameter`, `FlybySide`, `aimFlyby`,
+`passAfter`.
 `lost_in_space.hpp`: `Region`, `makePuzzle(difficulty, seed, epoch, region)`,
 `cheapestWayHome` (porkchop), `searchSpan` (window and longest trip by
 distance), hints `burnTowardsEarth`, `refineAim` (B-plane Newton with the

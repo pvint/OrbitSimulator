@@ -46,8 +46,10 @@
 #include "orbit/core/integrator.hpp"
 #include "orbit/core/orbit.hpp"
 #include "orbit/core/rocket.hpp"
+#include "orbit/core/solar_system.hpp"
 #include "orbit/core/vec3.hpp"
 
+#include <array>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -110,14 +112,16 @@ struct Voyage {
     Ship ship;
     Goal goal = Goal::ReachEarth;
     std::vector<Burn> burns; ///< flown in order of time; burns before the start are skipped
-    /// Predictions look at least this far past the last burn (s), if more
-    /// than VoyageOptions::horizon: a puzzle far out sets its longest trip.
+    /// Predictions look at least this far past the last burn, or the last
+    /// flyby (s), if more than VoyageOptions::horizon: a puzzle far out sets
+    /// its longest trip.
     double lookAhead = 0.0;
 };
 
 struct VoyageOptions {
-    /// How far to look ahead past the later of the start and the last burn:
-    /// long enough for the trip home from Jupiter (about 2.7 years).
+    /// How far to look ahead past the latest of the start, the last burn
+    /// and the last flyby (a pass by a planet that leaves it again): long
+    /// enough for the trip home from Jupiter (about 2.7 years).
     double horizon = 4.0 * 365.25 * 86400.0;
     /// If set, the flight stops at this epoch instead (to get the state
     /// there, or to keep a prediction short).
@@ -183,6 +187,38 @@ struct EarthApproach {
     OrbitalElements orbit;
 };
 
+/// A pass by a planet. A gravity assist: inside the planet's sphere of
+/// influence the path is (nearly) a hyperbola around it. Relative to the
+/// planet the ship leaves as fast as it came, v∞, only turned by δ, with
+/// sin(δ/2) = 1/e; but the planet is moving, so around the Sun the ship's
+/// speed changes: |V_planet + v∞_out| instead of |V_planet + v∞_in|.
+/// Passing behind the planet (on the side it is moving away from) turns
+/// v∞ towards the planet's motion and speeds the ship up; passing in
+/// front slows it down. The closer the pass and the slower v∞, the
+/// bigger the turn.
+struct PlanetPass {
+    bool valid = false;
+    /// A true closest approach (the distance stopped shrinking there), not
+    /// just where the flight started, burned or ended.
+    bool turning = false;
+    Planet planet = Planet::Earth;
+    double epoch = 0.0;
+    double distance = 0.0;  ///< m, from the planet's centre
+    double speed = 0.0;     ///< m/s, relative to the planet
+    double vInfinity = 0.0; ///< m/s, far from the planet (0 if not a hyperbola)
+    double turnAngle = 0.0; ///< radians, δ (0 if not a hyperbola)
+    /// Speed around the Sun on the way in and on the way out (m/s), as if
+    /// only the planet pulled during the pass (the same, if no hyperbola).
+    double sunSpeedBefore = 0.0;
+    double sunSpeedAfter = 0.0;
+    Vec3 relativePosition; ///< m, from the planet's centre (ecliptic axes)
+    Vec3 relativeVelocity; ///< m/s
+};
+
+/// The pass by `planet` of a ship at (r, v) heliocentric at `epoch`
+/// (best at the closest approach).
+PlanetPass passAt(Planet planet, double epoch, const Vec3& r, const Vec3& v);
+
 struct VoyageResult {
     std::vector<VoyageSample> samples;
     std::vector<BurnReport> burns; ///< in the order flown
@@ -191,10 +227,14 @@ struct VoyageResult {
     double endEpoch = 0.0;
     std::optional<double> earthArrival; ///< entered the sphere of influence
     EarthApproach closest;              ///< over the whole flight
-    double entrySpeed = 0.0;            ///< m/s, at the entry interface, if reached
-    double entryAngle = 0.0;            ///< radians, flight-path angle there
-    double propellantLeft = 0.0;        ///< kg
-    double deltaVLeft = 0.0;            ///< m/s
+    /// The closest the path comes to each planet (index: Planet), and each
+    /// closest approach inside a planet's sphere of influence, in order.
+    std::array<PlanetPass, 8> closestPasses;
+    std::vector<PlanetPass> flybys;
+    double entrySpeed = 0.0;     ///< m/s, at the entry interface, if reached
+    double entryAngle = 0.0;     ///< radians, flight-path angle there
+    double propellantLeft = 0.0; ///< kg
+    double deltaVLeft = 0.0;     ///< m/s
 };
 
 VoyageResult flyVoyage(const Voyage& voyage, const VoyageOptions& options = {});

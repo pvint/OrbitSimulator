@@ -81,6 +81,7 @@ void GameSession::onPuzzleMade() {
 
 void GameSession::setPuzzle(const orbit::Puzzle& puzzle) {
     m_puzzle = puzzle;
+    m_reach = 0.0;
     m_hasPuzzle = true;
     m_burns.clear();
     m_selected = -1;
@@ -171,8 +172,17 @@ void GameSession::sortBurns(int follow) {
     }
 }
 
+orbit::Puzzle GameSession::workingPuzzle() const {
+    orbit::Puzzle puzzle = m_puzzle;
+    // Look-ahead counts from the last burn.
+    double last = puzzle.voyage.startEpoch;
+    for (const orbit::Burn& b : m_burns) last = std::max(last, b.epoch);
+    puzzle.voyage.lookAhead = std::max(puzzle.voyage.lookAhead, m_reach - last);
+    return puzzle;
+}
+
 orbit::Voyage GameSession::voyage() const {
-    orbit::Voyage v = m_puzzle.voyage;
+    orbit::Voyage v = workingPuzzle().voyage;
     v.burns = m_burns;
     return v;
 }
@@ -208,10 +218,72 @@ void GameSession::onPredicted() {
 void GameSession::requestHint() {
     if (!m_hasPuzzle || m_makingHint) return;
     m_makingHint = true;
-    m_hintWatcher.setFuture(QtConcurrent::run([puzzle = m_puzzle, burns = m_burns, now = m_now] {
-        return computeHint(puzzle, burns, now);
+    m_hintWatcher.setFuture(
+        QtConcurrent::run([puzzle = workingPuzzle(), burns = m_burns, now = m_now] {
+            return computeHint(puzzle, burns, now);
+        }));
+    emit busyChanged(true);
+}
+
+void GameSession::aimBurn(int index, const orbit::FlybyAim& aim) {
+    if (!m_hasPuzzle || m_makingHint || index < 0 || index >= burnCount() || isLocked(index)) {
+        return;
+    }
+    m_makingHint = true;
+    m_hintWatcher.setFuture(QtConcurrent::run([puzzle = m_puzzle, burns = m_burns, index, aim] {
+        return computeAim(puzzle, burns, index, aim);
     }));
     emit busyChanged(true);
+}
+
+GameSession::Hint GameSession::computeAim(const orbit::Puzzle& puzzle,
+                                          const std::vector<orbit::Burn>& burns, int index,
+                                          const orbit::FlybyAim& aim) {
+    using namespace orbit;
+    Voyage voyage = puzzle.voyage;
+    voyage.burns = burns;
+    const auto i = static_cast<std::size_t>(index);
+    const QString name = QString::fromUtf8(planetName(aim.planet).data());
+    const FlybyAimResult result = aimFlyby(voyage, i, aim);
+    if (!result.burn) {
+        if (result.outOfReach) {
+            return {{},
+                    -1,
+                    tr("Reaching %1 from where burn %2 is needs at least %3, more than your "
+                       "tanks hold by then. Try another date: the planets line up better at "
+                       "some times than others.")
+                        .arg(name)
+                        .arg(index + 1)
+                        .arg(display::speed(result.cheapest)),
+                    false};
+        }
+        return {{},
+                -1,
+                tr("That pass by %1 couldn't be lined up from burn %2. Try a wider pass, "
+                   "another side, or moving the burn.")
+                    .arg(name)
+                    .arg(index + 1),
+                false};
+    }
+    voyage.burns[i] = *result.burn;
+    // Predictions from now on reach past the pass, whatever the look-ahead.
+    const double reach = result.passEpoch + 365.25 * kDay;
+    double last = voyage.startEpoch;
+    for (const Burn& b : voyage.burns) last = std::max(last, b.epoch);
+    voyage.lookAhead = std::max(voyage.lookAhead, reach - last);
+    const VoyageResult flown = flyVoyage(voyage);
+    QString message =
+        tr("Burn %1 is now %2.").arg(index + 1).arg(display::speed(burnSize(*result.burn)));
+    if (const auto pass = passAfter(flown, aim.planet, result.burn->epoch)) {
+        message +=
+            QLatin1Char(' ') +
+            tr("You pass %1 on %2, %3 from its centre (%4 times its radius). Around "
+               "the Sun you go from %5 to %6.")
+                .arg(name, display::date(pass->epoch), display::longDistance(pass->distance))
+                .arg(QString::number(pass->distance / planetRadius(aim.planet), 'f', 1))
+                .arg(display::speed(pass->sunSpeedBefore), display::speed(pass->sunSpeedAfter));
+    }
+    return {voyage.burns, index, message, false, reach};
 }
 
 void GameSession::onHintMade() {
@@ -219,14 +291,19 @@ void GameSession::onHintMade() {
     m_makingHint = false;
     emit busyChanged(isBusy());
     if (!hint.burns.empty()) {
-        ++m_hintsUsed;
+        if (hint.counts) ++m_hintsUsed;
+        m_reach = std::max(m_reach, hint.reach);
         m_burns = hint.burns;
         m_selected = hint.select;
         emit burnsChanged();
         emit selectionChanged(m_selected);
         predict();
     }
-    emit hintReady(hint.message);
+    if (hint.counts) {
+        emit hintReady(hint.message);
+    } else {
+        emit aimReady(!hint.burns.empty(), hint.message);
+    }
 }
 
 /// The hint: plan the way home if the path doesn't reach the Earth; aim it

@@ -37,6 +37,11 @@ Item {
     property var infoTexts: []
     /// The same for each burn marker.
     property var burnInfoTexts: []
+    /// Each flyby (a pass inside a planet's sphere of influence): where the
+    /// ship is at its closest, a short label, and what hovering shows.
+    property var flybyPositions: []
+    property var flybyLabels: []
+    property var flybyInfoTexts: []
 
     property string goalText
     property string dateText
@@ -88,6 +93,7 @@ Item {
                                          "#d8a66c", "#e3c98f", "#8fd3e0", "#5b7fe8"]
     readonly property color shipColor: "#f8fafc"
     readonly property color burnColor: "#fb923c"
+    readonly property color flybyColor: "#c084fc"
 
     // --- camera --------------------------------------------------------
     readonly property real sunRadius: 0.6957 // million km
@@ -256,6 +262,22 @@ Item {
             }
         }
 
+        // Flybys: violet, where the ship passes closest.
+        Repeater3D {
+            model: root.flybyPositions
+            delegate: Model {
+                required property var modelData
+                source: "#Sphere"
+                position: modelData
+                readonly property real size: root.markerScale * 1.1
+                scale: Qt.vector3d(size, size, size)
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
+                    baseColor: root.flybyColor
+                }
+            }
+        }
+
         Model {
             source: "#Sphere"
             position: root.shipPosition
@@ -275,7 +297,10 @@ Item {
     }
     component Label3D: Text {
         property vector3d at
+        // Also after the camera itself has moved: its position follows
+        // root.distance through a binding that may update after this one.
         readonly property vector3d screen: { root.yaw; root.pitch; root.distance; root.target
+                                             camera.scenePosition; camera.sceneRotation
                                              return root.project(at) }
         visible: screen.z > 0
         x: screen.x + 8
@@ -299,6 +324,15 @@ Item {
         font.bold: true
         font.pixelSize: 12
     }
+    Repeater {
+        model: root.flybyPositions.length
+        delegate: Label3D {
+            required property int index
+            at: root.flybyPositions[index]
+            text: root.flybyLabels[index] ?? ""
+            color: root.flybyColor
+        }
+    }
     Label3D {
         visible: root.arrivalVisible && screen.z > 0
         at: root.arrivalShip
@@ -309,14 +343,15 @@ Item {
     // --- hover: the object under the pointer -------------------------------
     HoverHandler { id: hover }
     /// Index into infoTexts of the object nearest the pointer (within a few
-    /// pixels), or -1. Planets 0-7, the Sun 8, the ship 9, burns 10 and up.
+    /// pixels), or -1. Planets 0-7, the Sun 8, the ship 9, burns 10 and up,
+    /// then flybys.
     readonly property int hoverIndex: {
         if (!hover.hovered || root.infoTexts.length < 10) return -1
         const pointer = hover.point.position
         let best = -1
         let bestDistance = 16 // pixels
         const objects = root.planetPositions.concat([Qt.vector3d(0, 0, 0), root.shipPosition],
-                                                    root.burnPositions)
+                                                    root.burnPositions, root.flybyPositions)
         for (let i = 0; i < objects.length; ++i) {
             const s = root.project(objects[i])
             if (s.z <= 0) continue
@@ -341,8 +376,14 @@ Item {
             id: infoText
             anchors.centerIn: parent
             textFormat: Text.RichText
-            text: root.hoverIndex < 0 ? "" : root.hoverIndex < 10 ? root.infoTexts[root.hoverIndex]
-                                    : (root.burnInfoTexts[root.hoverIndex - 10] ?? "")
+            text: {
+                const i = root.hoverIndex
+                const burns = root.burnPositions.length
+                if (i < 0) return ""
+                if (i < 10) return root.infoTexts[i]
+                if (i < 10 + burns) return root.burnInfoTexts[i - 10] ?? ""
+                return root.flybyInfoTexts[i - 10 - burns] ?? ""
+            }
             color: "#e2e8f0"
             font.pixelSize: 12
         }

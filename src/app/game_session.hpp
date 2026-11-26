@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "orbit/core/flyby.hpp"
 #include "orbit/core/lost_in_space.hpp"
 #include "orbit/core/voyage.hpp"
 
@@ -71,6 +72,10 @@ public:
 
     /// Work out the next sensible step and apply it (hintReady follows).
     void requestHint();
+    /// Change burn `index` (one that hasn't fired) so the path passes a
+    /// planet as `aim` says (in the background; aimReady follows with what
+    /// happened). Not counted as a hint: it's a tool.
+    void aimBurn(int index, const orbit::FlybyAim& aim);
     int hintsUsed() const { return m_hintsUsed; }
 
     /// Wait for background work (tests).
@@ -84,6 +89,8 @@ signals:
     void predictionChanged();
     /// A hint's explanation, for the player.
     void hintReady(const QString& message);
+    /// What aiming a burn at a planet did (or why it couldn't).
+    void aimReady(bool aimed, const QString& message);
     void busyChanged(bool busy);
 
 private:
@@ -91,6 +98,9 @@ private:
         std::vector<orbit::Burn> burns; ///< the new plan (empty: unchanged)
         int select = -1;
         QString message;
+        bool counts = true; ///< counted as a hint
+        /// Predictions must reach this epoch from now on (an aimed pass).
+        double reach = 0.0;
     };
 
     void predict();
@@ -99,9 +109,15 @@ private:
     void onHintMade();
     static Hint computeHint(const orbit::Puzzle& puzzle, const std::vector<orbit::Burn>& burns,
                             double now);
+    static Hint computeAim(const orbit::Puzzle& puzzle, const std::vector<orbit::Burn>& burns,
+                           int index, const orbit::FlybyAim& aim);
     void sortBurns(int follow);
 
+    /// The puzzle with the voyage's look-ahead stretched to reach m_reach.
+    orbit::Puzzle workingPuzzle() const;
+
     orbit::Puzzle m_puzzle;
+    double m_reach = 0.0; ///< predictions reach at least this epoch
     bool m_hasPuzzle = false;
     std::vector<orbit::Burn> m_burns;
     double m_now = 0.0;

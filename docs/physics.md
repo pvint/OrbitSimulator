@@ -559,6 +559,30 @@ sphere of influence, against its motion relative to the Earth, until the
 entry speed is under 13 km/s; a slower arrival is bent more by the
 Earth, so the same burn is aimed again on the B-plane.
 
+**Gravity assists (`flyby.hpp`).** Every planet pulls on the ship all the
+way, so passing close to one changes the path for free. Seen from the
+planet, the ship follows a hyperbola: it leaves as fast as it came (v∞),
+only turned by δ, with sin(δ/2) = 1/e and e = 1 + r_p v∞²/μ (closer
+passes and slower approaches turn more). Seen from the Sun the planet is
+moving, so the ship's velocity is the planet's plus v∞, and turning v∞
+changes the sum: |V_planet + v∞_out| instead of |V_planet + v∞_in|. Turned
+towards the planet's motion (usually by passing behind it) the ship speeds
+up; turned away, it slows down. A ship the planet is catching up from
+behind (as at the end of a Hohmann transfer outwards) speeds up whichever
+way it turns. The energy comes from the planet, which slows by an amount
+far too small to notice.
+
+The game records each closest approach inside a planet's sphere of
+influence, with these numbers from the hyperbola at that moment (the
+"patched conic" estimate: within a few percent of the full simulation's
+change in orbital energy). Aiming at a planet uses the same B-plane as
+aiming at the Earth: b = r_p √(1 + 2μ/(r_p v∞²)) sets the distance, the
+direction of B the side, and Newton's method with the full simulation
+finds the smallest change to the burn. The outgoing direction is ŝ turned
+by δ towards −B̂, so B̂ against the planet's velocity (as seen square to ŝ)
+gains the most speed. If the path isn't heading there yet, Lambert's
+problem first picks the trip time that needs the smallest burn.
+
 ## Integration (`integrator.hpp`)
 
 The equations of motion are integrated with **Dormand–Prince 5(4)**, an

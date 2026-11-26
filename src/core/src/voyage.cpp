@@ -33,27 +33,45 @@ constexpr double kOutputFraction = 0.005;
 constexpr double kMinOutputInterval = 60.0;
 constexpr double kMaxOutputInterval = 5.0 * kDay;
 constexpr int kMaxSteps = 1'000'000;
+/// However many flybys extend it, a prediction stops this long after the start.
+constexpr double kLongestPrediction = 60.0 * 365.25 * kDay;
 
 struct Relative {
     Vec3 r;
     Vec3 v;
 };
 
-/// Position and velocity relative to the Earth.
+/// Position and velocity relative to a planet.
+Relative relativeTo(Planet planet, double epoch, const Vec3& r, const Vec3& v) {
+    return {r - planetPosition(planet, epoch), v - planetVelocity(planet, epoch)};
+}
 Relative relativeToEarth(double epoch, const Vec3& r, const Vec3& v) {
-    return {r - planetPosition(Planet::Earth, epoch), v - planetVelocity(Planet::Earth, epoch)};
+    return relativeTo(Planet::Earth, epoch, r, v);
 }
 
 /// Moments the flight watches for. Each has a function g of the state that
 /// falls through zero at that moment.
-enum class Event {
+enum class EventKind {
     SunImpact,      ///< g = r − R_sun
     EntryInterface, ///< g = d − (R_earth + 120 km), d = distance from the Earth
     EarthArrival,   ///< g = d − (sphere of influence)
-    EarthClosest,   ///< g = −(r_rel · v_rel): the distance stops shrinking
+    Closest,        ///< g = −(r_rel · v_rel): the distance to a planet stops shrinking
 };
-constexpr std::array kEvents{Event::SunImpact, Event::EntryInterface, Event::EarthArrival,
-                             Event::EarthClosest};
+struct Event {
+    EventKind kind;
+    Planet planet = Planet::Earth; ///< for Closest
+};
+constexpr std::array kEvents{Event{EventKind::SunImpact},
+                             Event{EventKind::EntryInterface},
+                             Event{EventKind::EarthArrival},
+                             Event{EventKind::Closest, Planet::Mercury},
+                             Event{EventKind::Closest, Planet::Venus},
+                             Event{EventKind::Closest, Planet::Earth},
+                             Event{EventKind::Closest, Planet::Mars},
+                             Event{EventKind::Closest, Planet::Jupiter},
+                             Event{EventKind::Closest, Planet::Saturn},
+                             Event{EventKind::Closest, Planet::Uranus},
+                             Event{EventKind::Closest, Planet::Neptune}};
 
 /// The longest step allowed here: a day near any planet (or the Sun), up to
 /// a month far from all of them, so that a step never carries the ship past
@@ -87,6 +105,10 @@ private:
     double m_t = 0.0;
     State m_y;
     double m_nextOutput = 0.0;
+    /// When the flight stops: the look-ahead past the last burn, pushed
+    /// on by each flyby (a pass changes the path as a burn does).
+    double m_end = 0.0;
+    double m_lookAhead = 0.0;
     VoyageResult m_out;
 
     double g(Event event, double t, const State& y) const;
@@ -94,6 +116,8 @@ private:
     double outputInterval(double t, const State& y) const;
     void addSample() { m_out.samples.push_back({m_t, m_y.r, m_y.v, m_y.m}); }
     void noteApproach();
+    void notePass(Planet planet, bool atMinimum);
+    void notePasses();
     bool coastTo(double tEnd);
     bool handle(Event event);
     void burn(const Burn& planned);
@@ -102,16 +126,16 @@ private:
 };
 
 double VoyageFlight::g(Event event, double t, const State& y) const {
-    switch (event) {
-    case Event::SunImpact:
+    switch (event.kind) {
+    case EventKind::SunImpact:
         return norm(y.r) - kRadiusSun;
-    case Event::EntryInterface:
+    case EventKind::EntryInterface:
         return norm(y.r - planetPosition(Planet::Earth, t)) -
                (kRadiusEarth + m_opt->entryInterfaceAltitude);
-    case Event::EarthArrival:
+    case EventKind::EarthArrival:
         return norm(y.r - planetPosition(Planet::Earth, t)) - m_soi;
-    case Event::EarthClosest: {
-        const Relative rel = relativeToEarth(t, y.r, y.v);
+    case EventKind::Closest: {
+        const Relative rel = relativeTo(event.planet, t, y.r, y.v);
         return -dot(rel.r, rel.v);
     }
     }
@@ -156,16 +180,42 @@ void VoyageFlight::noteApproach() {
     c.orbit = elementsFromState(rel.r, rel.v, planetMu(Planet::Earth), kRadiusEarth);
 }
 
-/// Coast to tEnd. True if the flight ended on the way.
+/// A pass by a planet: the closest to it so far, and, at a closest
+/// approach inside its sphere of influence, a flyby.
+void VoyageFlight::notePass(Planet planet, bool atMinimum) {
+    PlanetPass pass = passAt(planet, m_t, m_y.r, m_y.v);
+    pass.turning = atMinimum;
+    PlanetPass& closest = m_out.closestPasses.at(static_cast<std::size_t>(planet));
+    if (!closest.valid || pass.distance < closest.distance) closest = pass;
+    if (atMinimum && pass.distance < sphereOfInfluence(planet, m_t)) {
+        m_out.flybys.push_back(pass);
+        // Look as far ahead past a flyby as past a burn (not for a ship
+        // circling the planet: only a pass that leaves again).
+        if (!m_opt->stopAt && pass.vInfinity > 0.0) {
+            m_end = std::max(
+                m_end, std::min(m_t + m_lookAhead, m_voyage->startEpoch + kLongestPrediction));
+        }
+    }
+}
+
+/// The closest to each planet so far (at the start, after a burn, and at
+/// the end: the closest may be there rather than at a turning point).
+void VoyageFlight::notePasses() {
+    for (const Planet planet : kAllPlanets) notePass(planet, false);
+}
+
+/// Coast to tEnd, or to the end of the flight if that comes first. True if
+/// the flight ended on the way.
 bool VoyageFlight::coastTo(double tEnd) {
     double h = 1.0;
-    for (int stepCount = 0; m_t < tEnd; ++stepCount) {
+    for (int stepCount = 0; m_t < std::min(tEnd, m_end); ++stepCount) {
         if (stepCount >= kMaxSteps) {
             finish(VoyageEnd::Horizon);
             return true;
         }
+        const double limit = std::min(tEnd, m_end);
         double hStep = std::min(h, maxStep(m_t, m_y));
-        if (m_t + hStep > tEnd) hStep = tEnd - m_t;
+        if (m_t + hStep > limit) hStep = limit - m_t;
         const auto result = m_stepper.step(m_t, m_y, hStep);
         h = result.nextStep;
         if (!result.accepted) continue;
@@ -197,19 +247,20 @@ bool VoyageFlight::coastTo(double tEnd) {
 /// React to an event. True if it ends the flight.
 bool VoyageFlight::handle(Event event) {
     addSample();
-    switch (event) {
-    case Event::SunImpact:
+    switch (event.kind) {
+    case EventKind::SunImpact:
         finish(VoyageEnd::HitSun);
         return true;
-    case Event::EarthClosest:
-        noteApproach();
+    case EventKind::Closest:
+        if (event.planet == Planet::Earth) noteApproach();
+        notePass(event.planet, true);
         return false;
-    case Event::EarthArrival:
+    case EventKind::EarthArrival:
         if (!m_out.earthArrival) m_out.earthArrival = m_t;
         if (m_voyage->goal != Goal::ReachEarth) return false;
         finish(VoyageEnd::ReachedEarth);
         return true;
-    case Event::EntryInterface: {
+    case EventKind::EntryInterface: {
         // The flight-path angle γ is the angle between the velocity and the
         // local horizontal: sin γ = (r · v) / (|r| |v|), negative coming down.
         noteApproach();
@@ -279,8 +330,8 @@ VoyageResult VoyageFlight::run() {
     std::ranges::stable_sort(burns, {}, &Burn::epoch);
 
     const double lastEvent = burns.empty() ? m_voyage->startEpoch : burns.back().epoch;
-    const double end =
-        m_opt->stopAt ? *m_opt->stopAt : lastEvent + std::max(m_opt->horizon, m_voyage->lookAhead);
+    m_lookAhead = std::max(m_opt->horizon, m_voyage->lookAhead);
+    m_end = m_opt->stopAt ? *m_opt->stopAt : lastEvent + m_lookAhead;
 
     const Ship& ship = m_voyage->ship;
     m_t = m_voyage->startEpoch;
@@ -288,25 +339,29 @@ VoyageResult VoyageFlight::run() {
     m_nextOutput = m_t + outputInterval(m_t, m_y);
     addSample();
     noteApproach();
+    notePasses();
 
     bool ended = false;
     for (std::size_t i = 0; i < burns.size() && !ended; ++i) {
-        if (burns[i].epoch > end) break;
+        if (burns[i].epoch > m_end) break;
         ended = coastTo(burns[i].epoch);
         if (ended) break;
         burn(burns[i]);
         noteApproach();
+        notePasses();
         if (i + 1 == burns.size() && capturedAndDone()) {
             finish(VoyageEnd::Captured);
             ended = true;
         }
     }
-    if (!ended && !coastTo(end)) {
+    if (!ended && !coastTo(m_end)) {
         addSample();
         noteApproach();
+        notePasses();
         finish(m_opt->stopAt ? VoyageEnd::StopTime : VoyageEnd::Horizon);
     }
 
+    if (ended) notePasses(); // the closest may be where it ended
     m_out.goalMet = goalMet(m_voyage->goal, m_out.end);
     m_out.propellantLeft = m_y.m - ship.dryMass;
     m_out.deltaVLeft = exhaustVelocity(ship.isp) * std::log(m_y.m / ship.dryMass);
@@ -314,6 +369,46 @@ VoyageResult VoyageFlight::run() {
 }
 
 } // namespace
+
+PlanetPass passAt(Planet planet, double epoch, const Vec3& r, const Vec3& v) {
+    PlanetPass pass;
+    pass.valid = true;
+    pass.planet = planet;
+    pass.epoch = epoch;
+    const Relative rel = relativeTo(planet, epoch, r, v);
+    pass.relativePosition = rel.r;
+    pass.relativeVelocity = rel.v;
+    pass.distance = norm(rel.r);
+    pass.speed = norm(rel.v);
+    pass.sunSpeedBefore = pass.sunSpeedAfter = norm(v);
+
+    // The path around the planet as if only it pulled: a hyperbola if the
+    // ship comes from far away and leaves again (energy v²/2 − μ/r > 0).
+    const double mu = planetMu(planet);
+    const double v2 = pass.speed * pass.speed;
+    const double energy = v2 / 2.0 - mu / pass.distance;
+    const Vec3 h = cross(rel.r, rel.v);
+    if (energy <= 0.0 || norm(h) == 0.0) return pass;
+    const Vec3 eVec = ((v2 - mu / pass.distance) * rel.r - dot(rel.r, rel.v) * rel.v) / mu;
+    const double e = norm(eVec);
+    if (e <= 1.0) return pass;
+    pass.vInfinity = std::sqrt(2.0 * energy);
+    // The asymptotes are at true anomaly ±ν∞, cos ν∞ = −1/e: the ship
+    // comes in along ŝ_in = ê/e + √(1 − 1/e²) (ĥ × ê) and leaves along
+    // ŝ_out = −ê/e + √(1 − 1/e²) (ĥ × ê), turned by δ = 2 asin(1/e).
+    const Vec3 eHat = eVec / e;
+    const Vec3 across = std::sqrt(1.0 - 1.0 / (e * e)) * cross(normalized(h), eHat);
+    const Vec3 in = eHat / e + across;
+    const Vec3 out = -eHat / e + across;
+    pass.turnAngle = 2.0 * std::asin(1.0 / e);
+    // Around the Sun, the planet's velocity plus v∞ each way: the pass
+    // leaves the speed relative to the planet unchanged but turns it, so
+    // the speed around the Sun changes (patched conics).
+    const Vec3 planetV = planetVelocity(planet, epoch);
+    pass.sunSpeedBefore = norm(planetV + pass.vInfinity * in);
+    pass.sunSpeedAfter = norm(planetV + pass.vInfinity * out);
+    return pass;
+}
 
 double deltaVCapacity(const Ship& ship) {
     return exhaustVelocity(ship.isp) * std::log((ship.dryMass + ship.propellant) / ship.dryMass);

@@ -139,6 +139,37 @@ private slots:
         QVERIFY(messages.join(QString()).contains(QStringLiteral("heat shield")));
         QVERIFY(session.prediction()->deltaVLeft > 0.0);
     }
+
+    void aimingAtAPlanetIsAToolNotAHint() {
+        // From the asteroid belt, a burn aimed at Jupiter: the path then
+        // passes it where asked, and the pass is recorded as a flyby.
+        GameSession session;
+        session.setPuzzle(orbit::makePuzzle(orbit::Difficulty::Easy, 3,
+                                            orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0}),
+                                            orbit::Region::AsteroidBelt));
+        session.waitForIdle();
+        const int index = session.addBurn(session.now() + 30 * kDay);
+        session.waitForIdle();
+        QStringList messages;
+        connect(&session, &GameSession::aimReady, this, [&messages](bool aimed, const QString& m) {
+            QVERIFY(aimed);
+            messages.append(m);
+        });
+        const double rj = orbit::planetRadius(orbit::Planet::Jupiter);
+        session.aimBurn(index, {orbit::Planet::Jupiter, 15.0 * rj, orbit::FlybySide::Faster});
+        session.waitForIdle();
+        QCOMPARE(messages.size(), 1);
+        QVERIFY2(messages[0].contains(QStringLiteral("You pass Jupiter")), qPrintable(messages[0]));
+        QCOMPARE(session.hintsUsed(), 0);
+        const auto pass = orbit::passAfter(*session.prediction(), orbit::Planet::Jupiter,
+                                           session.burns()[0].epoch);
+        QVERIFY(pass);
+        QVERIFY2(std::abs(pass->distance / rj - 15.0) < 0.2,
+                 qPrintable(messages[0] + QString::number(pass->distance / rj) +
+                            QStringLiteral(" flybys ") +
+                            QString::number(session.prediction()->flybys.size())));
+        QVERIFY(!session.prediction()->flybys.empty());
+    }
 };
 
 QTEST_MAIN(GameTests)

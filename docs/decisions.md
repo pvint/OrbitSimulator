@@ -699,6 +699,32 @@ point: room for an assist to do better.
   new speeds of 180 and 365 days a second; the timeline ticks every 5 or
   10 years on long trips.
 
+**Step 2, flyby tools (done):**
+- The flight watches for the closest approach to every planet (an event
+  each). Each one inside a sphere of influence is a *flyby*
+  (`VoyageResult::flybys`, `PlanetPass`): distance, speed, v∞, turn, and
+  the speed around the Sun before and after from the hyperbola there
+  (checked against the full simulation's energy change, within 5 %).
+  `closestPasses` keeps each planet's closest approach, marked `turning`
+  only if it really is one (not where the flight happened to end).
+- A hyperbolic flyby pushes the end of the prediction on, as a burn does
+  (capped at 60 years from the start); an aimed pass makes predictions
+  reach a year past it.
+- **Sides are named by effect, not position:** "speed up the most" and
+  "slow down the most" (plus north, south, keep). "Behind speeds you up"
+  is only true when the ship moves with the planet: arriving from a
+  Hohmann transfer the planet catches the ship up, and every pass speeds
+  it up. The aim helper's B-vector for "faster" is against the planet's
+  velocity, seen square to the incoming path.
+- The aim helper (`aimFlyby`) is a tool, not a hint: not counted, and it
+  says so when the planet is out of reach from that date (the smallest
+  Lambert burn is more than the tanks hold).
+- In the game: "Aim at a planet…" on the selected burn (planet, distance
+  in planet radii, side), violet flyby markers with hover cards ("gained
+  for free"), each planet's card shows your closest pass, and the
+  ending compares the fuel used with the direct way home worked out at
+  the start ("You beat it!"), listing the assists.
+
 ---
 
 ## Open questions

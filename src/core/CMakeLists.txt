@@ -22,6 +22,7 @@ add_library(orbit_core STATIC
     src/demo.cpp
     src/ephemeris.cpp
     src/flight_program.cpp
+    src/flyby.cpp
     src/gravity.cpp
     src/earth.cpp
     src/guidance.cpp

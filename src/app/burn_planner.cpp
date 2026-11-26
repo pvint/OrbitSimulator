@@ -4,7 +4,10 @@
 #include "display_format.hpp"
 #include "game_session.hpp"
 
+#include <QComboBox>
 #include <QDateTimeEdit>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -74,7 +77,7 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
     auto* form = new QFormLayout(m_editor);
     auto* whenRow = new QHBoxLayout;
     m_whenSpin->setObjectName(QStringLiteral("spin-burn-days"));
-    m_whenSpin->setRange(0.0, 3000.0);
+    m_whenSpin->setRange(0.0, 20000.0); // trips from Neptune take decades
     m_whenSpin->setDecimals(1);
     m_whenSpin->setSuffix(tr(" days"));
     m_whenSpin->setPrefix(tr("in "));
@@ -101,6 +104,12 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
                           "south."));
     m_size->setWordWrap(true);
     form->addRow(m_size);
+    m_aim = new QPushButton(tr("Aim at a planet…"), m_editor);
+    m_aim->setObjectName(QStringLiteral("button-aim"));
+    m_aim->setToolTip(tr("Change this burn so your path passes a planet where you choose: how "
+                         "close, and on which side. A pass bends your path and can change "
+                         "your speed around the Sun for free: a gravity assist."));
+    form->addRow(m_aim);
     layout->addWidget(m_editor);
 
     m_hint = new QPushButton(tr("Hint"), this);
@@ -122,6 +131,7 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
     connect(m_remove, &QPushButton::clicked, this,
             [this] { m_session->removeBurn(m_session->selected()); });
     connect(m_hint, &QPushButton::clicked, m_session, &GameSession::requestHint);
+    connect(m_aim, &QPushButton::clicked, this, &BurnPlanner::openAimDialog);
     connect(m_list, &QListWidget::currentRowChanged, this, [this](int row) {
         if (!m_updating) m_session->select(row);
     });
@@ -149,8 +159,10 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
     connect(m_session, &GameSession::nowChanged, this, &BurnPlanner::refresh);
     connect(m_session, &GameSession::puzzleChanged, this, &BurnPlanner::refresh);
     connect(m_session, &GameSession::predictionChanged, this, &BurnPlanner::refreshFuel);
-    connect(m_session, &GameSession::busyChanged, this,
-            [this](bool busy) { m_hint->setEnabled(!busy && m_session->hasPuzzle()); });
+    connect(m_session, &GameSession::busyChanged, this, [this](bool busy) {
+        m_hint->setEnabled(!busy && m_session->hasPuzzle());
+        m_aim->setEnabled(!busy);
+    });
     refresh();
 }
 
@@ -189,6 +201,75 @@ BurnPlanner::Axis BurnPlanner::addAxis(QFormLayout* form, const QString& label, 
     return axis;
 }
 
+/// Ask where to pass which planet, then aim the selected burn there.
+void BurnPlanner::openAimDialog() {
+    const int index = m_session->selected();
+    if (index < 0 || m_session->isLocked(index)) return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Aim at a planet"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* about = new QLabel(
+        tr("Burn %1 will change so that your path passes the planet as you choose. Passing "
+           "close bends your path and changes your speed around the Sun, with no fuel: a "
+           "<b>gravity assist</b>. Closer passes and slower approaches bend it more.")
+            .arg(index + 1),
+        &dialog);
+    about->setWordWrap(true);
+    layout->addWidget(about);
+
+    auto* form = new QFormLayout;
+    auto* planet = new QComboBox(&dialog);
+    planet->setObjectName(QStringLiteral("combo-aim-planet"));
+    for (const orbit::Planet p : orbit::kAllPlanets) {
+        planet->addItem(QString::fromUtf8(orbit::planetName(p).data()), static_cast<int>(p));
+    }
+    // The planet the path passes next after this burn, else Jupiter.
+    int chosen = static_cast<int>(orbit::Planet::Jupiter);
+    if (const auto* p = m_session->prediction()) {
+        const double after = m_session->burns()[static_cast<std::size_t>(index)].epoch;
+        for (const orbit::PlanetPass& pass : p->flybys) {
+            if (pass.epoch > after) {
+                chosen = static_cast<int>(pass.planet);
+                break;
+            }
+        }
+    }
+    planet->setCurrentIndex(planet->findData(chosen));
+    auto* radii = new QDoubleSpinBox(&dialog);
+    radii->setObjectName(QStringLiteral("spin-aim-radii"));
+    radii->setRange(1.05, 2000.0);
+    radii->setDecimals(2);
+    radii->setValue(10.0);
+    radii->setSuffix(tr(" × its radius"));
+    radii->setToolTip(tr("How close to pass, from the planet's centre, in planet radii. 1 is "
+                         "skimming the surface (or the cloud tops)."));
+    auto* side = new QComboBox(&dialog);
+    side->setObjectName(QStringLiteral("combo-aim-side"));
+    side->addItem(tr("Keep the side you pass now"), static_cast<int>(orbit::FlybySide::Keep));
+    side->addItem(tr("Speed up the most (usually behind it)"),
+                  static_cast<int>(orbit::FlybySide::Faster));
+    side->addItem(tr("Slow down the most (usually in front)"),
+                  static_cast<int>(orbit::FlybySide::Slower));
+    side->addItem(tr("Over its north side"), static_cast<int>(orbit::FlybySide::North));
+    side->addItem(tr("Under its south side"), static_cast<int>(orbit::FlybySide::South));
+    side->setCurrentIndex(1);
+    form->addRow(tr("Planet"), planet);
+    form->addRow(tr("Closest pass"), radii);
+    form->addRow(tr("Side"), side);
+    layout->addLayout(form);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Aim"));
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    const auto p = static_cast<orbit::Planet>(planet->currentData().toInt());
+    m_session->aimBurn(index, {p, radii->value() * orbit::planetRadius(p),
+                               static_cast<orbit::FlybySide>(side->currentData().toInt())});
+}
+
 /// Send the editor's values to the session.
 void BurnPlanner::editorChanged() {
     if (m_updating) return;
@@ -204,6 +285,7 @@ void BurnPlanner::refresh() {
     const bool playing = m_session->hasPuzzle();
     m_add->setEnabled(playing);
     m_hint->setEnabled(playing && !m_session->isBusy());
+    m_aim->setEnabled(!m_session->isBusy());
 
     // The list: one row per burn, the fired ones greyed.
     const auto& burns = m_session->burns();

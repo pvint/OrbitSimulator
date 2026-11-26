@@ -34,6 +34,7 @@ private:
     void refresh();
     void refreshFuel();
     void editorChanged();
+    void openAimDialog();
 
     GameSession* m_session;
     QProgressBar* m_fuel = nullptr;
@@ -42,6 +43,7 @@ private:
     QPushButton* m_add = nullptr;
     QPushButton* m_remove = nullptr;
     QPushButton* m_hint = nullptr;
+    QPushButton* m_aim = nullptr;
     QGroupBox* m_editor = nullptr;
     QSlider* m_whenSlider = nullptr;
     QDoubleSpinBox* m_whenSpin = nullptr;

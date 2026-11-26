@@ -4,6 +4,7 @@
 #include "orbit/core/angles.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/ephemeris.hpp"
+#include "orbit/core/flyby.hpp"
 #include "orbit/core/solar_system.hpp"
 #include "orbit/core/two_body.hpp"
 
@@ -205,39 +206,6 @@ std::optional<TransferPlan> transfer(const TwoBodyState& ship, double departure,
     plan.vInfinity = norm(lambert->v2 - e.v);
     plan.arrivalCost = arrivalCost(goal, plan.vInfinity);
     return plan;
-}
-
-/// The B-vector of a path past the Earth, from a state relative to it
-/// (m, m/s): where the incoming straight line would cross the plane through
-/// the Earth's centre square to it. ŝ, the incoming direction, comes from
-/// the hyperbola's shape: ŝ = ê/e + √(1 − 1/e²) (ĥ × ê).
-struct BPlane {
-    Vec3 s; ///< incoming direction
-    Vec3 b; ///< the B-vector (m)
-    double vInfinity = 0.0;
-};
-BPlane bPlane(const Vec3& r, const Vec3& v) {
-    const double mu = muEarth();
-    const double rNorm = norm(r);
-    const double v2 = normSquared(v);
-    const double energy = v2 / 2.0 - mu / rNorm;
-    const Vec3 h = cross(r, v);
-    const Vec3 eVec = ((v2 - mu / rNorm) * r - dot(r, v) * v) / mu;
-    const double e = norm(eVec);
-    BPlane plane;
-    if (energy <= 0.0 || e <= 1.0 || norm(h) == 0.0) {
-        // Not a hyperbola (deep in the Earth's grip, or far out where the
-        // Sun's pull dominates): the straight-line miss is good enough.
-        plane.s = normalized(v);
-        plane.b = r - dot(r, plane.s) * plane.s;
-        plane.vInfinity = std::sqrt(v2);
-        return plane;
-    }
-    const Vec3 eHat = eVec / e;
-    plane.s = eHat / e + std::sqrt(1.0 - 1.0 / (e * e)) * cross(normalized(h), eHat);
-    plane.vInfinity = std::sqrt(2.0 * energy);
-    plane.b = cross(plane.s, h) / plane.vInfinity;
-    return plane;
 }
 
 /// The voyage with only its burns before `epoch` (or before and at it).
@@ -556,7 +524,8 @@ std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
     // The B-plane's axes, fixed from the first flight so the target doesn't
     // move under Newton's feet: T square to the incoming direction in the
     // ecliptic, R completing the set.
-    const BPlane plane0 = bPlane(first.closest.relativePosition, first.closest.relativeVelocity);
+    const BPlane plane0 =
+        bPlane(first.closest.relativePosition, first.closest.relativeVelocity, muEarth());
     const Vec3 axisT = normalized(cross(plane0.s, Vec3{0.0, 0.0, 1.0}));
     const Vec3 axisR = cross(plane0.s, axisT);
     // Keep to the side the path already passes on (the smallest change),
@@ -572,7 +541,8 @@ std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
         trial.burns = {Burn{original.epoch, x[0], x[1], x[2]}};
         const VoyageResult result = flyVoyage(trial, fly);
         if (!result.closest.valid) return std::nullopt;
-        const BPlane p = bPlane(result.closest.relativePosition, result.closest.relativeVelocity);
+        const BPlane p =
+            bPlane(result.closest.relativePosition, result.closest.relativeVelocity, muEarth());
         return std::array<double, 2>{dot(p.b, axisT) - target[0], dot(p.b, axisR) - target[1]};
     };
 
