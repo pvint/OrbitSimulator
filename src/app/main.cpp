@@ -36,9 +36,12 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
     window.setCardsEnabled(!parser.isSet(o.noCards));
     window.show();
     if (parser.isSet(o.puzzle)) {
-        // Any order: a difficulty, a region, a seed (e.g. "hard:jupiter:4").
-        orbit::Difficulty difficulty = orbit::Difficulty::Normal;
-        orbit::Region region = orbit::Region::BetweenPlanets;
+        // Any order: a difficulty, where from, "orbit" to start in orbit
+        // there, where to (a second planet), a seed (e.g. "hard:jupiter:4",
+        // "normal:earth:saturn", "easy:mars:orbit").
+        orbit::PuzzleSpec spec;
+        spec.difficulty = orbit::Difficulty::Normal;
+        bool haveFrom = false;
         std::uint64_t seed = QRandomGenerator::global()->generate64();
         for (const QString& part : parser.value(o.puzzle).split(QLatin1Char(':'))) {
             const QString word = part.toLower();
@@ -47,14 +50,22 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
             if (isNumber) {
                 seed = number;
             } else if (word == QLatin1String("easy")) {
-                difficulty = orbit::Difficulty::Easy;
+                spec.difficulty = orbit::Difficulty::Easy;
             } else if (word == QLatin1String("hard")) {
-                difficulty = orbit::Difficulty::Hard;
+                spec.difficulty = orbit::Difficulty::Hard;
+            } else if (word == QLatin1String("orbit")) {
+                spec.inOrbit = true;
             } else if (const auto r = orbit::regionFromKey(word.toStdString())) {
-                region = *r;
+                const auto planet = orbit::regionPlanet(*r);
+                if (!haveFrom) {
+                    spec.from = *r;
+                    haveFrom = true;
+                } else if (planet) {
+                    spec.to = *planet;
+                }
             }
         }
-        window.startPuzzle(difficulty, region, seed);
+        window.startPuzzle(spec, seed);
         if (parser.isSet(o.hint)) {
             QObject::connect(
                 window.session(), &GameSession::puzzleChanged, &window,
@@ -113,9 +124,11 @@ int main(int argc, char* argv[]) {
                                   QStringLiteral("Open the Lost in Space game on its own."));
     const QCommandLineOption puzzle(
         QStringLiteral("puzzle"),
-        QStringLiteral("Start the game with this puzzle: easy, normal or hard, optionally a "
-                       "region (between, venus, mars, belt, jupiter) and "
-                       "a seed, in any order (hard:jupiter:42)."),
+        QStringLiteral("Start the game with this puzzle, in any order: easy, normal or hard; "
+                       "where from (between, mercury, venus, earth, mars, belt, jupiter, "
+                       "saturn, uranus, neptune); \"orbit\" to start in orbit there; where "
+                       "to (a second planet, else the Earth); a seed (hard:jupiter:42, "
+                       "normal:earth:saturn, easy:mars:orbit)."),
         QStringLiteral("puzzle"));
     const QCommandLineOption hint(QStringLiteral("hint"),
                                   QStringLiteral("With --puzzle: take a hint straight away."));

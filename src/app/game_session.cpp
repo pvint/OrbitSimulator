@@ -24,7 +24,12 @@ constexpr double kHintLongestFlight = 700.0 * kDay;
 /// Course corrections go this long before arriving.
 constexpr double kCorrectionLead = 20.0 * kDay;
 
-QString goalPhrase(orbit::Goal goal) {
+QString planetText(orbit::Planet planet) {
+    return QString::fromUtf8(orbit::planetName(planet).data());
+}
+
+QString goalPhrase(orbit::Goal goal, orbit::Planet destination) {
+    const QString name = planetText(destination);
     switch (goal) {
     case orbit::Goal::ReachEarth:
         return QObject::tr("reaching the Earth");
@@ -32,8 +37,22 @@ QString goalPhrase(orbit::Goal goal) {
         return QObject::tr("the re-entry corridor");
     case orbit::Goal::EarthOrbit:
         return QObject::tr("a pass just above the air");
+    case orbit::Goal::ReachPlanet:
+        return QObject::tr("reaching %1").arg(name);
+    case orbit::Goal::ClosePass:
+        return QObject::tr("a close pass by %1").arg(name);
+    case orbit::Goal::PlanetOrbit:
+        return QObject::tr("a pass just above %1").arg(name);
     }
     return {};
+}
+
+/// Where the burn at `epoch` (just added or changed) sits in the sorted list.
+int indexOfEpoch(std::vector<orbit::Burn>& burns, double epoch) {
+    std::ranges::stable_sort(burns, {}, &orbit::Burn::epoch);
+    const auto it =
+        std::ranges::find_if(burns, [&](const orbit::Burn& b) { return b.epoch == epoch; });
+    return static_cast<int>(it - burns.begin());
 }
 
 } // namespace
@@ -64,12 +83,11 @@ void GameSession::waitForIdle() const {
 
 bool GameSession::isBusy() const { return m_makingPuzzle || m_makingHint; }
 
-void GameSession::newPuzzle(orbit::Difficulty difficulty, orbit::Region region, std::uint64_t seed,
-                            double epoch) {
+void GameSession::newPuzzle(const orbit::PuzzleSpec& spec, std::uint64_t seed, double epoch) {
     if (m_makingPuzzle) return;
     m_makingPuzzle = true;
     m_puzzleWatcher.setFuture(
-        QtConcurrent::run([=] { return orbit::makePuzzle(difficulty, seed, epoch, region); }));
+        QtConcurrent::run([=] { return orbit::makePuzzle(spec, seed, epoch); }));
     emit busyChanged(true);
 }
 
@@ -243,7 +261,7 @@ GameSession::Hint GameSession::computeAim(const orbit::Puzzle& puzzle,
     Voyage voyage = puzzle.voyage;
     voyage.burns = burns;
     const auto i = static_cast<std::size_t>(index);
-    const QString name = QString::fromUtf8(planetName(aim.planet).data());
+    const QString name = planetText(aim.planet);
     const FlybyAimResult result = aimFlyby(voyage, i, aim);
     if (!result.burn) {
         if (result.outOfReach) {
@@ -265,7 +283,9 @@ GameSession::Hint GameSession::computeAim(const orbit::Puzzle& puzzle,
                     .arg(index + 1),
                 false};
     }
+    // (Out of a parked orbit, the burn may move to the best point in it.)
     voyage.burns[i] = *result.burn;
+    const int at = indexOfEpoch(voyage.burns, result.burn->epoch);
     // Predictions from now on reach past the pass, whatever the look-ahead.
     const double reach = result.passEpoch + 365.25 * kDay;
     double last = voyage.startEpoch;
@@ -273,7 +293,9 @@ GameSession::Hint GameSession::computeAim(const orbit::Puzzle& puzzle,
     voyage.lookAhead = std::max(voyage.lookAhead, reach - last);
     const VoyageResult flown = flyVoyage(voyage);
     QString message =
-        tr("Burn %1 is now %2.").arg(index + 1).arg(display::speed(burnSize(*result.burn)));
+        tr("Burn %1 is now %2, on %3.")
+            .arg(at + 1)
+            .arg(display::speed(burnSize(*result.burn)), display::date(result.burn->epoch));
     if (const auto pass = passAfter(flown, aim.planet, result.burn->epoch)) {
         message +=
             QLatin1Char(' ') +
@@ -283,7 +305,7 @@ GameSession::Hint GameSession::computeAim(const orbit::Puzzle& puzzle,
                 .arg(QString::number(pass->distance / planetRadius(aim.planet), 'f', 1))
                 .arg(display::speed(pass->sunSpeedBefore), display::speed(pass->sunSpeedAfter));
     }
-    return {voyage.burns, index, message, false, reach};
+    return {voyage.burns, at, message, false, reach};
 }
 
 void GameSession::onHintMade() {
@@ -306,70 +328,107 @@ void GameSession::onHintMade() {
     }
 }
 
-/// The hint: plan the way home if the path doesn't reach the Earth; aim it
-/// if it does but misses the goal; brake if it would come in too fast to
-/// land; brake at perigee to stay, on Hard.
+/// The hint: plan the way there if the path doesn't reach the destination;
+/// aim it if it does but misses the goal; brake if it would come in too
+/// fast to land; brake at the low point to stay, on Hard.
 GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
                                            const std::vector<orbit::Burn>& burns, double now) {
     using namespace orbit;
     Voyage voyage = puzzle.voyage;
     voyage.burns = burns;
+    const Planet to = voyage.destination;
+    const QString name = planetText(to);
     const VoyageResult prediction = flyVoyage(voyage);
     if (prediction.goalMet) {
-        return {{}, -1, tr("You're on your way home already: just fly.")};
+        return {{},
+                -1,
+                to == Planet::Earth ? tr("You're on your way home already: just fly.")
+                                    : tr("You're on your way already: just fly.")};
     }
-    const double soi = sphereOfInfluence(Planet::Earth, now);
-    const bool reaches = prediction.earthArrival.has_value() ||
-                         (prediction.closest.valid && prediction.closest.distance < soi);
-    // Where the burn just added (or changed) at `epoch` sits in the list.
-    const auto indexAt = [&](double epoch) {
-        std::ranges::stable_sort(voyage.burns, {}, &Burn::epoch);
-        const auto it =
-            std::ranges::find_if(voyage.burns, [&](const Burn& b) { return b.epoch == epoch; });
-        return static_cast<std::size_t>(it - voyage.burns.begin());
-    };
+    const PlanetPass& closest = prediction.closestPasses.at(static_cast<std::size_t>(to));
+    const double soi = sphereOfInfluence(to, now);
+    const bool reaches =
+        prediction.arrival.has_value() || (closest.valid && closest.distance < soi);
 
     if (!reaches) {
         // Start again from here: the cheapest transfer from where the ship
-        // is now, replacing the burns still to come.
+        // is now (or from the planet it's parked around), replacing the
+        // burns still to come.
         std::erase_if(voyage.burns, [&](const Burn& b) { return b.epoch >= now; });
         const bool replaced = voyage.burns.size() < burns.size();
         const VoyageSample here = voyageStateAt(voyage, now);
-        const SearchSpan span = searchSpan(here.r, here.v);
+        DepartureFrom from;
+        Vec3 r = here.r;
+        Vec3 v = here.v;
+        if (const auto parked = parkedAround(now, here.r, here.v)) {
+            const Vec3 pr = planetPosition(*parked, now);
+            const Vec3 pv = planetVelocity(*parked, now);
+            const OrbitalElements el = elementsFromState(here.r - pr, here.v - pv,
+                                                         planetMu(*parked), planetRadius(*parked));
+            from = {parked, {el.periapsis, el.apoapsis}};
+            r = pr;
+            v = pv;
+        }
+        const SearchSpan span = searchSpan(r, v, to);
         const double window = std::max(kHintWindow, span.window);
-        const auto plan = cheapestWayHome(now, here.r, here.v, voyage.goal, window,
-                                          std::max(kHintLongestFlight, span.longestFlight));
+        const auto plan = cheapestTransfer(now, r, v, from, to, voyage.goal, window,
+                                           std::max(kHintLongestFlight, span.longestFlight));
         if (!plan) {
             return {{},
                     -1,
-                    tr("No way home turns up from here in the next %1 months.")
+                    tr("No way to %1 turns up from here in the next %2 months.")
+                        .arg(name)
                         .arg(std::lround(window / (365.25 * kDay) * 12.0))};
         }
-        const auto departure = burnTowardsEarth(voyage, plan->departure, plan->arrival);
-        if (!departure) return {{}, -1, tr("No way home turns up from here.")};
+        const auto departure = transferBurn(voyage, plan->departure, plan->arrival);
+        if (!departure) return {{}, -1, tr("No way to %1 turns up from here.").arg(name)};
         voyage.burns.push_back(*departure);
-        const auto index = voyage.burns.size() - 1;
-        if (const auto tuned = refineAim(voyage, index)) voyage.burns[index] = *tuned;
+        auto index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, departure->epoch));
+        if (const auto tuned = aimAtDestination(voyage, index)) {
+            voyage.burns[index] = *tuned;
+            index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, tuned->epoch));
+        }
+        const Burn& first = voyage.burns[index];
         QString message =
-            tr("The cheapest way home leaves on %1 with a burn of %2, and arrives on %3. "
-               "Fly there and it fires.")
-                .arg(display::date(plan->departure), display::speed(burnSize(voyage.burns[index])),
-                     display::date(plan->arrival));
+            from.planet
+                ? tr("The cheapest way to %1 leaves your orbit on %2 with a burn of %3, at just "
+                     "the right point in it, and arrives on %4. Fly there and it fires.")
+                      .arg(name, display::date(first.epoch), display::speed(burnSize(first)),
+                           display::date(plan->arrival))
+                : tr("The cheapest way to %1 leaves on %2 with a burn of %3, and arrives on "
+                     "%4. Fly there and it fires.")
+                      .arg(name, display::date(first.epoch), display::speed(burnSize(first)),
+                           display::date(plan->arrival));
         if (replaced) message += QLatin1Char(' ') + tr("(It replaces the burns you had planned.)");
         return {voyage.burns, static_cast<int>(index), message};
     }
 
-    // On Hard, once the pass is aimed just above the air: brake at perigee.
+    // On Hard, once the pass is aimed just above the air (or the planet):
+    // brake at the low point.
     if (voyage.goal == Goal::EarthOrbit && prediction.entrySpeed == 0.0) {
         const double altitude = prediction.closest.distance - kRadiusEarth;
         if (altitude >= 150e3 && altitude < 2000e3) {
             if (const auto brake = captureBurn(voyage)) {
                 voyage.burns.push_back(*brake);
-                const auto index = indexAt(brake->epoch);
-                return {voyage.burns, static_cast<int>(index),
+                const int index = indexOfEpoch(voyage.burns, brake->epoch);
+                return {voyage.burns, index,
                         tr("Brake at your closest to the Earth, on %1: %2 against your motion "
                            "slows you enough for its gravity to keep you.")
                             .arg(display::date(brake->epoch), display::speed(burnSize(*brake)))};
+            }
+        }
+    }
+    if (voyage.goal == Goal::PlanetOrbit && closest.valid && !prediction.hitPlanet) {
+        const double radii = closest.distance / planetRadius(to);
+        if (radii >= VoyageOptions{}.orbitMinPeriapsisRadii && radii < 3.0) {
+            if (const auto brake = captureBurn(voyage)) {
+                voyage.burns.push_back(*brake);
+                const int index = indexOfEpoch(voyage.burns, brake->epoch);
+                return {
+                    voyage.burns, index,
+                    tr("Brake at your closest to %1, on %2: %3 against your motion slows "
+                       "you enough for its gravity to keep you.")
+                        .arg(name, display::date(brake->epoch), display::speed(burnSize(*brake)))};
             }
         }
     }
@@ -382,10 +441,10 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
         if (aimed && approachSpeed(prediction.closest) > fastestReentryArrival() + 10.0) {
             if (const auto brake = approachBrake(voyage, now)) {
                 voyage.burns.push_back(*brake);
-                auto index = indexAt(brake->epoch);
+                auto index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, brake->epoch));
                 if (const auto tuned = refineAim(voyage, index)) {
                     voyage.burns[index] = *tuned;
-                    index = indexAt(tuned->epoch);
+                    index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, tuned->epoch));
                 }
                 // Energy around the Earth: v_entry² = v∞² + 2μ/r_I.
                 const double rI = kRadiusEarth + VoyageOptions{}.entryInterfaceAltitude;
@@ -407,7 +466,7 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
 
     // Already braking near the Earth for a landing: aim with that burn (a
     // correction before it would be flown without it, and miss).
-    const double arrival = prediction.earthArrival.value_or(prediction.closest.epoch);
+    const double arrival = prediction.arrival.value_or(closest.epoch);
     if (voyage.goal == Goal::Reentry) {
         const auto late = std::ranges::find_if(voyage.burns, [&](const Burn& b) {
             return b.epoch >= now && b.epoch >= arrival && b.epoch < prediction.closest.epoch;
@@ -419,15 +478,15 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
                 return {voyage.burns, static_cast<int>(index),
                         tr("Changing your burn on %1 to %2 lines you up for %3.")
                             .arg(display::date(tuned->epoch), display::speed(burnSize(*tuned)),
-                                 goalPhrase(voyage.goal))};
+                                 goalPhrase(voyage.goal, to))};
             }
         }
     }
 
     // A course correction a few weeks out (or half way, if that's sooner),
-    // and before reaching the Earth's sphere of influence (or before the
-    // closest approach, once inside it).
-    const double target = arrival > now ? arrival : prediction.closest.epoch;
+    // and before reaching the destination's sphere of influence (or before
+    // the closest approach, once inside it).
+    const double target = arrival > now ? arrival : closest.epoch;
     double when = target - kCorrectionLead;
     if (when <= now) when = now + 0.5 * (target - now);
     voyage.burns.push_back({when, 0.0, 0.0, 0.0});
@@ -435,11 +494,11 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
     const auto it = std::ranges::find_if(
         voyage.burns, [&](const Burn& b) { return b.epoch == when && burnSize(b) == 0.0; });
     const auto index = static_cast<std::size_t>(it - voyage.burns.begin());
-    const auto tuned = refineAim(voyage, index);
+    const auto tuned = aimAtDestination(voyage, index);
     if (!tuned) return {{}, -1, tr("No small correction lines you up from here: try a new plan.")};
     voyage.burns[index] = *tuned;
-    return {
-        voyage.burns, static_cast<int>(index),
-        tr("A small correction on %1 (%2) lines you up for %3.")
-            .arg(display::date(when), display::speed(burnSize(*tuned)), goalPhrase(voyage.goal))};
+    return {voyage.burns, static_cast<int>(index),
+            tr("A small correction on %1 (%2) lines you up for %3.")
+                .arg(display::date(when), display::speed(burnSize(*tuned)),
+                     goalPhrase(voyage.goal, to))};
 }

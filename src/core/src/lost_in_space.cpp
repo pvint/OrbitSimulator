@@ -81,6 +81,10 @@ struct NearPlanet {
 
 NearPlanet nearPlanetFor(Region region) {
     switch (region) {
+    case Region::Mercury: // sphere of influence 112,000 km
+        return {Planet::Mercury, degToRad(2.0), degToRad(6.0), 800.0};
+    case Region::Earth: // (a game near the Earth starts in orbit instead)
+        return {Planet::Earth, degToRad(3.0), degToRad(8.0), 500.0};
     case Region::Venus:
         return {Planet::Venus, degToRad(2.0), degToRad(6.0), 600.0};
     case Region::Mars:
@@ -120,7 +124,9 @@ PositionVelocity randomStart(Region region, const Setup& setup, Random& random, 
         // The main belt: 2.2 to 3.2 au, most orbits only a little
         // eccentric and tilted.
         return fromElements(2.2, 3.2, 0.12, 10.0);
+    case Region::Mercury:
     case Region::Venus:
+    case Region::Earth:
     case Region::Mars:
     case Region::Jupiter:
     case Region::Saturn:
@@ -162,17 +168,16 @@ PositionVelocity randomStart(Region region, const Setup& setup, Random& random, 
     return {start.r, start.v + dv};
 }
 
-/// The Earth's position and velocity at the start of each day from `epoch`
+/// A planet's position and velocity at the start of each day from `epoch`
 /// on, so the transfer search doesn't recompute them for every pair of days.
-class EarthTable {
+class PlanetTable {
 public:
-    EarthTable(double epoch, double span) : m_epoch(epoch) {
+    PlanetTable(Planet planet, double epoch, double span) : m_planet(planet), m_epoch(epoch) {
         const auto days = static_cast<std::size_t>(std::ceil(span / kDay)) + 1;
         m_states.reserve(days);
         for (std::size_t i = 0; i < days; ++i) {
             const double t = epoch + static_cast<double>(i) * kDay;
-            m_states.push_back(
-                {planetPosition(Planet::Earth, t), planetVelocity(Planet::Earth, t)});
+            m_states.push_back({planetPosition(planet, t), planetVelocity(planet, t)});
         }
     }
     /// On a whole day from the start: from the table; otherwise computed.
@@ -183,28 +188,33 @@ public:
             whole < static_cast<double>(m_states.size())) {
             return m_states[static_cast<std::size_t>(whole)];
         }
-        return {planetPosition(Planet::Earth, t), planetVelocity(Planet::Earth, t)};
+        return {planetPosition(m_planet, t), planetVelocity(m_planet, t)};
     }
 
 private:
+    Planet m_planet;
     double m_epoch;
     std::vector<TwoBodyState> m_states;
 };
 
-/// One candidate transfer: leave a ship in state `ship` at `departure`,
-/// arrive at the Earth after `flight`. Nothing if Lambert has no answer.
-std::optional<TransferPlan> transfer(const TwoBodyState& ship, double departure, double flight,
-                                     const EarthTable& earth, Goal goal) {
-    const TwoBodyState e = earth.at(departure + flight);
+/// One candidate transfer: leave at `departure` from `ship` (the ship's own
+/// state, or the planet it is parked around), arrive at the destination
+/// after `flight`. Nothing if Lambert has no answer.
+std::optional<TransferPlan> transfer(const TwoBodyState& ship, const DepartureFrom& from,
+                                     double departure, double flight, const PlanetTable& target,
+                                     Planet to, Goal goal) {
+    const TwoBodyState e = target.at(departure + flight);
     const auto lambert = solveLambert(ship.r, e.r, flight, kMuSun);
     if (!lambert) return std::nullopt;
     TransferPlan plan;
     plan.departure = departure;
     plan.arrival = departure + flight;
     plan.departureDeltaV = lambert->v1 - ship.v;
-    plan.departureCost = norm(plan.departureDeltaV);
+    plan.departureCost = from.planet
+                             ? departureCost(*from.planet, from.orbit, norm(plan.departureDeltaV))
+                             : norm(plan.departureDeltaV);
     plan.vInfinity = norm(lambert->v2 - e.v);
-    plan.arrivalCost = arrivalCost(goal, plan.vInfinity);
+    plan.arrivalCost = arrivalCost(goal, plan.vInfinity, to);
     return plan;
 }
 
@@ -240,6 +250,10 @@ std::string_view regionKey(Region region) {
     switch (region) {
     case Region::BetweenPlanets:
         return "between";
+    case Region::Mercury:
+        return "mercury";
+    case Region::Earth:
+        return "earth";
     case Region::Venus:
         return "venus";
     case Region::Mars:
@@ -269,6 +283,10 @@ std::string_view regionName(Region region) {
     switch (region) {
     case Region::BetweenPlanets:
         return "Between the planets";
+    case Region::Mercury:
+        return "Near Mercury";
+    case Region::Earth:
+        return "The Earth";
     case Region::Venus:
         return "Near Venus";
     case Region::Mars:
@@ -287,16 +305,109 @@ std::string_view regionName(Region region) {
     return "";
 }
 
-Goal goalFor(Difficulty difficulty) {
+std::optional<Planet> regionPlanet(Region region) {
+    switch (region) {
+    case Region::BetweenPlanets:
+    case Region::AsteroidBelt:
+        return std::nullopt;
+    case Region::Mercury:
+        return Planet::Mercury;
+    case Region::Venus:
+        return Planet::Venus;
+    case Region::Earth:
+        return Planet::Earth;
+    case Region::Mars:
+        return Planet::Mars;
+    case Region::Jupiter:
+        return Planet::Jupiter;
+    case Region::Saturn:
+        return Planet::Saturn;
+    case Region::Uranus:
+        return Planet::Uranus;
+    case Region::Neptune:
+        return Planet::Neptune;
+    }
+    return std::nullopt;
+}
+
+Goal goalFor(Difficulty difficulty, Planet destination) {
+    const bool home = destination == Planet::Earth;
     switch (difficulty) {
     case Difficulty::Easy:
-        return Goal::ReachEarth;
+        return home ? Goal::ReachEarth : Goal::ReachPlanet;
     case Difficulty::Normal:
-        return Goal::Reentry;
+        return home ? Goal::Reentry : Goal::ClosePass;
     case Difficulty::Hard:
-        return Goal::EarthOrbit;
+        return home ? Goal::EarthOrbit : Goal::PlanetOrbit;
     }
     return Goal::ReachEarth;
+}
+
+ParkingOrbit parkingOrbit(Planet planet) {
+    const double radius = planetRadius(planet);
+    switch (planet) {
+    case Planet::Mercury:
+    case Planet::Earth:
+        return {radius + 200e3, radius + 200e3};
+    case Planet::Venus: // above its thick air
+    case Planet::Mars:
+        return {radius + 300e3, radius + 300e3};
+    case Planet::Jupiter:
+    case Planet::Saturn:
+    case Planet::Uranus:
+    case Planet::Neptune:
+        // A long ellipse, like Juno's: a low circular orbit around a giant
+        // is very deep in its gravity (escaping Jupiter from 1.1 radii takes
+        // about 17 km/s), while from the low point of an ellipse reaching
+        // out to 50 radii it takes a few.
+        return {1.1 * radius, 50.0 * radius};
+    }
+    return {radius + 200e3, radius + 200e3};
+}
+
+double captureApoapsis(Planet planet, double epoch, const VoyageOptions& options) {
+    if (planet == Planet::Earth) return 0.5 * options.captureMaxApogee;
+    return std::min(0.2 * sphereOfInfluence(planet, epoch), 100.0 * planetRadius(planet));
+}
+
+double aimPeriapsis(Goal goal, Planet planet) {
+    const double radius = planetRadius(planet);
+    switch (goal) {
+    case Goal::ReachPlanet:
+        return 10.0 * radius;
+    case Goal::ClosePass:
+        return 2.0 * radius;
+    case Goal::PlanetOrbit:
+        return 1.1 * radius;
+    case Goal::ReachEarth:
+        return kRadiusEarth + 1000e3;
+    case Goal::Reentry:
+    case Goal::EarthOrbit:
+        return kRadiusEarth + kCapturePerigeeAltitude;
+    }
+    return 10.0 * radius;
+}
+
+double departureCost(Planet planet, const ParkingOrbit& orbit, double vInfinity) {
+    // Vis-viva at the low point: on the escape path v² = v∞² + 2μ/r_p, on
+    // the parking orbit v² = 2μ/r_p − 2μ/(r_p + r_a).
+    const double mu = planetMu(planet);
+    const double rp = orbit.periapsis;
+    const double escaping = std::sqrt(vInfinity * vInfinity + 2.0 * mu / rp);
+    const double parked = std::sqrt(2.0 * mu / rp - 2.0 * mu / (rp + orbit.apoapsis));
+    return escaping - parked;
+}
+
+double arrivalCost(Goal goal, double vInfinity, Planet destination, const VoyageOptions& options) {
+    if (destination == Planet::Earth) return arrivalCost(goal, vInfinity, options);
+    if (goal != Goal::PlanetOrbit) return 0.0;
+    // Braking at the low point of the pass into a long ellipse.
+    const double mu = planetMu(destination);
+    const double rp = aimPeriapsis(goal, destination);
+    const double ra = captureApoapsis(destination, 0.0, options);
+    const double arriving = std::sqrt(vInfinity * vInfinity + 2.0 * mu / rp);
+    const double captured = std::sqrt(2.0 * mu / rp - 2.0 * mu / (rp + ra));
+    return arriving - captured;
 }
 
 double arrivalCost(Goal goal, double vInfinity, const VoyageOptions& options) {
@@ -313,6 +424,10 @@ double arrivalCost(Goal goal, double vInfinity, const VoyageOptions& options) {
         const double captured = std::sqrt(2.0 * mu / rp - 2.0 * mu / (rp + ra));
         return arriving - captured;
     }
+    case Goal::ReachPlanet:
+    case Goal::ClosePass:
+    case Goal::PlanetOrbit:
+        break;
     }
     return 0.0;
 }
@@ -341,21 +456,37 @@ double aimImpactParameter(Goal goal, double vInfinity, const VoyageOptions& opti
     }
     case Goal::EarthOrbit:
         return fromPerigee(kCapturePerigeeAltitude);
+    case Goal::ReachPlanet:
+    case Goal::ClosePass:
+    case Goal::PlanetOrbit:
+        break;
     }
     return 0.0;
 }
 
 std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const Vec3& v, Goal goal,
                                             double window, double longestFlight) {
-    const EarthTable earth(epoch, window + longestFlight + 10.0 * kDay);
+    return cheapestTransfer(epoch, r, v, {}, Planet::Earth, goal, window, longestFlight);
+}
+
+std::optional<TransferPlan> cheapestTransfer(double epoch, const Vec3& r, const Vec3& v,
+                                             const DepartureFrom& from, Planet to, Goal goal,
+                                             double window, double longestFlight) {
+    const PlanetTable target(to, epoch, window + longestFlight + 10.0 * kDay);
     const TwoBodyState start{r, v};
     std::optional<TransferPlan> best;
     const auto consider = [&](const TwoBodyState& ship, double departure, double flight) {
         if (flight < kShortestFlight) return;
-        const auto plan = transfer(ship, departure, flight, earth, goal);
+        const auto plan = transfer(ship, from, departure, flight, target, to, goal);
         if (plan && (!best || plan->total() < best->total())) best = plan;
     };
-    const auto shipAt = [&](double departure) {
+    // Where the ship leaves from: its own orbit, or the planet it's parked
+    // around (it leaves from there, at the cost of climbing out).
+    const auto shipAt = [&](double departure) -> TwoBodyState {
+        if (from.planet) {
+            return {planetPosition(*from.planet, departure),
+                    planetVelocity(*from.planet, departure)};
+        }
         return propagateKepler(start, departure - epoch, kMuSun);
     };
 
@@ -389,58 +520,142 @@ std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const V
     return best;
 }
 
-SearchSpan searchSpan(const Vec3& r, const Vec3& v) {
+SearchSpan searchSpan(const Vec3& r, const Vec3& v, Planet to) {
     const OrbitalElements el = elementsFromState(r, v, kMuSun, kRadiusSun);
+    const PlanetOrbit target = planetOrbit(to, 0.0);
+    const double targetPeriod = kTwoPi * std::sqrt(target.semiMajorAxis * target.semiMajorAxis *
+                                                   target.semiMajorAxis / kMuSun);
     SearchSpan span;
-    // The synodic period: the ship gains (or loses) a lap on the Earth at
-    // the rate 1/T − 1/T_earth.
-    const double lapRate = el.bound ? std::abs(1.0 / el.period - 1.0 / kYear) : 0.0;
+    // The synodic period: the ship gains (or loses) a lap on the target at
+    // the rate 1/T − 1/T_target.
+    const double lapRate = el.bound ? std::abs(1.0 / el.period - 1.0 / targetPeriod) : 0.0;
     span.window = lapRate > 0.0 ? std::clamp(1.1 / lapRate, kYear, 2.2 * kYear) : kYear;
-    // Half the period of the transfer ellipse (Kepler's third law).
+    // Half the period of the transfer ellipse (Kepler's third law), between
+    // the ship's orbit and the target's, from the far side of the ship's.
     const double far = el.bound ? el.apoapsis : norm(r);
-    const double a = 0.5 * (far + kAstronomicalUnit);
+    const double near = el.bound ? el.periapsis : norm(r);
+    const double a =
+        0.5 * (std::max(far, target.semiMajorAxis) + std::min(near, target.semiMajorAxis));
     const double hohmann = kPi * std::sqrt(a * a * a / kMuSun);
     span.longestFlight = std::clamp(1.3 * hohmann, 540.0 * kDay, kLongestTrip);
     return span;
 }
 
 Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch, Region region) {
-    const Setup setup = setupFor(difficulty);
-    const Goal goal = goalFor(difficulty);
+    return makePuzzle({difficulty, region, false, Planet::Earth}, seed, epoch);
+}
+
+PuzzleSpec settledSpec(PuzzleSpec spec) {
+    const auto planet = regionPlanet(spec.from);
+    if (!planet) spec.inOrbit = false;                // nothing to orbit
+    if (planet == Planet::Earth) spec.inOrbit = true; // never "near" the Earth
+    if (planet == spec.to) spec.to = spec.to == Planet::Earth ? Planet::Mars : Planet::Earth;
+    return spec;
+}
+
+namespace {
+
+/// Fill the tanks for the budget: m_prop = m_dry (e^(Δv/v_e) − 1).
+void fillTanks(Puzzle& puzzle) {
+    Ship& ship = puzzle.voyage.ship;
+    ship.propellant = ship.dryMass * (std::exp(puzzle.budget / exhaustVelocity(ship.isp)) - 1.0);
+}
+
+/// A puzzle starting in orbit around a planet, set up as if the rocket had
+/// launched at just the right time: the departure on the cheapest day
+/// starts from the orbit's low point, in its plane.
+Puzzle orbitPuzzle(Puzzle puzzle, const Setup& setup, Random& random, double epoch) {
+    const Planet home = regionPlanet(puzzle.region).value_or(Planet::Earth);
+    const Planet to = puzzle.destination;
+    const ParkingOrbit orbit = parkingOrbit(home);
+    const Vec3 homeR = planetPosition(home, epoch);
+    const Vec3 homeV = planetVelocity(home, epoch);
+    const SearchSpan span = searchSpan(homeR, homeV, to);
+    const auto plan = cheapestTransfer(epoch, homeR, homeV, {home, orbit}, to, puzzle.voyage.goal,
+                                       span.window, span.longestFlight);
+    if (!plan) return puzzle;
+
+    // The escape path leaves along v∞, turned from its low point by ν∞,
+    // cos ν∞ = −1/e, e = 1 + r_p v∞²/μ. In the plane that holds v∞ and is
+    // as close to the ecliptic as that allows (normal n̂ = ẑ minus its part
+    // along v̂∞), the low point is p̂ = cos ν∞ v̂∞ − sin ν∞ (n̂ × v̂∞), and
+    // the ship moves along n̂ × p̂ there.
+    const double mu = planetMu(home);
+    const double vInf = norm(plan->departureDeltaV);
+    const Vec3 vHat = plan->departureDeltaV / vInf;
+    Vec3 n = Vec3{0.0, 0.0, 1.0} - vHat.z * vHat;
+    n = norm(n) > 1e-6 ? normalized(n) : Vec3{1.0, 0.0, 0.0};
+    const double e = 1.0 + orbit.periapsis * vInf * vInf / mu;
+    const double nuInf = std::acos(-1.0 / e);
+    const Vec3 pHat = std::cos(nuInf) * vHat - std::sin(nuInf) * cross(n, vHat);
+    const Vec3 qHat = cross(n, pHat);
+    const double vPark =
+        std::sqrt(2.0 * mu / orbit.periapsis - 2.0 * mu / (orbit.periapsis + orbit.apoapsis));
+
+    // The game starts a few weeks before, the ship going round meanwhile
+    // (Kepler's problem, backwards from the low point on departure day).
+    const double start = std::max(epoch, plan->departure - random.uniform(10.0, 30.0) * kDay);
+    const TwoBodyState rel =
+        propagateKepler({orbit.periapsis * pHat, vPark * qHat}, start - plan->departure, mu);
+    puzzle.voyage.startEpoch = start;
+    puzzle.voyage.position = planetPosition(home, start) + rel.r;
+    puzzle.voyage.velocity = planetVelocity(home, start) + rel.v;
+    puzzle.voyage.lookAhead = span.longestFlight + (plan->departure - start);
+    puzzle.plan = *plan;
+    puzzle.budget = setup.margin * plan->total() + setup.reserve;
+    fillTanks(puzzle);
+    return puzzle;
+}
+
+} // namespace
+
+Puzzle makePuzzle(const PuzzleSpec& spec, std::uint64_t seed, double epoch) {
+    const PuzzleSpec settled = settledSpec(spec);
+    const Setup setup = setupFor(settled.difficulty);
+    const Planet to = settled.to;
+    const Goal goal = goalFor(settled.difficulty, to);
+    const Region region = settled.from;
     Random random(seed);
     Puzzle puzzle;
-    puzzle.difficulty = difficulty;
+    puzzle.difficulty = settled.difficulty;
     puzzle.region = region;
+    puzzle.inOrbit = settled.inOrbit;
+    puzzle.destination = to;
     puzzle.seed = seed;
-    const bool anywhere = region == Region::BetweenPlanets;
+    puzzle.voyage.goal = goal;
+    puzzle.voyage.destination = to;
+    if (settled.inOrbit) return orbitPuzzle(puzzle, setup, random, epoch);
+    // The difficulty sets the cost range only for the old game: lost
+    // between the planets, going home.
+    const bool ranged = region == Region::BetweenPlanets && to == Planet::Earth;
 
-    // Try random orbits until one's cheapest way home is in the difficulty's
-    // range (between the planets; near a place, any way home will do); if
-    // none is, keep the one closest to it.
+    // Try random orbits until one's cheapest way there is in the
+    // difficulty's range (elsewhere, any way will do); if none is, keep the
+    // one closest to it.
     std::optional<Puzzle> fallback;
     double fallbackOff = 0.0;
     for (int attempt = 0; attempt < 40; ++attempt) {
         const PositionVelocity pv = randomStart(region, setup, random, epoch);
-        // Not too close to the Earth already.
-        if (norm(pv.r - planetPosition(Planet::Earth, epoch)) < 0.1 * kAstronomicalUnit) continue;
+        // Not too close to the destination already.
+        if (norm(pv.r - planetPosition(to, epoch)) < 0.1 * kAstronomicalUnit) continue;
 
         const SearchSpan span =
-            anywhere ? SearchSpan{setup.window, setup.longestFlight} : searchSpan(pv.r, pv.v);
-        const auto plan = cheapestWayHome(epoch, pv.r, pv.v, goal, span.window, span.longestFlight);
+            ranged ? SearchSpan{setup.window, setup.longestFlight} : searchSpan(pv.r, pv.v, to);
+        const auto plan =
+            cheapestTransfer(epoch, pv.r, pv.v, {}, to, goal, span.window, span.longestFlight);
         if (!plan) continue;
 
         Puzzle candidate = puzzle;
         candidate.voyage.startEpoch = epoch;
         candidate.voyage.position = pv.r;
         candidate.voyage.velocity = pv.v;
-        candidate.voyage.goal = goal;
         // Predictions look far enough ahead for the longest trip searched.
         candidate.voyage.lookAhead = span.longestFlight;
         candidate.plan = *plan;
 
         const double cost = plan->total();
         const double off =
-            anywhere ? std::max({0.0, setup.minCost - cost, cost - setup.maxCost}) : 0.0;
+            ranged ? std::max({0.0, setup.minCost - cost, cost - setup.maxCost}) : 0.0;
         if (off == 0.0) {
             fallback = candidate;
             break;
@@ -458,42 +673,128 @@ Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch, Regio
     // then, and give the fuel for whichever is dearer.
     Puzzle chosen = *fallback;
     TransferPlan& plan = chosen.plan;
-    if (const auto burn = burnTowardsEarth(chosen.voyage, plan.departure, plan.arrival)) {
+    if (const auto burn = burnTowards(chosen.voyage, plan.departure, plan.arrival)) {
         plan.departureCost = std::max(plan.departureCost, burnSize(*burn));
     }
     chosen.budget = setup.margin * plan.total() + setup.reserve;
-    // Fill the tanks for that budget: m_prop = m_dry (e^(Δv/v_e) − 1).
-    Ship& ship = chosen.voyage.ship;
-    ship.propellant = ship.dryMass * (std::exp(chosen.budget / exhaustVelocity(ship.isp)) - 1.0);
+    fillTanks(chosen);
     return chosen;
 }
 
 std::optional<Burn> burnTowardsEarth(const Voyage& voyage, double epoch, double arrival,
                                      const VoyageOptions& options) {
+    Voyage home = voyage;
+    home.destination = Planet::Earth;
+    return burnTowards(home, epoch, arrival, options);
+}
+
+std::optional<Burn> burnTowards(const Voyage& voyage, double epoch, double arrival,
+                                const VoyageOptions& options) {
     if (arrival <= epoch) return std::nullopt;
     const VoyageSample here = voyageStateAt(burnsBefore(voyage, epoch, false), epoch, options);
-    if (norm(here.r - planetPosition(Planet::Earth, epoch)) <
-        sphereOfInfluence(Planet::Earth, epoch)) {
+    if (dominantPlanet(epoch, here.r)) {
         return std::nullopt; // the Sun-only Lambert solution means nothing here
     }
-    const Vec3 earthR = planetPosition(Planet::Earth, arrival);
-    const Vec3 earthV = planetVelocity(Planet::Earth, arrival);
+    const Planet to = voyage.destination;
+    const Vec3 targetR = planetPosition(to, arrival);
+    const Vec3 targetV = planetVelocity(to, arrival);
 
-    // Aim beside the Earth, square to the arrival direction, on the side
-    // that makes the pass go round the Earth the way it turns (anticlockwise
-    // seen from the north). The arrival direction depends on the aim point,
-    // so aim, solve, and aim again from the new direction.
-    Vec3 target = earthR;
+    // Aim beside the planet, square to the arrival direction, on the side
+    // that makes the pass go round it the way it turns (anticlockwise seen
+    // from the north). The arrival direction depends on the aim point, so
+    // aim, solve, and aim again from the new direction.
+    Vec3 target = targetR;
     LambertSolution lambert;
     for (int i = 0; i < 3; ++i) {
         const auto solution = solveLambert(here.r, target, arrival - epoch, kMuSun);
         if (!solution) return std::nullopt;
         lambert = *solution;
-        const Vec3 vInfinity = lambert.v2 - earthV;
+        const Vec3 vInfinity = lambert.v2 - targetV;
         const Vec3 side = normalized(cross(normalized(vInfinity), Vec3{0.0, 0.0, 1.0}));
-        target = earthR + aimImpactParameter(voyage.goal, norm(vInfinity), options) * side;
+        const double b =
+            to == Planet::Earth
+                ? aimImpactParameter(voyage.goal, norm(vInfinity), options)
+                : impactParameter(aimPeriapsis(voyage.goal, to), norm(vInfinity), planetMu(to));
+        target = targetR + b * side;
     }
     return burnFromVector(epoch, lambert.v1 - here.v, burnFrameAt(epoch, here.r, here.v));
+}
+
+std::optional<Burn> departureBurn(const Voyage& voyage, double earliest, const Vec3& vInfinity,
+                                  const VoyageOptions& options) {
+    const VoyageSample here =
+        voyageStateAt(burnsBefore(voyage, earliest, false), earliest, options);
+    const auto planet = parkedAround(earliest, here.r, here.v);
+    const double vInf = norm(vInfinity);
+    if (!planet || vInf <= 0.0) return std::nullopt;
+    const double mu = planetMu(*planet);
+    const TwoBodyState start{here.r - planetPosition(*planet, earliest),
+                             here.v - planetVelocity(*planet, earliest)};
+    const OrbitalElements el = elementsFromState(start.r, start.v, mu, planetRadius(*planet));
+    const Vec3 vHat = vInfinity / vInf;
+
+    // Try points round one orbit. At each, the escape path with its low
+    // point there lies in the plane of r̂ and v̂∞, moving along q̂ (square to
+    // r̂, towards v̂∞), at √(v∞² + 2μ/r); it leaves along v̂∞ only if the
+    // angle from r̂ to v̂∞ is ν∞ (cos ν∞ = −1/e, e = 1 + r v∞²/μ). Missing
+    // that costs about v∞ per radian to put right later, so it counts too.
+    constexpr int kPoints = 720;
+    double bestCost = 0.0;
+    std::optional<Burn> best;
+    for (int k = 0; k < kPoints; ++k) {
+        const double t = earliest + el.period * k / kPoints;
+        const TwoBodyState rel = propagateKepler(start, t - earliest, mu);
+        const double r = norm(rel.r);
+        const Vec3 rHat = rel.r / r;
+        const double cosA = std::clamp(dot(rHat, vHat), -1.0, 1.0);
+        const Vec3 q = vHat - cosA * rHat;
+        if (norm(q) < 1e-9) continue;
+        const double e = 1.0 + r * vInf * vInf / mu;
+        const double nuInf = std::acos(-1.0 / e);
+        const Vec3 deltaV = std::sqrt(vInf * vInf + 2.0 * mu / r) * normalized(q) - rel.v;
+        const double cost = norm(deltaV) + vInf * std::abs(std::acos(cosA) - nuInf);
+        if (!best || cost < bestCost) {
+            bestCost = cost;
+            const Vec3 r0 = planetPosition(*planet, t) + rel.r;
+            const Vec3 v0 = planetVelocity(*planet, t) + rel.v;
+            best = burnFromVector(t, deltaV, burnFrameAt(t, r0, v0));
+        }
+    }
+    return best;
+}
+
+std::optional<Burn> transferBurn(const Voyage& voyage, double departure, double arrival,
+                                 const VoyageOptions& options) {
+    if (arrival <= departure) return std::nullopt;
+    const VoyageSample here =
+        voyageStateAt(burnsBefore(voyage, departure, false), departure, options);
+    const auto planet = parkedAround(departure, here.r, here.v);
+    if (!planet) return burnTowards(voyage, departure, arrival, options);
+    // Climbing out of a parked orbit: the v∞ that Lambert's problem asks
+    // for, from the planet's centre, and the best point to burn for it
+    // within half an orbit either side of the planned day.
+    const auto lambert =
+        solveLambert(planetPosition(*planet, departure),
+                     planetPosition(voyage.destination, arrival), arrival - departure, kMuSun);
+    if (!lambert) return std::nullopt;
+    const Vec3 vInfinity = lambert->v1 - planetVelocity(*planet, departure);
+    const TwoBodyState rel{here.r - planetPosition(*planet, departure),
+                           here.v - planetVelocity(*planet, departure)};
+    const double period =
+        elementsFromState(rel.r, rel.v, planetMu(*planet), planetRadius(*planet)).period;
+    double earliest = std::max(voyage.startEpoch, departure - 0.5 * period);
+    for (const Burn& b : voyage.burns) {
+        if (b.epoch < departure) earliest = std::max(earliest, b.epoch + 1.0);
+    }
+    return departureBurn(voyage, earliest, vInfinity, options);
+}
+
+std::optional<Burn> aimAtDestination(const Voyage& voyage, std::size_t index,
+                                     const VoyageOptions& options) {
+    if (voyage.destination == Planet::Earth) return refineAim(voyage, index, options);
+    const FlybyAim aim{voyage.destination, aimPeriapsis(voyage.goal, voyage.destination),
+                       FlybySide::Keep};
+    return aimFlyby(voyage, index, aim, options).burn;
 }
 
 std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
@@ -549,12 +850,11 @@ std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
     std::array<double, 3> x{original.prograde, original.radial, original.normal};
     constexpr double kStep = 0.01;       // m/s, for the finite differences
     constexpr double kTolerance = 500.0; // m in the B-plane
-    for (int iteration = 0; iteration < 12; ++iteration) {
-        const auto f = miss(x);
+    const auto size = [](const std::array<double, 2>& m) { return std::hypot(m[0], m[1]); };
+    auto f = miss(x);
+    for (int iteration = 0; iteration < 25; ++iteration) {
         if (!f) return std::nullopt;
-        if (std::hypot((*f)[0], (*f)[1]) < kTolerance) {
-            return Burn{original.epoch, x[0], x[1], x[2]};
-        }
+        if (size(*f) < kTolerance) return Burn{original.epoch, x[0], x[1], x[2]};
 
         // The Jacobian J (2×3): how the miss moves per m/s in each direction.
         std::array<std::array<double, 3>, 2> jac{};
@@ -575,12 +875,48 @@ std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
         if (std::abs(det) < 1e-30) return std::nullopt;
         const double y0 = (-d * (*f)[0] + b * (*f)[1]) / det;
         const double y1 = (b * (*f)[0] - a * (*f)[1]) / det;
-        for (std::size_t k = 0; k < 3; ++k) x[k] += jac[0][k] * y0 + jac[1][k] * y1;
+        // Far from the answer (a burn deep in a giant's gravity, a trip of
+        // years) the first-order step can overshoot: halve it until the
+        // miss shrinks.
+        bool improved = false;
+        double scale = 1.0;
+        for (int halving = 0; halving < 6 && !improved; ++halving, scale *= 0.5) {
+            std::array<double, 3> xNew = x;
+            for (std::size_t k = 0; k < 3; ++k) {
+                xNew[k] += scale * (jac[0][k] * y0 + jac[1][k] * y1);
+            }
+            const auto next = miss(xNew);
+            if (next && size(*next) < size(*f)) {
+                x = xNew;
+                f = next;
+                improved = true;
+            }
+        }
+        if (!improved) return std::nullopt;
     }
     return std::nullopt;
 }
 
 std::optional<Burn> captureBurn(const Voyage& voyage, const VoyageOptions& options) {
+    if (voyage.destination != Planet::Earth) {
+        // Another planet: brake at the low point of the first pass inside
+        // its sphere of influence, into a long ellipse.
+        const Planet planet = voyage.destination;
+        Voyage trial = voyage;
+        trial.goal = Goal::PlanetOrbit; // fly on past arriving, and past a close pass
+        const auto pass = passAfter(flyVoyage(trial, options), planet, voyage.startEpoch);
+        if (!pass || pass->vInfinity <= 0.0) return std::nullopt;
+        if (pass->distance > sphereOfInfluence(planet, pass->epoch)) return std::nullopt;
+        if (pass->distance < options.orbitMinPeriapsisRadii * planetRadius(planet)) {
+            return std::nullopt; // into the planet
+        }
+        const double mu = planetMu(planet);
+        const double rp = pass->distance;
+        const double ra = std::max(rp, captureApoapsis(planet, pass->epoch, options));
+        const double wanted = std::sqrt(2.0 * mu / rp - 2.0 * mu / (rp + ra));
+        if (pass->speed <= wanted) return std::nullopt;
+        return Burn{pass->epoch, -(pass->speed - wanted), 0.0, 0.0};
+    }
     Voyage trial = voyage;
     trial.goal = Goal::EarthOrbit; // fly past the edge of the sphere of influence
     const VoyageResult result = flyVoyage(trial, options);
@@ -614,19 +950,19 @@ std::optional<Burn> approachBrake(const Voyage& voyage, double notBefore,
     trial.goal = Goal::EarthOrbit; // fly past the edge of the sphere of influence
     const VoyageResult result = flyVoyage(trial, options);
     const EarthApproach& c = result.closest;
-    if (!c.valid || !result.earthArrival || result.end == VoyageEnd::HitSun) return std::nullopt;
+    if (!c.valid || !result.arrival || result.end == VoyageEnd::HitSun) return std::nullopt;
     const double wanted = fastestReentryArrival(options);
     if (approachSpeed(c) <= wanted) return std::nullopt;
 
     // A third of the way in (in time): well inside the sphere of influence,
     // where the burn's directions are taken relative to the Earth, and
     // early enough to aim afterwards.
-    const double arrival = *result.earthArrival;
+    const double arrival = *result.arrival;
     const double epoch = std::max(notBefore, arrival + (c.epoch - arrival) / 3.0);
     if (epoch > c.epoch - 3600.0) return std::nullopt;
     const VoyageSample here = voyageStateAt(burnsBefore(trial, epoch, false), epoch, options);
     const BurnFrame frame = burnFrameAt(epoch, here.r, here.v);
-    if (frame.body != ReferenceBody::Earth) return std::nullopt;
+    if (frame.planet != Planet::Earth) return std::nullopt;
 
     // From the speed here to the one that leaves v∞ = wanted:
     // v² = v∞² + 2μ/r. Prograde in the Earth's frame is along the velocity

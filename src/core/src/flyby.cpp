@@ -3,11 +3,13 @@
 
 #include "orbit/core/angles.hpp"
 #include "orbit/core/ephemeris.hpp"
+#include "orbit/core/lost_in_space.hpp"
 #include "orbit/core/two_body.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 namespace orbit {
@@ -103,6 +105,39 @@ std::optional<Towards> lambertTowards(double epoch, const Vec3& r, const Vec3& v
     return Towards{*best, bestFlight};
 }
 
+/// Leaving a parked orbit for the planet: of the trip times, the one whose
+/// v∞ (from Lambert's problem, from the home planet's centre) is cheapest
+/// to reach from the orbit's low point (the Oberth effect, departureCost).
+struct Departure {
+    Vec3 vInfinity;
+    double cost = 0.0;
+};
+std::optional<Departure> departureTowards(double epoch, Planet home, const TwoBodyState& rel,
+                                          const FlybyAim& aim) {
+    const double mu = planetMu(home);
+    const OrbitalElements el = elementsFromState(rel.r, rel.v, mu, planetRadius(home));
+    const ParkingOrbit orbit{el.periapsis, el.apoapsis};
+    const Vec3 r = planetPosition(home, epoch);
+    const Vec3 v = planetVelocity(home, epoch);
+    const double a = 0.5 * (norm(r) + planetOrbit(aim.planet, epoch).semiMajorAxis);
+    const double longest = std::max(60.0 * kDay, 1.5 * kPi * std::sqrt(a * a * a / kMuSun));
+    constexpr int kTrips = 400;
+    std::optional<Departure> best;
+    for (int i = 0; i <= kTrips; ++i) {
+        const double flight = 20.0 * kDay + (longest - 20.0 * kDay) * i / kTrips;
+        const auto solution =
+            solveLambert(r, planetPosition(aim.planet, epoch + flight), flight, kMuSun);
+        if (!solution) continue;
+        const Vec3 vInfinity = solution->v1 - v;
+        const double cost = departureCost(home, orbit, norm(vInfinity));
+        if (!best || cost < best->cost) best = Departure{vInfinity, cost};
+    }
+    return best;
+}
+
+FlybyAimResult aimFlybyFrom(const Voyage& voyage, std::size_t index, const FlybyAim& aim,
+                            const VoyageOptions& options, bool mayGuess);
+
 } // namespace
 
 BPlane bPlane(const Vec3& r, const Vec3& v, double mu) {
@@ -157,6 +192,13 @@ std::optional<PlanetPass> passAfter(const VoyageResult& result, Planet planet, d
 
 FlybyAimResult aimFlyby(const Voyage& voyage, std::size_t index, const FlybyAim& aim,
                         const VoyageOptions& options) {
+    return aimFlybyFrom(voyage, index, aim, options, true);
+}
+
+namespace {
+
+FlybyAimResult aimFlybyFrom(const Voyage& voyage, std::size_t index, const FlybyAim& aim,
+                            const VoyageOptions& options, bool mayGuess) {
     FlybyAimResult out;
     std::vector<Burn> burns = voyage.burns;
     std::ranges::stable_sort(burns, {}, &Burn::epoch);
@@ -184,16 +226,49 @@ FlybyAimResult aimFlyby(const Voyage& voyage, std::size_t index, const FlybyAim&
 
     Components x{original.prograde, original.radial, original.normal};
     VoyageOptions fly = options;
+    fly.stopAtGoal = false; // fly on past arriving, to the pass
     withBurn(x);
     auto pass = passAfter(flyVoyage(trial, fly), aim.planet, original.epoch);
-    if (!pass || pass->distance > 3.0 * sphereOfInfluence(aim.planet, pass->epoch)) {
+    const bool heading = pass && pass->distance < 3.0 * sphereOfInfluence(aim.planet, pass->epoch);
+    const double available =
+        exhaustVelocity(voyage.ship.isp) * std::log(start.mass / voyage.ship.dryMass);
+    const auto parked = parkedAround(original.epoch, start.r, start.v);
+    if (!heading && parked && mayGuess) {
+        // In orbit around a planet: the cheapest way out towards it, and
+        // the best point in the orbit to burn for that, within half an
+        // orbit of the burn as placed; then aim from there.
+        const TwoBodyState rel{start.r - planetPosition(*parked, original.epoch),
+                               start.v - planetVelocity(*parked, original.epoch)};
+        const auto departure = departureTowards(original.epoch, *parked, rel, aim);
+        if (!departure) return out;
+        out.cheapest = departure->cost;
+        if (departure->cost > available) {
+            out.outOfReach = true;
+            return out;
+        }
+        const double period =
+            elementsFromState(rel.r, rel.v, planetMu(*parked), planetRadius(*parked)).period;
+        double earliest = std::max(voyage.startEpoch, original.epoch - 0.5 * period);
+        if (index > 0) earliest = std::max(earliest, burns[index - 1].epoch + 1.0);
+        const auto burn = departureBurn(before, earliest, departure->vInfinity, options);
+        if (!burn) return out;
+        Voyage moved = voyage;
+        moved.burns = std::move(burns);
+        moved.burns[index] = *burn;
+        std::ranges::stable_sort(moved.burns, {}, &Burn::epoch);
+        const auto at = std::ranges::find_if(moved.burns,
+                                             [&](const Burn& b) { return b.epoch == burn->epoch; });
+        FlybyAimResult aimed = aimFlybyFrom(
+            moved, static_cast<std::size_t>(at - moved.burns.begin()), aim, options, false);
+        aimed.cheapest = departure->cost;
+        return aimed;
+    }
+    if (!heading && !parked) {
         // Not heading there yet: aim with Lambert's problem first, if the
         // tanks hold enough (v_e ln(m / m_dry)).
         const auto v1 = lambertTowards(original.epoch, start.r, start.v, aim);
         if (!v1) return out;
         out.cheapest = norm(v1->v1 - start.v);
-        const double available =
-            exhaustVelocity(voyage.ship.isp) * std::log(start.mass / voyage.ship.dryMass);
         if (out.cheapest > available) {
             out.outOfReach = true;
             return out;
@@ -204,8 +279,8 @@ FlybyAimResult aimFlyby(const Voyage& voyage, std::size_t index, const FlybyAim&
         // Fly long enough to get there, whatever the usual look-ahead.
         fly.stopAt = original.epoch + 1.3 * v1->flight + 60.0 * kDay;
         pass = passAfter(flyVoyage(trial, fly), aim.planet, original.epoch);
-        if (!pass) return out;
     }
+    if (!pass) return out;
     // From now on, fly only until a month past the pass.
     fly.stopAt = pass->epoch + 30.0 * kDay;
 
@@ -292,5 +367,7 @@ FlybyAimResult aimFlyby(const Voyage& voyage, std::size_t index, const FlybyAim&
     }
     return out;
 }
+
+} // namespace
 
 } // namespace orbit

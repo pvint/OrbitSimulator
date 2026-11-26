@@ -68,7 +68,7 @@ TEST_CASE("Burns spend propellant by the rocket equation", "[voyage]") {
 TEST_CASE("Burn directions: prograde speeds up, normal tilts, radial turns outwards", "[voyage]") {
     const Voyage voyage = driftingShip();
     const BurnFrame frame = burnFrameAt(voyage.startEpoch, voyage.position, voyage.velocity);
-    CHECK(frame.body == ReferenceBody::Sun);
+    CHECK_FALSE(frame.planet);
     CHECK_THAT(dot(frame.prograde, frame.radial), WithinAbs(0.0, 1e-12));
     CHECK_THAT(dot(frame.prograde, frame.normal), WithinAbs(0.0, 1e-12));
     CHECK_THAT(norm(frame.radial), WithinAbs(1.0, 1e-12));
@@ -87,8 +87,8 @@ TEST_CASE("Burn directions: prograde speeds up, normal tilts, radial turns outwa
     // Near the Earth, directions are taken relative to it.
     const double t = voyage.startEpoch;
     const Vec3 nearEarth = planetPosition(Planet::Earth, t) + Vec3{1e8, 0, 0};
-    CHECK(burnFrameAt(t, nearEarth, planetVelocity(Planet::Earth, t) + Vec3{0, 500, 0}).body ==
-          ReferenceBody::Earth);
+    CHECK(burnFrameAt(t, nearEarth, planetVelocity(Planet::Earth, t) + Vec3{0, 500, 0}).planet ==
+          Planet::Earth);
 }
 
 TEST_CASE("A ship with no plan just coasts: energy around the Sun barely changes", "[voyage]") {
@@ -134,17 +134,23 @@ namespace {
 /// Play a puzzle the way the hints would, and fly it.
 VoyageResult solveLikeTheHints(const Puzzle& puzzle) {
     const TransferPlan& plan = puzzle.plan;
-    // The departure burn from Lambert, fine-tuned with the real gravity...
+    // The departure burn from Lambert (out of a parked orbit, at its best
+    // point), fine-tuned with the real gravity...
     Voyage voyage = puzzle.voyage;
-    const auto departure = burnTowardsEarth(voyage, plan.departure, plan.arrival);
+    const auto departure = transferBurn(voyage, plan.departure, plan.arrival);
     REQUIRE(departure);
     voyage.burns = {*departure};
-    const auto tuned = refineAim(voyage, 0);
+    const auto tuned = aimAtDestination(voyage, 0);
     REQUIRE(tuned);
     voyage.burns = {*tuned};
-    // ...a course correction a few weeks out...
-    voyage.burns.push_back({plan.arrival - 20 * kDay, 0.0, 0.0, 0.0});
-    const auto correction = refineAim(voyage, 1);
+    // ...a course correction a few weeks before arriving (as the hint
+    // does: before entering the sphere of influence, which for a giant
+    // planet is months before the closest approach)...
+    const VoyageResult outward = flyVoyage(voyage);
+    const double arrival = outward.arrival.value_or(
+        outward.closestPasses.at(static_cast<std::size_t>(voyage.destination)).epoch);
+    voyage.burns.push_back({std::min(plan.arrival, arrival) - 20 * kDay, 0.0, 0.0, 0.0});
+    const auto correction = aimAtDestination(voyage, 1);
     REQUIRE(correction);
     voyage.burns[1] = *correction;
     // ...coming home from far away, braking inside the Earth's sphere of
@@ -157,8 +163,8 @@ VoyageResult solveLikeTheHints(const Puzzle& puzzle) {
             voyage.burns[2] = *aimed;
         }
     }
-    // ...and, to stay, braking at perigee.
-    if (voyage.goal == Goal::EarthOrbit) {
+    // ...and, to stay, braking at the low point.
+    if (voyage.goal == Goal::EarthOrbit || voyage.goal == Goal::PlanetOrbit) {
         const auto brake = captureBurn(voyage);
         REQUIRE(brake);
         voyage.burns.push_back(*brake);
@@ -171,8 +177,12 @@ VoyageResult solveLikeTheHints(const Puzzle& puzzle) {
     CHECK(result.goalMet);
     for (const BurnReport& b : result.burns) CHECK_FALSE(b.shortOfFuel);
     CHECK(result.deltaVLeft > 0.0);
-    // The departure burn's size is close to the Sun-only estimate.
-    CHECK_THAT(burnSize(voyage.burns[0]), WithinRel(plan.departureCost, 0.1));
+    // The departure burn's size is close to the estimate (Sun only, or
+    // climbing out of the parked orbit by the Oberth formula). Out of orbit
+    // around a giant the escape takes months, the Sun pulling all the
+    // while, which the estimate leaves out: more slack there.
+    CHECK_THAT(burnSize(voyage.burns[0]),
+               WithinRel(plan.departureCost, puzzle.inOrbit ? 0.25 : 0.1));
     if (voyage.goal == Goal::Reentry) {
         CHECK(result.entryAngle < degToRad(-5.0));
         CHECK(result.entryAngle > degToRad(-8.0));
@@ -271,4 +281,92 @@ TEST_CASE("Every region's puzzles can be solved on their fuel", "[lost-in-space]
     const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
     CAPTURE(regionName(region), difficultyName(difficulty));
     checkPuzzle(makePuzzle(difficulty, 3, epoch2027(), region));
+}
+
+TEST_CASE("Parked in orbit: Kepler's equations, and the ship stays put", "[lost-in-space][orbit]") {
+    // A puzzle in low Earth orbit, no burns: the prediction stays in the
+    // 200 km orbit for years without integrating thousands of orbits.
+    const Puzzle puzzle =
+        makePuzzle({Difficulty::Easy, Region::Earth, true, Planet::Mars}, 5, epoch2027());
+    REQUIRE(puzzle.inOrbit);
+    CHECK(puzzle.destination == Planet::Mars);
+    CHECK(puzzle.voyage.goal == Goal::ReachPlanet);
+    const VoyageResult coast = flyVoyage(puzzle.voyage);
+    CHECK(coast.end == VoyageEnd::Horizon);
+    CHECK(coast.samples.size() < 5000); // a sample a day
+    const double lowOrbit = kRadiusEarth + 200e3;
+    // Between samples, sampleAt follows the orbit (not a chord across it).
+    for (const double hours : {0.3, 7.7, 1000.1}) {
+        const double t = puzzle.voyage.startEpoch + hours * 3600.0;
+        const VoyageSample s = sampleAt(coast, t);
+        CHECK_THAT(norm(s.r - planetPosition(Planet::Earth, t)), WithinRel(lowOrbit, 1e-6));
+        CHECK(s.parked == Planet::Earth);
+    }
+    CHECK(parkedAround(puzzle.voyage.startEpoch, puzzle.voyage.position, puzzle.voyage.velocity) ==
+          Planet::Earth);
+    // Burn directions in orbit are relative to the Earth.
+    CHECK(burnFrameAt(puzzle.voyage.startEpoch, puzzle.voyage.position, puzzle.voyage.velocity)
+              .planet == Planet::Earth);
+}
+
+TEST_CASE("The Oberth effect: leaving low orbit costs less than v∞", "[lost-in-space][orbit]") {
+    // From 200 km, v∞ = 3 km/s for Mars costs √(v∞² + 2μ/r) − √(μ/r)
+    // ≈ 3.6 km/s: the escape itself (3.2 km/s more than orbit) is mostly
+    // paid for by the depth of the Earth's gravity.
+    const ParkingOrbit leo = parkingOrbit(Planet::Earth);
+    const double cost = departureCost(Planet::Earth, leo, 3000.0);
+    CHECK_THAT(cost, WithinAbs(3600.0, 50.0));
+    // Twice the v∞ for much less than twice the cost.
+    CHECK(departureCost(Planet::Earth, leo, 6000.0) < 1.7 * cost);
+    // A giant's long ellipse: a small burn at its low point.
+    const ParkingOrbit jupiter = parkingOrbit(Planet::Jupiter);
+    CHECK(jupiter.apoapsis > 40.0 * jupiter.periapsis);
+    CHECK(departureCost(Planet::Jupiter, jupiter, 6000.0) < 1500.0);
+}
+
+TEST_CASE("Flying into a planet ends the flight", "[lost-in-space][orbit]") {
+    // 300,000 km from Mars, heading straight at its centre at 3 km/s.
+    const double t = epoch2027();
+    Voyage voyage;
+    voyage.startEpoch = t;
+    const Vec3 out = normalized(Vec3{1.0, 2.0, 0.5});
+    voyage.position = planetPosition(Planet::Mars, t) + 3.0e8 * out;
+    voyage.velocity = planetVelocity(Planet::Mars, t) - 3000.0 * out;
+    voyage.goal = Goal::ReachPlanet;
+    voyage.destination = Planet::Jupiter;
+    const VoyageResult result = flyVoyage(voyage);
+    CHECK(result.end == VoyageEnd::HitPlanet);
+    CHECK(result.hitPlanet == Planet::Mars);
+    CHECK_FALSE(result.goalMet);
+}
+
+TEST_CASE("Leaving the Earth: every destination's puzzles can be solved", "[lost-in-space][out]") {
+    const Planet to = GENERATE(Planet::Venus, Planet::Mars, Planet::Jupiter, Planet::Saturn);
+    const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
+    CAPTURE(planetName(to), difficultyName(difficulty));
+    const Puzzle puzzle = makePuzzle({difficulty, Region::Earth, true, to}, 3, epoch2027());
+    CHECK(puzzle.voyage.goal == goalFor(difficulty, to));
+    CHECK(puzzle.plan.departure - puzzle.voyage.startEpoch < 31.0 * kDay);
+    checkPuzzle(puzzle);
+}
+
+TEST_CASE("Home from orbit around another planet", "[lost-in-space][orbit]") {
+    const Region from = GENERATE(Region::Mars, Region::Venus, Region::Jupiter);
+    const Difficulty difficulty = GENERATE(Difficulty::Easy, Difficulty::Normal, Difficulty::Hard);
+    CAPTURE(regionName(from), difficultyName(difficulty));
+    const Puzzle puzzle = makePuzzle({difficulty, from, true, Planet::Earth}, 4, epoch2027());
+    REQUIRE(puzzle.inOrbit);
+    const Planet home = *regionPlanet(from);
+    CHECK(parkedAround(puzzle.voyage.startEpoch, puzzle.voyage.position, puzzle.voyage.velocity) ==
+          home);
+    checkPuzzle(puzzle);
+}
+
+TEST_CASE("Specs are made sensible", "[lost-in-space]") {
+    // The Earth always in orbit, a drifting place never, and never to the
+    // planet you start at.
+    CHECK(settledSpec({Difficulty::Easy, Region::Earth, false, Planet::Mars}).inOrbit);
+    CHECK_FALSE(settledSpec({Difficulty::Easy, Region::AsteroidBelt, true, Planet::Earth}).inOrbit);
+    CHECK(settledSpec({Difficulty::Easy, Region::Mars, true, Planet::Mars}).to == Planet::Earth);
+    CHECK(settledSpec({Difficulty::Easy, Region::Earth, true, Planet::Earth}).to == Planet::Mars);
 }

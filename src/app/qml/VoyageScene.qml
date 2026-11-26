@@ -57,28 +57,47 @@ Item {
     property string cardText
     property string cardButton: qsTr("OK")
 
-    /// Where the last game started (orbit::Region's order); kept for the next.
+    /// The last game's choices (orbit::Region's and orbit::Planet's order),
+    /// kept for the next: where from, in orbit there or not, where to.
     property int regionIndex: 0
+    property bool inOrbit: false
+    property int destinationIndex: 2
+    /// Each place: its name, the planet it's about (orbit::Planet, or -1)
+    /// and what it's like.
     readonly property var regions: [
-        { name: qsTr("Between the planets"),
+        { name: qsTr("Between the planets"), planet: -1,
           about: qsTr("A random orbit not far from the Earth's: the place to start. Harder puzzles start further out.") },
-        { name: qsTr("Near Venus"),
-          about: qsTr("Closer to the Sun than the Earth: speed up to climb out to its orbit. A trip of about half a year.") },
-        { name: qsTr("Near Mars"),
-          about: qsTr("Further out than the Earth: slow down to fall in towards the Sun. A trip of about a year.") },
-        { name: qsTr("Asteroid belt"),
+        { name: qsTr("Mercury"), planet: 0,
+          about: qsTr("Closest to the Sun and fastest: its gravity well is the Sun's, and climbing out of it costs a lot.") },
+        { name: qsTr("Venus"), planet: 1,
+          about: qsTr("Closer to the Sun than the Earth: speed up to climb out to its orbit. About half a year to the Earth.") },
+        { name: qsTr("Earth"), planet: 2,
+          about: qsTr("Home: start in a low orbit, 200 km up, and set off for another planet.") },
+        { name: qsTr("Mars"), planet: 3,
+          about: qsTr("Further out than the Earth: slow down to fall in towards the Sun. About a year to the Earth.") },
+        { name: qsTr("Asteroid belt"), planet: -1,
           about: qsTr("Between Mars and Jupiter. A long fall home, more than a year, arriving fast.") },
-        { name: qsTr("Near Jupiter"),
-          about: qsTr("Five times further from the Sun than the Earth. About three years home, so fast at the end that landing means braking first.") },
-        { name: qsTr("Near Saturn"),
-          about: qsTr("Ten times further out. Six years home the direct way: can Jupiter's gravity help?") },
-        { name: qsTr("Near Uranus"),
-          about: qsTr("Twenty times further out. Sixteen years home the direct way, unless a giant planet bends your path.") },
-        { name: qsTr("Near Neptune"),
-          about: qsTr("The edge of the planets, thirty times further out. Thirty years home the direct way: look for a gravity assist.") }
+        { name: qsTr("Jupiter"), planet: 4,
+          about: qsTr("Five times further from the Sun than the Earth. About three years to the Earth, arriving so fast that landing means braking first.") },
+        { name: qsTr("Saturn"), planet: 5,
+          about: qsTr("Ten times further out. Six years to the Earth the direct way: can Jupiter's gravity help?") },
+        { name: qsTr("Uranus"), planet: 6,
+          about: qsTr("Twenty times further out. Sixteen years to the Earth the direct way, unless a giant planet bends your path.") },
+        { name: qsTr("Neptune"), planet: 7,
+          about: qsTr("The edge of the planets, thirty times further out. Thirty years the direct way: look for a gravity assist.") }
     ]
+    readonly property int startPlanet: regions[regionIndex].planet
+    /// In orbit: always around the Earth, never where there's no planet.
+    readonly property bool startsInOrbit: startPlanet === 2 || (startPlanet >= 0 && inOrbit)
+    readonly property bool goingHome: destinationIndex === 2
+    readonly property string destinationName: planetNames[destinationIndex] ?? ""
+    /// Picking where from: not to the same planet (from the Earth, Mars).
+    function chooseRegion(index) {
+        regionIndex = index
+        if (regions[index].planet === destinationIndex) destinationIndex = destinationIndex === 2 ? 3 : 2
+    }
 
-    signal startChosen(int region, int difficulty)
+    signal startChosen(int region, bool inOrbit, int destination, int difficulty)
     signal cardAccepted()
 
     // For C++ to fill in.
@@ -103,8 +122,14 @@ Item {
     property vector3d panOffset: Qt.vector3d(0, 0, 0)
     readonly property vector3d earthPosition: planetPositions.length > 2 ? planetPositions[2]
                                                                          : Qt.vector3d(0, 0, 0)
+    readonly property vector3d destinationPosition:
+        planetPositions.length > destinationIndex ? planetPositions[destinationIndex]
+                                                  : Qt.vector3d(0, 0, 0)
+    /// What the camera circles: 0 the Sun, 1 the ship, 2 the Earth, 3 the
+    /// destination.
     readonly property vector3d centrePoint: followTarget === 1 ? shipPosition
                                           : followTarget === 2 ? earthPosition
+                                          : followTarget === 3 ? destinationPosition
                                           : Qt.vector3d(0, 0, 0)
     readonly property vector3d target: centrePoint.plus(panOffset)
     readonly property real minDistance: followTarget === 0 ? 2 * sunRadius : 0.02
@@ -509,78 +534,117 @@ Item {
                 wrapMode: Text.WordWrap
                 lineHeight: 1.2
             }
-            // Start: where you're lost...
-            Text {
+            // Start: where from...
+            component Chip: Button {
+                id: chip
+                property bool chosen: false
+                implicitHeight: 28
+                leftPadding: 12
+                rightPadding: 12
+                opacity: enabled ? 1.0 : 0.35
+                contentItem: Text {
+                    text: chip.text
+                    color: chip.chosen ? "#0f172a" : "#e2e8f0"
+                    font.pixelSize: 13
+                    font.bold: chip.chosen
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Rectangle {
+                    radius: 14
+                    color: chip.chosen ? "#93c5fd" : (chip.hovered ? "#1e3a5f" : "#1e293b")
+                    border.color: chip.chosen || chip.hovered ? "#60a5fa" : "#334155"
+                }
+            }
+            component Heading: Text {
                 visible: root.cardMode === "start"
-                text: qsTr("Where are you lost?")
                 color: "#f8fafc"
                 font.pixelSize: 14
                 font.bold: true
             }
+            Heading { text: qsTr("Where are you?") }
             Flow {
                 visible: root.cardMode === "start"
                 Layout.fillWidth: true
                 spacing: 6
                 Repeater {
                     model: root.cardMode === "start" ? root.regions : []
-                    delegate: Button {
+                    delegate: Chip {
                         required property var modelData
                         required property int index
-                        readonly property bool chosen: index === root.regionIndex
                         objectName: "button-region-" + index
-                        implicitHeight: 30
-                        leftPadding: 14
-                        rightPadding: 14
-                        contentItem: Text {
-                            text: modelData.name
-                            color: parent.chosen ? "#0f172a" : "#e2e8f0"
-                            font.pixelSize: 13
-                            font.bold: parent.chosen
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        background: Rectangle {
-                            radius: 15
-                            color: parent.chosen ? "#93c5fd" : (parent.hovered ? "#1e3a5f" : "#1e293b")
-                            border.color: parent.chosen || parent.hovered ? "#60a5fa" : "#334155"
-                        }
-                        onClicked: root.regionIndex = index
+                        text: modelData.name
+                        chosen: index === root.regionIndex
+                        onClicked: root.chooseRegion(index)
                     }
+                }
+            }
+            CheckBox {
+                id: orbitBox
+                visible: root.cardMode === "start" && root.startPlanet >= 0
+                objectName: "check-in-orbit"
+                enabled: root.startPlanet !== 2
+                checked: root.startsInOrbit
+                onToggled: root.inOrbit = checked
+                contentItem: Text {
+                    leftPadding: orbitBox.indicator.width + 6
+                    text: qsTr("In orbit around it")
+                    color: "#e2e8f0"
+                    font.pixelSize: 13
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
             Text {
                 visible: root.cardMode === "start"
                 Layout.fillWidth: true
                 text: root.regions[root.regionIndex].about
+                      + (root.startsInOrbit && root.startPlanet !== 2
+                         ? " " + qsTr("You start in orbit around it and must climb out first.") : "")
                 color: "#94a3b8"
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
             }
-            // ...and how hard.
-            Text {
+            // ...where to...
+            Heading { text: qsTr("Where to?"); Layout.topMargin: 2 }
+            Flow {
                 visible: root.cardMode === "start"
-                Layout.topMargin: 4
-                text: qsTr("How hard?")
-                color: "#f8fafc"
-                font.pixelSize: 14
-                font.bold: true
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: root.cardMode === "start" ? root.planetNames : []
+                    delegate: Chip {
+                        required property var modelData
+                        required property int index
+                        objectName: "button-destination-" + index
+                        text: index === 2 ? qsTr("Earth (home)") : modelData
+                        chosen: index === root.destinationIndex
+                        enabled: index !== root.startPlanet
+                        onClicked: root.destinationIndex = index
+                    }
+                }
             }
+            // ...and how hard.
+            Heading { text: qsTr("How hard?"); Layout.topMargin: 2 }
             Repeater {
-                model: root.cardMode === "start" ? [
+                model: root.cardMode !== "start" ? [] : root.goingHome ? [
                     { name: qsTr("Easy"), goal: qsTr("Reach the Earth's neighbourhood. Plenty of fuel.") },
                     { name: qsTr("Normal"), goal: qsTr("Hit the atmosphere at just the right angle to land.") },
                     { name: qsTr("Hard"), goal: qsTr("Brake into orbit around the Earth. Fuel is tight.") }
-                ] : []
+                ] : [
+                    { name: qsTr("Easy"), goal: qsTr("Reach %1's neighbourhood. Plenty of fuel.").arg(root.destinationName) },
+                    { name: qsTr("Normal"), goal: qsTr("Fly close past %1, like Voyager.").arg(root.destinationName) },
+                    { name: qsTr("Hard"), goal: qsTr("Brake into orbit around %1, like Cassini or Juno. Fuel is tight.").arg(root.destinationName) }
+                ]
                 delegate: Button {
                     required property var modelData
                     required property int index
                     objectName: "button-difficulty-" + index
                     Layout.fillWidth: true
-                    implicitHeight: 52
+                    implicitHeight: 46
                     contentItem: Column {
-                        spacing: 2
+                        spacing: 1
                         leftPadding: 6
-                        Text { text: modelData.name; color: "#f8fafc"; font.pixelSize: 16; font.bold: true }
+                        Text { text: modelData.name; color: "#f8fafc"; font.pixelSize: 15; font.bold: true }
                         Text { text: modelData.goal; color: "#94a3b8"; font.pixelSize: 12 }
                     }
                     background: Rectangle {
@@ -588,7 +652,8 @@ Item {
                         color: parent.hovered ? "#1e3a5f" : "#1e293b"
                         border.color: parent.hovered ? "#60a5fa" : "#334155"
                     }
-                    onClicked: root.startChosen(root.regionIndex, index)
+                    onClicked: root.startChosen(root.regionIndex, root.startsInOrbit,
+                                                root.destinationIndex, index)
                 }
             }
             Button {

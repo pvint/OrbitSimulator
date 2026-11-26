@@ -170,6 +170,30 @@ private slots:
                             QString::number(session.prediction()->flybys.size())));
         QVERIFY(!session.prediction()->flybys.empty());
     }
+
+    void hintsTakeYouFromLowOrbitToMars() {
+        // Leaving the Earth from 200 km up: the hints plan the departure at
+        // the right point in the orbit, aim it, and (on Hard) brake into
+        // orbit around Mars.
+        GameSession session;
+        session.setPuzzle(orbit::makePuzzle(
+            {orbit::Difficulty::Hard, orbit::Region::Earth, true, orbit::Planet::Mars}, 3,
+            orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0})));
+        session.waitForIdle();
+        QVERIFY(!session.prediction()->goalMet);
+        QStringList messages;
+        connect(&session, &GameSession::hintReady, this,
+                [&messages](const QString& m) { messages.append(m); });
+        for (int i = 0; i < 4 && !session.prediction()->goalMet; ++i) {
+            session.requestHint();
+            session.waitForIdle();
+        }
+        QVERIFY2(session.prediction()->goalMet, qPrintable(messages.join(QLatin1Char('\n'))));
+        QCOMPARE(session.prediction()->end, orbit::VoyageEnd::OrbitingPlanet);
+        QVERIFY(messages.first().contains(QStringLiteral("leaves your orbit")));
+        // The departure burn's directions are relative to the Earth.
+        QCOMPARE(session.prediction()->burns.front().planet, orbit::Planet::Earth);
+    }
 };
 
 QTEST_MAIN(GameTests)

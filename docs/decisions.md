@@ -725,6 +725,36 @@ point: room for an assist to do better.
   ending compares the fuel used with the direct way home worked out at
   the start ("You beat it!"), listing the assists.
 
+**Step 3, from anywhere to anywhere (done):** the user asked mid-step to
+start in orbit around planets too, so step 3 became one general piece:
+a start (drifting as before, or in orbit around a planet; around the
+Earth always in orbit) and a destination (the Earth, with the home goals,
+or another planet: reach it / pass within 5 radii / end in orbit around
+it). `PuzzleSpec`, `settledSpec`.
+- **Parking orbits:** 200 km around the Earth and Mercury, 300 km around
+  Venus and Mars, and a Juno-like ellipse (1.1 to 50 radii) around a
+  giant, since a low circular orbit there would take ~17 km/s to leave.
+- **Parked ships move by Kepler's equations** (only that planet pulling),
+  with a sample a day and `sampleAt` interpolating by Kepler; the app
+  draws the parked stretch as one turn of the orbit. Integrating low
+  orbits for months would take hundreds of thousands of steps. The Sun's
+  and moons' tugs on such an orbit are left out (said so in voyage.hpp).
+- **Leaving an orbit:** the porkchop prices the departure at the orbit's
+  low point (Oberth: √(v∞² + 2μ/r_p) − v_p); a puzzle in orbit starts
+  10–30 days before the cheapest departure, the orbit's plane holding the
+  departure direction (as if launched for it); `departureBurn` finds the
+  best point in any orbit for a given v∞, and "Aim at a planet" uses it
+  from a parked orbit.
+- **Burn directions are relative to whichever planet's sphere of
+  influence the ship is in** (not just the Earth's).
+- **Crashing into any planet ends the flight** (and counts as a pass, so
+  aiming near the surface still converges). Flights asked for a state at
+  a moment, or flown to aim a burn, don't stop at the goal
+  (`VoyageOptions::stopAtGoal`).
+- The start card: where are you (ten places), "in orbit around it",
+  where to (the Earth or a planet), how hard (texts by destination).
+  `--puzzle normal:earth:saturn`, `hard:mars:orbit`.
+
 ---
 
 ## Open questions

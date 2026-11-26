@@ -50,6 +50,7 @@
 // (approachBrake).
 #pragma once
 
+#include "orbit/core/flyby.hpp"
 #include "orbit/core/voyage.hpp"
 
 #include <array>
@@ -65,7 +66,9 @@ std::string_view difficultyName(Difficulty difficulty);
 /// Where a puzzle starts.
 enum class Region {
     BetweenPlanets, ///< a random orbit not far from the Earth's
+    Mercury,
     Venus,
+    Earth, ///< always in orbit around it
     Mars,
     AsteroidBelt,
     Jupiter,
@@ -73,19 +76,48 @@ enum class Region {
     Uranus,
     Neptune,
 };
-inline constexpr std::array kAllRegions{Region::BetweenPlanets, Region::Venus,   Region::Mars,
-                                        Region::AsteroidBelt,   Region::Jupiter, Region::Saturn,
-                                        Region::Uranus,         Region::Neptune};
-/// A short key for files and the command line ("between", "venus", "mars",
-/// "belt", "jupiter", "saturn", "uranus", "neptune"), and back.
+inline constexpr std::array kAllRegions{
+    Region::BetweenPlanets, Region::Mercury, Region::Venus,  Region::Earth,  Region::Mars,
+    Region::AsteroidBelt,   Region::Jupiter, Region::Saturn, Region::Uranus, Region::Neptune};
+/// A short key for files and the command line ("between", "mercury",
+/// "venus", "earth", "mars", "belt", "jupiter", "saturn", "uranus",
+/// "neptune"), and back.
 std::string_view regionKey(Region region);
 std::optional<Region> regionFromKey(std::string_view key);
 /// For people: "Between the planets", "Near Venus", ...
 std::string_view regionName(Region region);
+/// The planet a region is about, if any.
+std::optional<Planet> regionPlanet(Region region);
 
-/// The goal at each difficulty: Easy, reach the Earth; Normal, re-enter
-/// inside the corridor; Hard, end in orbit around the Earth.
-Goal goalFor(Difficulty difficulty);
+/// The goal at each difficulty. Going home: Easy, reach the Earth; Normal,
+/// re-enter inside the corridor; Hard, end in orbit around the Earth. To
+/// another planet: reach it; pass close (a flyby probe); end in orbit.
+Goal goalFor(Difficulty difficulty, Planet destination = Planet::Earth);
+
+/// An orbit around a planet, by its low and high points (m from the
+/// centre; equal for a circle).
+struct ParkingOrbit {
+    double periapsis = 0.0;
+    double apoapsis = 0.0;
+};
+/// Where a puzzle "in orbit" starts: 200 km up around the Earth and
+/// Mercury, 300 km around Venus and Mars (above their air), and a long
+/// ellipse from 1.1 to 50 radii around a giant planet (like Juno's).
+ParkingOrbit parkingOrbit(Planet planet);
+/// How far out the orbit braked into on arrival reaches (m): half the
+/// Moon's distance at the Earth; elsewhere a fifth of the sphere of
+/// influence, or 100 radii if less.
+double captureApoapsis(Planet planet, double epoch, const VoyageOptions& options = {});
+/// The closest approach to aim for at a planet other than the Earth (m,
+/// from its centre): 10 radii to reach it, 2 for a close pass, 1.1 to brake
+/// into orbit.
+double aimPeriapsis(Goal goal, Planet planet);
+
+/// The Oberth effect: leaving a parking orbit from its low point r_p on a
+/// path that ends up v∞ from the planet takes √(v∞² + 2μ/r_p) − v_p (m/s),
+/// v_p = √(2μ/r_p − 2μ/(r_p + r_a)) the speed there now. Deep in a
+/// planet's gravity, a little extra speed becomes a lot of v∞.
+double departureCost(Planet planet, const ParkingOrbit& orbit, double vInfinity);
 
 /// Δv needed near the Earth, arriving with speed v∞ relative to it (m/s):
 ///   ReachEarth  nothing.
@@ -96,6 +128,10 @@ Goal goalFor(Difficulty difficulty);
 ///               √(v∞² + 2μ/r_p) into an ellipse reaching out to half the
 ///               Moon's distance, √(2μ/r_p − 2μ/(r_p + r_a)).
 double arrivalCost(Goal goal, double vInfinity, const VoyageOptions& options = {});
+/// The same for any destination; at another planet, only PlanetOrbit costs
+/// anything: braking at 1.1 radii into an ellipse out to captureApoapsis.
+double arrivalCost(Goal goal, double vInfinity, Planet destination,
+                   const VoyageOptions& options = {});
 
 /// The fastest v∞ (m/s) that a re-entry can arrive with, keeping a little
 /// under the fastest survivable entry speed: v∞ = √(v_entry² − 2μ/r_I).
@@ -110,15 +146,17 @@ double fastestReentryArrival(const VoyageOptions& options = {});
 ///               would do).
 double aimImpactParameter(Goal goal, double vInfinity, const VoyageOptions& options = {});
 
-/// A transfer from the ship's orbit to the Earth.
+/// A transfer from the ship's orbit to the destination.
 struct TransferPlan {
     double departure = 0.0; ///< epoch of the burn
-    double arrival = 0.0;   ///< epoch at the Earth
-    Vec3 departureDeltaV;   ///< m/s, heliocentric, with only the Sun pulling
+    double arrival = 0.0;   ///< epoch at the destination
+    /// m/s, heliocentric, with only the Sun pulling; leaving a parking
+    /// orbit, the v∞ needed relative to that planet.
+    Vec3 departureDeltaV;
     /// m/s: |departureDeltaV|, or in a puzzle the burn from where the full
     /// simulation puts the ship, if that is dearer.
     double departureCost = 0.0;
-    double vInfinity = 0.0;   ///< arrival speed relative to the Earth (m/s)
+    double vInfinity = 0.0;   ///< arrival speed relative to the destination (m/s)
     double arrivalCost = 0.0; ///< m/s (arrivalCost())
     double total() const { return departureCost + arrivalCost; }
 };
@@ -128,6 +166,18 @@ struct TransferPlan {
 /// `epoch` with only the Sun pulling. Nothing if none was found.
 std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const Vec3& v, Goal goal,
                                             double window, double longestFlight);
+
+/// Where a transfer leaves from: the ship's own orbit around the Sun, or,
+/// parked around a planet, the planet itself (paying departureCost).
+struct DepartureFrom {
+    std::optional<Planet> planet;
+    ParkingOrbit orbit;
+};
+
+/// The cheapest transfer to `to`, as cheapestWayHome.
+std::optional<TransferPlan> cheapestTransfer(double epoch, const Vec3& r, const Vec3& v,
+                                             const DepartureFrom& from, Planet to, Goal goal,
+                                             double window, double longestFlight);
 
 /// How long to search for a way home from (r, v) around the Sun.
 struct SearchSpan {
@@ -141,14 +191,28 @@ struct SearchSpan {
     /// years.
     double longestFlight = 0.0;
 };
-SearchSpan searchSpan(const Vec3& r, const Vec3& v);
+SearchSpan searchSpan(const Vec3& r, const Vec3& v, Planet to = Planet::Earth);
+
+/// What to play: from where (drifting, or in orbit around the region's
+/// planet), to where, how hard.
+struct PuzzleSpec {
+    Difficulty difficulty = Difficulty::Easy;
+    Region from = Region::BetweenPlanets;
+    bool inOrbit = false;
+    Planet to = Planet::Earth;
+};
+/// The spec made sensible: in orbit only around a planet (always around
+/// the Earth), and not to the planet it starts at.
+PuzzleSpec settledSpec(PuzzleSpec spec);
 
 struct Puzzle {
     Difficulty difficulty = Difficulty::Easy;
     Region region = Region::BetweenPlanets;
+    bool inOrbit = false;
+    Planet destination = Planet::Earth;
     std::uint64_t seed = 0;
     Voyage voyage;       ///< the ship where it starts, no burns yet
-    TransferPlan plan;   ///< the cheapest way home found
+    TransferPlan plan;   ///< the cheapest way there found
     double budget = 0.0; ///< Δv in the tanks (m/s)
 };
 
@@ -156,6 +220,10 @@ struct Puzzle {
 /// and region always give the same puzzle, on any computer.
 Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch,
                   Region region = Region::BetweenPlanets);
+/// Any puzzle. Starting in orbit, the game starts 10 to 30 days before the
+/// cheapest departure, the orbit set up as if launched for it: the escape
+/// starts at its low point, in its plane.
+Puzzle makePuzzle(const PuzzleSpec& spec, std::uint64_t seed, double epoch);
 
 // --- Hints ---------------------------------------------------------------
 
@@ -164,6 +232,30 @@ Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch,
 /// B-plane formula above at the goal's perigee: one Lambert solution,
 /// with only the Sun pulling.
 std::optional<Burn> burnTowardsEarth(const Voyage& voyage, double epoch, double arrival,
+                                     const VoyageOptions& options = {});
+/// The same, to the voyage's destination (aimed at aimPeriapsis away from
+/// a planet other than the Earth). Nothing inside a planet's sphere of
+/// influence: see transferBurn.
+std::optional<Burn> burnTowards(const Voyage& voyage, double epoch, double arrival,
+                                const VoyageOptions& options = {});
+
+/// Leaving a parked orbit (parkedAround) so as to end up v∞ (heliocentric
+/// vector) from the planet: the burn at the point within one orbit after
+/// `earliest` that costs least. There the escape path has its low point,
+/// in the plane of the position and v∞, moving at √(v∞² + 2μ/r).
+std::optional<Burn> departureBurn(const Voyage& voyage, double earliest, const Vec3& vInfinity,
+                                  const VoyageOptions& options = {});
+
+/// The first burn of a transfer leaving on `departure` and arriving at the
+/// destination on `arrival`: burnTowards when drifting, departureBurn (for
+/// the v∞ Lambert asks for, from the planet's centre, within half an orbit
+/// of the day) when parked.
+std::optional<Burn> transferBurn(const Voyage& voyage, double departure, double arrival,
+                                 const VoyageOptions& options = {});
+
+/// Fine-tunes burn `index` so the path meets the destination as the goal
+/// wants: refineAim for the Earth, aimFlyby at aimPeriapsis elsewhere.
+std::optional<Burn> aimAtDestination(const Voyage& voyage, std::size_t index,
                                      const VoyageOptions& options = {});
 
 /// Fine-tunes burn `index` of the voyage (in time order) with the full
@@ -175,9 +267,9 @@ std::optional<Burn> burnTowardsEarth(const Voyage& voyage, double epoch, double 
 std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
                               const VoyageOptions& options = {});
 
-/// The braking burn at the coming perigee that leaves the ship in an orbit
-/// around the Earth reaching out to half the Moon's distance (or nothing,
-/// if the path doesn't come within the Earth's sphere of influence).
+/// The braking burn at the coming low point that leaves the ship in an
+/// orbit around the destination reaching out to captureApoapsis (or
+/// nothing, if the path doesn't come within its sphere of influence).
 std::optional<Burn> captureBurn(const Voyage& voyage, const VoyageOptions& options = {});
 
 /// For a re-entry: if the path meets the Earth faster than
