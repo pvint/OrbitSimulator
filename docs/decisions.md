@@ -755,6 +755,33 @@ it). `PuzzleSpec`, `settledSpec`.
   where to (the Earth or a planet), how hard (texts by destination).
   `--puzzle normal:earth:saturn`, `hard:mars:orbit`.
 
+### 38. One app, built around the game (2026-11-25)
+
+**Context:** the user likes where the game is going and asked for a
+better overall plan, "probably scrapping the old version".
+
+**Decision (the user's answers):**
+- **Delete the workbench** (the parameter, sweep, program and plot
+  panels, the globe view, the demo tour UI, the main window). The game
+  window becomes the app. The core physics library, the CLI and their
+  tests stay. The rocket launch from the ground is to come back later as
+  a mode ("launch, then leave for Mars"); the hard part will be fitting
+  it in smoothly, so not now.
+- **Free roam:** unlimited fuel (the gauge shows what's been used).
+- **The Moon becomes a body** you can start at and go to; so do Titan
+  (the user would like to leave the Earth and land on Titan one day) and
+  Jupiter's four big moons.
+- **Close-ups should look really nice:** NASA/JPL/USGS public-domain maps
+  for every body (tools/make_planet_textures.sh records each source).
+- **The asteroid belt is drawn,** though it wouldn't really be visible: it
+  "feels right".
+- Ideas noted for later: famous missions' trajectories to replay and
+  change; landing on airless moons.
+
+**Plan, in order (work through it, testing and committing each):**
+G2 one app; G6 the asteroid belt; G3 moons as bodies; G4 free roam; G5
+close-ups; G7 landing where there's air. See the roadmap in CLAUDE.md.
+
 ---
 
 ## Open questions

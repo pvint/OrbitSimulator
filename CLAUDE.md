@@ -209,6 +209,14 @@ Each milestone ends with something that runs.
 | Later | Go to a point on a path (user's idea, 2026-11-24): click or right-click a point on any trajectory in 3D (e.g. one flight of a burn-time sweep) for "go there": select that flight, jump playback to that moment, and centre the camera on that point in space | |
 | Later | Scripting for complex trajectories: scripts that build or steer flight programs (language open: Lua or Qt's JavaScript engine; see docs/decisions.md) | |
 | D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
+| G1 | Lost in space: the game (puzzles from anywhere to anywhere, hints, flyby tools); decisions 35–37 | done |
+| G2 | One app (decision 38): the game window is the app; the old workbench UI is deleted (core physics, CLI and tests kept; the rocket launch to come back later as a mode) | |
+| G3 | Moons as bodies: the Moon, Io, Europa, Ganymede, Callisto, Titan (ephemerides, gravity, start/destination) | |
+| G4 | Free roam: pick a body, start in orbit, no goal, unlimited fuel | |
+| G5 | Close-ups: textured bodies at true size, lit by the Sun, Saturn's rings, seen when the camera is near them | |
+| G6 | The asteroid belt, drawn | |
+| G7 | Landing where there's air: an entry goal at Titan, Mars, Venus (the Earth's re-entry generalised) | |
+| Later | Famous missions to replay and change (Voyager 2, Cassini, New Horizons, Juno, Apollo); landing on airless moons (powered descent); the rocket launch from the ground as a mode | |
 
 ### App structure in brief (M2–M4)
 
