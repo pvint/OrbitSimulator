@@ -72,6 +72,22 @@ double epochNow() {
         {d.year(), d.month(), d.day(), t.hour(), t.minute(), static_cast<double>(t.second())});
 }
 
+/// An orbit's period: hours for an orbit around the Earth, whole days up to
+/// two years, then years ("—" if the path isn't a closed orbit).
+QString periodText(double seconds) {
+    constexpr double kYear = 365.25 * kDay;
+    if (!std::isfinite(seconds) || seconds <= 0.0) return QStringLiteral("—");
+    if (seconds < 3.0 * kDay) return display::duration(seconds);
+    if (seconds < 2.0 * kYear) return QObject::tr("%1 days").arg(std::lround(seconds / kDay));
+    return QObject::tr("%1 years").arg(QString::number(seconds / kYear, 'f', 1));
+}
+
+/// The period of a closed orbit with semi-major axis a around μ, by
+/// Kepler's third law: T = 2π √(a³/μ).
+double keplerPeriod(double semiMajorAxis, double mu) {
+    return 2.0 * std::numbers::pi * std::sqrt(semiMajorAxis * semiMajorAxis * semiMajorAxis / mu);
+}
+
 /// Where the ship is, to fit "You're %1".
 QString regionPhrase(orbit::Region region) {
     switch (region) {
@@ -306,13 +322,9 @@ void GameWindow::onPuzzleChanged() {
             orbit::elementsFromState(v.position, v.velocity, orbit::kMuSun, orbit::kRadiusSun);
         const double fromEarth =
             orbit::norm(v.position - orbit::planetPosition(orbit::Planet::Earth, v.startEpoch));
-        // Long orbits in years, the rest in days.
-        constexpr double kYear = 365.25 * kDay;
-        const QString period = el.period > 2.0 * kYear
-                                   ? tr("%1 years to go round (the Earth's takes one)")
-                                         .arg(QString::number(el.period / kYear, 'f', 1))
-                                   : tr("%1 days to go round (the Earth's takes 365)")
-                                         .arg(std::lround(el.period / kDay));
+        const QString around = el.period > 2.0 * 365.25 * kDay
+                                   ? tr("%1 to go round (the Earth's takes one)")
+                                   : tr("%1 to go round (the Earth's takes 365 days)");
         showCard(tr("Lost!"),
                  tr("You're %1, %2 from the Sun and %3 from the Earth, on an orbit that takes "
                     "%4. You have <b>%5</b> of Δv in the tanks: that's how much you can change "
@@ -321,8 +333,8 @@ void GameWindow::onPuzzleChanged() {
                     "<b>Fly</b>.")
                      .arg(regionPhrase(puzzle.region),
                           display::longDistance(orbit::norm(v.position)),
-                          display::longDistance(fromEarth), period, display::speed(puzzle.budget),
-                          goalText(v.goal)),
+                          display::longDistance(fromEarth), around.arg(periodText(el.period)),
+                          display::speed(puzzle.budget), goalText(v.goal)),
                  tr("Let's go"));
     }
 }
@@ -420,6 +432,9 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
             m_scene->property("planetNames").toList().value(index).toString(),
             infoRow(tr("Speed (Sun)"), display::speed(orbit::norm(v))) +
                 infoRow(tr("Distance from Sun"), display::longDistance(orbit::norm(r))) +
+                infoRow(tr("Orbit period"),
+                        periodText(keplerPeriod(orbit::planetOrbit(planet, now).semiMajorAxis,
+                                                orbit::kMuSun))) +
                 infoRow(tr("Mass"), bigMass(orbit::planetMu(planet) / kG)) +
                 infoRow(tr("Radius"), display::distance(orbit::planetRadius(planet))) +
                 infoRow(tr("Distance from you"), display::longDistance(orbit::norm(r - ship.r))) +
@@ -431,11 +446,23 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
                                              display::longDistance(orbit::norm(ship.r)))));
     const orbit::Vec3 earthR = orbit::planetPosition(orbit::Planet::Earth, now);
     const orbit::Vec3 earthV = orbit::planetVelocity(orbit::Planet::Earth, now);
+    // The ship's orbit as it is now (where it would go with no more burns),
+    // around the body whose pull dominates: the Earth inside its sphere of
+    // influence, otherwise the Sun.
+    const bool nearEarth =
+        orbit::norm(ship.r - earthR) < orbit::sphereOfInfluence(orbit::Planet::Earth, now);
+    const orbit::OrbitalElements shipOrbit =
+        nearEarth
+            ? orbit::elementsFromState(ship.r - earthR, ship.v - earthV,
+                                       orbit::planetMu(orbit::Planet::Earth), orbit::kRadiusEarth)
+            : orbit::elementsFromState(ship.r, ship.v, orbit::kMuSun, orbit::kRadiusSun);
     QString rows =
         infoRow(tr("Speed (Sun)"), display::speed(orbit::norm(ship.v))) +
         infoRow(tr("Speed (Earth)"), display::speed(orbit::norm(ship.v - earthV))) +
         infoRow(tr("Distance from Sun"), display::longDistance(orbit::norm(ship.r))) +
         infoRow(tr("Distance from Earth"), display::longDistance(orbit::norm(ship.r - earthR))) +
+        infoRow(nearEarth ? tr("Orbit period (Earth)") : tr("Orbit period"),
+                shipOrbit.bound ? periodText(shipOrbit.period) : tr("none: escaping")) +
         infoRow(tr("Mass"), display::mass(ship.mass));
     if (prediction) {
         rows += infoRow(tr("Δv left after burns"), display::speed(prediction->deltaVLeft));
