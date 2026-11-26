@@ -210,9 +210,22 @@ std::optional<TransferPlan> transfer(const TwoBodyState& ship, const DepartureFr
     plan.departure = departure;
     plan.arrival = departure + flight;
     plan.departureDeltaV = lambert->v1 - ship.v;
-    plan.departureCost = from.planet
-                             ? departureCost(*from.planet, from.orbit, norm(plan.departureDeltaV))
-                             : norm(plan.departureDeltaV);
+    plan.departureCost = norm(plan.departureDeltaV);
+    if (from.planet && from.points.empty()) {
+        plan.departureCost = departureCost(*from.planet, from.orbit, norm(plan.departureDeltaV));
+    } else if (from.planet) {
+        // An orbit already set: the best of its points for this v∞ (its
+        // plane and its low point may not suit every direction).
+        const double mu = planetMu(*from.planet);
+        double best = -1.0;
+        for (const TwoBodyState& at : from.points) {
+            if (const auto escape = escapeFrom(at, plan.departureDeltaV, mu)) {
+                if (best < 0.0 || escape->cost < best) best = escape->cost;
+            }
+        }
+        if (best < 0.0) return std::nullopt;
+        plan.departureCost = best;
+    }
     plan.vInfinity = norm(lambert->v2 - e.v);
     plan.arrivalCost = arrivalCost(goal, plan.vInfinity, to);
     return plan;
@@ -571,8 +584,8 @@ Puzzle orbitPuzzle(Puzzle puzzle, const Setup& setup, Random& random, double epo
     const Vec3 homeR = planetPosition(home, epoch);
     const Vec3 homeV = planetVelocity(home, epoch);
     const SearchSpan span = searchSpan(homeR, homeV, to);
-    const auto plan = cheapestTransfer(epoch, homeR, homeV, {home, orbit}, to, puzzle.voyage.goal,
-                                       span.window, span.longestFlight);
+    const auto plan = cheapestTransfer(epoch, homeR, homeV, {home, orbit, {}}, to,
+                                       puzzle.voyage.goal, span.window, span.longestFlight);
     if (!plan) return puzzle;
 
     // The escape path leaves along v∞, turned from its low point by ν∞,
@@ -720,6 +733,39 @@ std::optional<Burn> burnTowards(const Voyage& voyage, double epoch, double arriv
     return burnFromVector(epoch, lambert.v1 - here.v, burnFrameAt(epoch, here.r, here.v));
 }
 
+std::optional<Escape> escapeFrom(const TwoBodyState& at, const Vec3& vInfinity, double mu) {
+    // The escape path with its low point here lies in the plane of r̂ and
+    // v̂∞, moving along q̂ (square to r̂, towards v̂∞) at √(v∞² + 2μ/r); it
+    // leaves along v̂∞ only if the angle from r̂ to v̂∞ is ν∞ (cos ν∞ = −1/e,
+    // e = 1 + r v∞²/μ). Missing that costs about v∞ per radian to put
+    // right later, so it counts too.
+    const double vInf = norm(vInfinity);
+    const double r = norm(at.r);
+    if (vInf <= 0.0 || r <= 0.0) return std::nullopt;
+    const Vec3 vHat = vInfinity / vInf;
+    const Vec3 rHat = at.r / r;
+    const double cosA = std::clamp(dot(rHat, vHat), -1.0, 1.0);
+    const Vec3 q = vHat - cosA * rHat;
+    if (norm(q) < 1e-9) return std::nullopt;
+    const double e = 1.0 + r * vInf * vInf / mu;
+    const double nuInf = std::acos(-1.0 / e);
+    Escape escape;
+    escape.deltaV = std::sqrt(vInf * vInf + 2.0 * mu / r) * normalized(q) - at.v;
+    escape.cost = norm(escape.deltaV) + vInf * std::abs(std::acos(cosA) - nuInf);
+    return escape;
+}
+
+std::vector<TwoBodyState> orbitPoints(const TwoBodyState& rel, double mu, int count) {
+    const OrbitalElements el = elementsFromState(rel.r, rel.v, mu, 0.0);
+    std::vector<TwoBodyState> points;
+    if (!el.bound) return points;
+    points.reserve(static_cast<std::size_t>(count));
+    for (int k = 0; k < count; ++k) {
+        points.push_back(propagateKepler(rel, el.period * k / count, mu));
+    }
+    return points;
+}
+
 std::optional<Burn> departureBurn(const Voyage& voyage, double earliest, const Vec3& vInfinity,
                                   const VoyageOptions& options) {
     const VoyageSample here =
@@ -731,28 +777,18 @@ std::optional<Burn> departureBurn(const Voyage& voyage, double earliest, const V
     const TwoBodyState start{here.r - planetPosition(*planet, earliest),
                              here.v - planetVelocity(*planet, earliest)};
     const OrbitalElements el = elementsFromState(start.r, start.v, mu, planetRadius(*planet));
-    const Vec3 vHat = vInfinity / vInf;
 
-    // Try points round one orbit. At each, the escape path with its low
-    // point there lies in the plane of r̂ and v̂∞, moving along q̂ (square to
-    // r̂, towards v̂∞), at √(v∞² + 2μ/r); it leaves along v̂∞ only if the
-    // angle from r̂ to v̂∞ is ν∞ (cos ν∞ = −1/e, e = 1 + r v∞²/μ). Missing
-    // that costs about v∞ per radian to put right later, so it counts too.
+    // Try points round one orbit (see escapeFrom): the cheapest wins.
     constexpr int kPoints = 720;
     double bestCost = 0.0;
     std::optional<Burn> best;
     for (int k = 0; k < kPoints; ++k) {
         const double t = earliest + el.period * k / kPoints;
         const TwoBodyState rel = propagateKepler(start, t - earliest, mu);
-        const double r = norm(rel.r);
-        const Vec3 rHat = rel.r / r;
-        const double cosA = std::clamp(dot(rHat, vHat), -1.0, 1.0);
-        const Vec3 q = vHat - cosA * rHat;
-        if (norm(q) < 1e-9) continue;
-        const double e = 1.0 + r * vInf * vInf / mu;
-        const double nuInf = std::acos(-1.0 / e);
-        const Vec3 deltaV = std::sqrt(vInf * vInf + 2.0 * mu / r) * normalized(q) - rel.v;
-        const double cost = norm(deltaV) + vInf * std::abs(std::acos(cosA) - nuInf);
+        const auto escape = escapeFrom(rel, vInfinity, mu);
+        if (!escape) continue;
+        const Vec3 deltaV = escape->deltaV;
+        const double cost = escape->cost;
         if (!best || cost < bestCost) {
             bestCost = cost;
             const Vec3 r0 = planetPosition(*planet, t) + rel.r;

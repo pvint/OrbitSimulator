@@ -51,12 +51,14 @@
 #pragma once
 
 #include "orbit/core/flyby.hpp"
+#include "orbit/core/two_body.hpp"
 #include "orbit/core/voyage.hpp"
 
 #include <array>
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace orbit {
 
@@ -168,11 +170,27 @@ std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const V
                                             double window, double longestFlight);
 
 /// Where a transfer leaves from: the ship's own orbit around the Sun, or,
-/// parked around a planet, the planet itself (paying departureCost).
+/// parked around a planet, the planet itself (paying departureCost for an
+/// orbit to be set up to suit; or, given `points` round an orbit already
+/// set, the cheapest escapeFrom one of them).
 struct DepartureFrom {
     std::optional<Planet> planet;
     ParkingOrbit orbit;
+    std::vector<TwoBodyState> points; ///< relative to the planet
 };
+
+/// Leaving an orbit from the point `at` (relative to a body of μ) on an
+/// escape path that ends up at v∞ (vector): the burn, at its cheapest with
+/// its low point there, and its cost (plus what missing the direction
+/// would cost to put right later, about v∞ per radian).
+struct Escape {
+    Vec3 deltaV;
+    double cost = 0.0;
+};
+std::optional<Escape> escapeFrom(const TwoBodyState& at, const Vec3& vInfinity, double mu);
+
+/// `count` points evenly spaced in time round the orbit through `rel`.
+std::vector<TwoBodyState> orbitPoints(const TwoBodyState& rel, double mu, int count);
 
 /// The cheapest transfer to `to`, as cheapestWayHome.
 std::optional<TransferPlan> cheapestTransfer(double epoch, const Vec3& r, const Vec3& v,

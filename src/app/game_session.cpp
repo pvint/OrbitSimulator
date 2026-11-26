@@ -365,7 +365,10 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
             const Vec3 pv = planetVelocity(*parked, now);
             const OrbitalElements el = elementsFromState(here.r - pr, here.v - pv,
                                                          planetMu(*parked), planetRadius(*parked));
-            from = {parked, {el.periapsis, el.apoapsis}};
+            // The orbit is set: price each departure from its best point.
+            from = {parked,
+                    {el.periapsis, el.apoapsis},
+                    orbitPoints({here.r - pr, here.v - pv}, planetMu(*parked), 72)};
             r = pr;
             v = pv;
         }
