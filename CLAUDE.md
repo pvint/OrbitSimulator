@@ -224,9 +224,10 @@ series it finds through properties on `qml/Plots.qml`.
 prograde/radial/normal relative to the Earth inside its SOI, else the Sun),
 `flyVoyage` → `VoyageResult` (samples, burn reports, `VoyageEnd`,
 `closest` Earth approach, entry speed/angle, Δv left), `voyageStateAt`.
-`lost_in_space.hpp`: `makePuzzle(difficulty, seed, epoch)`,
-`cheapestWayHome` (porkchop), hints `burnTowardsEarth`, `refineAim`
-(B-plane Newton with the full simulation), `captureBurn`. App:
+`lost_in_space.hpp`: `Region`, `makePuzzle(difficulty, seed, epoch, region)`,
+`cheapestWayHome` (porkchop), `searchSpan` (window and longest trip by
+distance), hints `burnTowardsEarth`, `refineAim` (B-plane Newton with the
+full simulation), `captureBurn`, `approachBrake` (shed v∞ before re-entry). App:
 `GameSession` (puzzle, burns, clock, background work) and `BurnPlanner`
 in orbitsim_ui; `GameWindow` + `qml/VoyageScene.qml` in the exe.
 

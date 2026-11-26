@@ -627,6 +627,42 @@ that offers the game, launching a rocket, the tour, and the workbench
 (today's panels); dragging burn handles in 3D; a "go to a point on a
 path" for the game's path.
 
+### 36. Lost in space from other places in the solar system (2026-11-25)
+
+**Context:** the user asked to find the way home from other places in the
+solar system, not only from an orbit near the Earth's.
+
+**Decision:**
+- The start card asks **where** (between the planets, near Venus, near
+  Mars, the asteroid belt, near Jupiter) and then **how hard**; the
+  difficulty still sets the goal and the fuel margin. "Between the
+  planets" is the old game, unchanged. `--puzzle hard:jupiter:42` on the
+  command line (any order).
+- **Near a planet, the ship shares its orbit,** 2–6° ahead or behind
+  (12–20° for Jupiter, whose sphere of influence is 0.3 au), pushed so it
+  drifts *away* from the planet. A random push let ships near Venus meet
+  it again before leaving, and Venus's pull then made the departure up to
+  20 % dearer than the Sun-only search said.
+- **The fuel is priced with the full simulation:** the departure burn is
+  worked out again from where the ship really is on the day (every planet
+  pulling), and the dearer of the two estimates sets the fuel.
+- **The search grows with the distance:** departures within one synodic
+  period (1 to 2.2 years), trips up to 1.3 Hohmann transfer times (at
+  least 540 days, at most 3.5 years). The prediction now looks 4 years
+  ahead (it was 3), so the trip home from Jupiter (about 3 years) fits.
+- **Too fast to land:** from the belt or Jupiter the Earth is met at
+  v∞ ≈ 7–10 km/s, an entry of 14+ km/s, beyond any heat shield. On Normal
+  the fuel includes the braking, and a hint brakes inside the Earth's
+  sphere of influence (straight back against the motion relative to the
+  Earth, to 100 m/s under 13 km/s at entry) and aims that same burn
+  (a correction before it would be aimed for the faster arrival).
+- Saturn and beyond are left out: a Hohmann return from Saturn takes about
+  six years, too long to play; Mercury would need ~10 km/s just to leave.
+  Both could come back with faster engines or gravity assists.
+- The ship is the same everywhere (2 t dry, Isp 320 s), so a Jupiter
+  puzzle carries 30–90 t of propellant. Real, and a point for a future
+  talk about better engines.
+
 ---
 
 ## Open questions
