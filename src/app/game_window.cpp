@@ -413,8 +413,8 @@ void GameWindow::connectScene() {
     m_scene->setProperty("moonPlanets", moonPlanets);
     m_scene->setProperty("moonOrbitRadii", moonOrbitRadii);
     m_scene->setProperty("moonInfluenceRadii", moonInfluence);
-    connect(m_scene, SIGNAL(startChosen(int, bool, int, int)), this,
-            SLOT(chooseStart(int, bool, int, int)));
+    connect(m_scene, SIGNAL(startChosen(int, bool, int, int, int)), this,
+            SLOT(chooseStart(int, bool, int, int, int)));
     connect(m_scene, SIGNAL(cardAccepted(bool)), this, SLOT(acceptCard(bool)));
     connect(m_scene, SIGNAL(hiddenCardsReset()), this, SLOT(showHiddenCards()));
     connect(m_scene, SIGNAL(centreRequested(int)), this, SLOT(centreOn(int)));
@@ -444,13 +444,17 @@ void GameWindow::connectScene() {
     resetView();
 }
 
-void GameWindow::chooseStart(int region, bool inOrbit, int destination, int difficulty) {
+void GameWindow::chooseStart(int region, bool inOrbit, int startMoon, int destination,
+                             int difficulty) {
     const int lastRegion = static_cast<int>(orbit::kAllRegions.size()) - 1;
     const int lastBody = static_cast<int>(orbit::kBodyCount) - 1;
     orbit::PuzzleSpec spec;
     spec.difficulty = static_cast<orbit::Difficulty>(std::clamp(difficulty, 0, 2));
     spec.from = orbit::kAllRegions.at(static_cast<std::size_t>(std::clamp(region, 0, lastRegion)));
     spec.inOrbit = inOrbit;
+    if (startMoon >= 0 && startMoon <= lastBody) {
+        spec.startMoon = orbit::kAllBodies.at(static_cast<std::size_t>(startMoon));
+    }
     spec.to = orbit::kAllBodies.at(static_cast<std::size_t>(std::clamp(destination, 0, lastBody)));
     startPuzzle(spec, QRandomGenerator::global()->generate64());
 }
@@ -478,10 +482,29 @@ void GameWindow::startPuzzle(const orbit::PuzzleSpec& spec, std::uint64_t seed) 
         m_scene->setProperty("cardMode", QString());
         m_scene->setProperty("regionIndex", static_cast<int>(settled.from));
         m_scene->setProperty("inOrbit", settled.inOrbit);
+        m_scene->setProperty("startMoonIndex",
+                             settled.startMoon ? static_cast<int>(*settled.startMoon) : -1);
         m_scene->setProperty("destinationIndex", static_cast<int>(settled.to));
     }
     m_session->newPuzzle(settled, seed, epochNow());
 }
+
+namespace {
+/// The body the voyage starts parked around, if any.
+std::optional<orbit::Body> parkedHome(const orbit::Voyage& v) {
+    return orbit::parkedAround(v.startEpoch, v.position, v.velocity);
+}
+
+/// A trip that stays among one planet's moons (from the Earth to the Moon,
+/// from Ganymede to Europa, home from the Moon): that planet.
+std::optional<orbit::Body> localPlanet(const orbit::Voyage& v) {
+    const auto home = parkedHome(v);
+    if (!home) return std::nullopt;
+    const orbit::Body planet = orbit::planetOf(*home);
+    if (orbit::planetOf(v.destination) != planet) return std::nullopt;
+    return planet;
+}
+} // namespace
 
 void GameWindow::onPuzzleChanged() {
     const orbit::Puzzle& puzzle = m_session->puzzle();
@@ -493,12 +516,14 @@ void GameWindow::onPuzzleChanged() {
     }
     updatePlanetOrbits();
     updateStartOrbit();
-    if (m_scene && orbit::isMoon(v.destination) &&
-        orbit::parkedAround(v.startEpoch, v.position, v.velocity) ==
-            orbit::planetOf(v.destination)) {
-        // A trip among a planet's moons: centred on the planet, the moon's
-        // orbit filling the view.
-        const orbit::Body planet = orbit::planetOf(v.destination);
+    if (const auto local = localPlanet(v); m_scene && local) {
+        // A trip among a planet's moons: centred on the planet, the moons'
+        // orbits filling the view.
+        const orbit::Body planet = *local;
+        double reach = 0.0;
+        for (const orbit::Body moon : {v.destination, parkedHome(v).value_or(planet)}) {
+            if (orbit::isMoon(moon)) reach = std::max(reach, orbit::moonOrbit(moon).semiMajorAxis);
+        }
         m_drawFrame = planet;
         // The ship's orbit around the Sun means little here.
         if (m_startOrbit) m_startOrbit->setPoints({}, {});
@@ -509,8 +534,7 @@ void GameWindow::onPuzzleChanged() {
             m_scene, "lookAt",
             Q_ARG(QVariant,
                   QVariant::fromValue(scene::fromPhysics({0.0, -0.45, 1.0}).normalized())),
-            Q_ARG(QVariant, 3.5 * orbit::moonOrbit(v.destination).semiMajorAxis /
-                                scene::kSolarMetresPerUnit));
+            Q_ARG(QVariant, 3.5 * reach / scene::kSolarMetresPerUnit));
     } else {
         m_drawFrame.reset();
         setCentreChoices(kCentreSun);
@@ -532,17 +556,11 @@ void GameWindow::onPuzzleChanged() {
 
     if (m_welcomePending) {
         m_welcomePending = false;
-        showCard(puzzle.destination == orbit::Body::Earth ? tr("Lost!") : tr("Ready to go"),
-                 welcomeText(puzzle), tr("Let's go"), QStringLiteral("welcome"));
+        const bool lost = puzzle.destination == orbit::Body::Earth && !puzzle.startMoon;
+        showCard(lost ? tr("Lost!") : tr("Ready to go"), welcomeText(puzzle), tr("Let's go"),
+                 QStringLiteral("welcome"));
     }
 }
-
-namespace {
-/// The body the voyage starts parked around, if any.
-std::optional<orbit::Body> parkedHome(const orbit::Voyage& v) {
-    return orbit::parkedAround(v.startEpoch, v.position, v.velocity);
-}
-} // namespace
 
 /// Where you are, what you have, and what to do.
 QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
@@ -567,7 +585,36 @@ QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
                          "round every %4.")
                           .arg(planetInText(home), display::longDistance(el.periapsis - radius),
                                display::longDistance(el.apoapsis - radius), periodText(el.period));
-        if (orbit::isMoon(v.destination) && orbit::planetOf(v.destination) == home) {
+        if (orbit::isMoon(home)) {
+            // Around a moon: it goes round its planet, and so do you.
+            const orbit::Body planet = orbit::planetOf(home);
+            const double a = orbit::moonOrbit(home).semiMajorAxis;
+            const double moonPeriod =
+                2.0 * std::numbers::pi * std::sqrt(a * a * a / orbit::bodyMu(planet));
+            where += QLatin1Char(' ') + tr("%1 goes round %2 every %3, taking you with it.")
+                                            .arg(planetInText(home, true), planetInText(planet),
+                                                 periodText(moonPeriod));
+            if (v.destination == planet) {
+                where += QLatin1Char(' ') +
+                         tr("To go home, leave %1 backwards at the right point in your orbit: "
+                            "slower than %1, you fall towards %2, as the Apollo crews did.")
+                             .arg(planetInText(home), planetInText(planet));
+            } else if (orbit::planetOf(v.destination) == planet) {
+                where += QLatin1Char(' ') +
+                         tr("%1 goes round %2 too, %3 away now. Leave %4 at the right moment "
+                            "and you cross to where it will be.")
+                             .arg(planetInText(v.destination, true), planetInText(planet),
+                                  display::longDistance(fromTarget), planetInText(home));
+            } else {
+                where +=
+                    QLatin1Char(' ') +
+                    tr("%1 is %2 away. To get there you climb out of %3's gravity and "
+                       "then out of %4's, leaving when %3 is in the right place round %4: "
+                       "its speed round %4 comes with you for free.")
+                        .arg(planetInText(v.destination, true), display::longDistance(fromTarget),
+                             planetInText(home), planetInText(planet));
+            }
+        } else if (orbit::isMoon(v.destination) && orbit::planetOf(v.destination) == home) {
             // Its own moon: a transfer inside the planet's gravity.
             const double a = orbit::moonOrbit(v.destination).semiMajorAxis;
             const double moonPeriod =
@@ -595,7 +642,9 @@ QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
                 .arg(regionPhrase(puzzle.region), display::longDistance(orbit::norm(v.position)),
                      display::longDistance(fromTarget), to, around.arg(periodText(el.period)));
     }
-    if (orbit::isMoon(v.destination) && orbit::planetOf(v.destination) != parkedHome(v)) {
+    const auto home = parkedHome(v);
+    if (orbit::isMoon(v.destination) &&
+        (!home || orbit::planetOf(v.destination) != orbit::planetOf(*home))) {
         // Another planet's moon: two steps.
         where += QLatin1Char(' ') +
                  tr("%1 goes round %2: get to %2 first, then aim for %1 once you're near "
@@ -1054,6 +1103,23 @@ void GameWindow::updatePath() {
                 const double t = samples[i].epoch + span * k / kTurn;
                 points.append(drawn(orbit::sampleAt(*prediction, t).r, t));
                 colors.append(color);
+            }
+            // The rest of the stretch: riding along with the body (a moon
+            // round its planet, a planet round the Sun), unless seen from it.
+            const double stretch = end - samples[i].epoch;
+            if (stretch > span && m_drawFrame != planet) {
+                double step = kDay;
+                if (orbit::isMoon(planet)) {
+                    const double a = orbit::moonOrbit(planet).semiMajorAxis;
+                    const double mu = orbit::bodyMu(orbit::planetOf(planet));
+                    step = 2.0 * std::numbers::pi * std::sqrt(a * a * a / mu) / 128.0;
+                }
+                const auto steps = static_cast<int>(std::min(1000.0, (stretch - span) / step));
+                for (int k = 1; k <= steps; ++k) {
+                    const double t = samples[i].epoch + span + (stretch - span) * k / (steps + 1);
+                    points.append(drawn(orbit::bodyPosition(planet, t) + rel, t));
+                    colors.append(color);
+                }
             }
             i = last;
             continue;

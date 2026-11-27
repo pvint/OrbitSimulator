@@ -33,6 +33,19 @@
 // is nearly 4 km/s at Titan. Once in orbit around Saturn, Cassini used
 // Titan's gravity, pass after pass over 13 years, rather than its fuel to
 // shape its orbit.
+//
+// LEAVING A MOON
+// The same, the other way round. In orbit around Ganymede, the ship first
+// climbs out of Ganymede's gravity, then out of Jupiter's (to go to another
+// planet), or crosses to another of Jupiter's moons. Each step is a
+// two-body problem again, and the moon's own motion round its planet comes
+// for free: leaving forwards along it, the ship keeps the moon's speed. To
+// another planet, the escape from the planet is a hyperbola with its low
+// point at the moon, so the moon must be at the right place round its
+// planet when the ship leaves: it comes round within days (the Moon:
+// four weeks). Home from the Moon is the simplest: slow down relative to
+// the Earth, by leaving the Moon backwards, until the path's perigee
+// dips into the air, as Apollo did.
 #pragma once
 
 #include "orbit/core/lost_in_space.hpp"
@@ -74,6 +87,10 @@ struct MoonLeg {
     /// Its departure and arrival, cost, speed relative to the moon on
     /// arrival (vInfinity) and what the goal costs there.
     TransferPlan plan;
+    /// Leaving a moon for somewhere outside its planet's system: a course
+    /// correction once clear of the planet, already aimed at the
+    /// destination.
+    std::optional<Burn> correction;
 };
 
 /// For a voyage to a moon, the leg to it:
@@ -88,5 +105,38 @@ struct MoonLeg {
 /// destination isn't a moon, or the aim doesn't converge.
 std::optional<MoonLeg> planToMoon(const Voyage& voyage, double now, const VoyageResult& prediction,
                                   const VoyageOptions& options = {});
+
+/// The cheapest way from an orbit around a moon to `to`, leaving after
+/// `epoch`, with each body's gravity taken one at a time (patched conics):
+///   to another moon of the same planet: Lambert's problem with the
+///     planet's μ from the moon to the other one, over about one synodic
+///     period, each departure priced at departureCost from the moon for
+///     |v₁ − v_moon|;
+///   home to the moon's planet (the Earth): falling from the moon's
+///     distance to the perigee aimPerigee() wants, half an ellipse;
+///   anywhere else: cheapestTransfer from the planet, each departure priced
+///     with escapeFromMoon at the moon's best place round the planet, then
+///     the moment within half the moon's period of the planned day when it
+///     is best placed, with Lambert's problem solved again for that day.
+struct MoonDeparture {
+    double epoch = 0.0; ///< when to leave the moon
+    Vec3 vInfinity;     ///< the speed to leave the moon with, relative to it (m/s)
+    TransferPlan plan;  ///< the whole trip (departureCost: both escapes)
+};
+std::optional<MoonDeparture> departureFromMoon(Body moon, const ParkingOrbit& orbit, double epoch,
+                                               Body to, Goal goal);
+
+/// Parked around a moon at `now`: the departure burn (departureFromMoon,
+/// then departureBurn at the best point in the orbit). To another moon of
+/// the planet, homed in with the full simulation as planToMoon does; home
+/// to the planet, as planned (both to be aimed afterwards with
+/// aimAtDestination). Out of the planet's system, homed in with the full
+/// simulation on the v∞ planned, and a course correction once clear of the
+/// planet (ten days on at least), aimed: a trip of years planned with the
+/// Sun alone misses by millions of km, and aiming the departure itself
+/// from so deep in two gravity wells is a knife edge. Nothing if not
+/// parked around a moon or no way was found.
+std::optional<MoonLeg> planFromMoon(const Voyage& voyage, double now,
+                                    const VoyageOptions& options = {});
 
 } // namespace orbit

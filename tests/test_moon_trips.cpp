@@ -52,6 +52,21 @@ VoyageResult playHints(Voyage v, int steps) {
         const bool reaches = flown.arrival.has_value() ||
                              (closest.valid && closest.distance < sphereOfInfluence(to, 0.0));
         std::optional<Burn> added;
+        // Parked around the moon it started at, with nothing planned: leave
+        // it first.
+        const auto parked = parkedAround(v.startEpoch, v.position, v.velocity);
+        if (parked && isMoon(*parked) && v.burns.empty()) {
+            const auto leg = planFromMoon(v, v.startEpoch);
+            if (!leg) break;
+            v.burns = {leg->burn};
+            if (leg->correction) {
+                v.burns.push_back(*leg->correction);
+            } else if (const auto tuned = aimAtDestination(v, 0)) {
+                v.burns[0] = *tuned;
+            }
+            flown = flyVoyage(v);
+            continue;
+        }
         if (reaches) {
             if (v.goal != Goal::PlanetOrbit) break;
             const auto brake = captureBurn(v);
@@ -68,10 +83,10 @@ VoyageResult playHints(Voyage v, int steps) {
             DepartureFrom from;
             Vec3 r = v.position;
             Vec3 vel = v.velocity;
-            if (const auto parked = parkedAround(v.startEpoch, r, vel)) {
-                from = {parked, parkingOrbit(*parked), {}};
-                r = bodyPosition(*parked, v.startEpoch);
-                vel = bodyVelocity(*parked, v.startEpoch);
+            if (const auto home = parkedAround(v.startEpoch, r, vel)) {
+                from = {home, parkingOrbit(*home), {}};
+                r = bodyPosition(*home, v.startEpoch);
+                vel = bodyVelocity(*home, v.startEpoch);
             }
             const SearchSpan span = searchSpan(r, vel, to);
             const auto plan = cheapestTransfer(v.startEpoch, r, vel, from, to, v.goal, span.window,
@@ -232,6 +247,152 @@ TEST_CASE("Hints reach moons all over the solar system", "[moontrips]") {
     INFO(bodyName(c.to) << " from " << regionKey(c.from));
     const Puzzle p = makePuzzle({c.difficulty, c.from, c.inOrbit, c.to}, 11, epoch2027());
     const VoyageResult end = playHints(p.voyage, 5);
+    CHECK(end.end == c.end);
+    CHECK(end.goalMet);
+    CHECK(end.deltaVLeft > 0.0);
+}
+
+// --- Starting at a moon ----------------------------------------------------
+
+TEST_CASE("Leaving a moon: two escapes, and the moon's own speed for free", "[moontrips]") {
+    // From a low orbit around the Moon to 3 km/s clear of the Earth,
+    // leaving forwards along the Moon's motion: the hyperbola out of the
+    // Earth's gravity needs √(v∞² + 2μ/a) at the Moon's distance a, the
+    // Moon already moves at about √(μ/a), and only the difference has to be
+    // found by climbing out of the Moon's gravity.
+    const double t = epoch2027();
+    const MoonState m = moonFromPlanet(Body::Moon, t);
+    const double vInf = 3000.0;
+    const Vec3 along = normalized(m.v - dot(m.v, normalized(m.r)) * normalized(m.r));
+    const double nuInf = std::acos(-1.0 / (1.0 + norm(m.r) * vInf * vInf / bodyMu(Body::Earth)));
+    // The direction the escape leaves along, for a low point at the Moon.
+    const Vec3 rHat = normalized(m.r);
+    const Vec3 out = std::cos(nuInf) * rHat + std::sin(nuInf) * along;
+    const ParkingOrbit low = parkingOrbit(Body::Moon);
+    const auto escape = escapeFromMoon(Body::Moon, low, {m.r, m.v}, vInf * out);
+    REQUIRE(escape);
+    const double needed = std::sqrt(vInf * vInf + 2.0 * bodyMu(Body::Earth) / norm(m.r));
+    CHECK_THAT(norm(escape->deltaV), WithinRel(needed - norm(m.v), 0.02));
+    CHECK_THAT(escape->cost, WithinRel(departureCost(Body::Moon, low, needed - norm(m.v)), 0.02));
+    // Cheaper than from low Earth orbit for the same v∞ (about 3.6 km/s).
+    CHECK(escape->cost < departureCost(Body::Earth, parkingOrbit(Body::Earth), vInf) - 1000.0);
+}
+
+TEST_CASE("Starting at a moon: the spec", "[moontrips]") {
+    PuzzleSpec spec;
+    spec.from = Region::BetweenPlanets;
+    spec.startMoon = Body::Europa;
+    spec.to = Body::Mars;
+    const PuzzleSpec europa = settledSpec(spec);
+    CHECK(europa.from == Region::Jupiter);
+    CHECK(europa.inOrbit);
+    CHECK(europa.to == Body::Mars);
+    // Not to itself, nor to its planet: to another of the planet's moons.
+    spec.to = Body::Europa;
+    CHECK(settledSpec(spec).to == Body::Io);
+    spec.to = Body::Jupiter;
+    CHECK(settledSpec(spec).to == Body::Io);
+    // But home from the Moon is fine, and the Moon to the Moon is home.
+    spec.startMoon = Body::Moon;
+    spec.to = Body::Earth;
+    CHECK(settledSpec(spec).to == Body::Earth);
+    spec.to = Body::Moon;
+    CHECK(settledSpec(spec).to == Body::Earth);
+    // Home from the Moon is a re-entry at any difficulty.
+    for (const Difficulty d : {Difficulty::Easy, Difficulty::Normal, Difficulty::Hard}) {
+        CHECK(goalFor(d, Body::Earth, Body::Moon) == Goal::Reentry);
+    }
+    CHECK(goalFor(Difficulty::Hard, Body::Earth, Body::Titan) == Goal::EarthOrbit);
+}
+
+TEST_CASE("Home from the Moon, as Apollo came back", "[moontrips]") {
+    PuzzleSpec spec;
+    spec.difficulty = Difficulty::Normal;
+    spec.startMoon = Body::Moon;
+    const Puzzle p = makePuzzle(spec, 5, epoch2027());
+    const Voyage& v = p.voyage;
+    REQUIRE(parkedAround(v.startEpoch, v.position, v.velocity) == Body::Moon);
+    CHECK(v.goal == Goal::Reentry);
+    // Trans-Earth injection: under 1 km/s from a low lunar orbit (Apollo's
+    // was about 1 km/s, for a faster trip), and four or five days home.
+    CHECK(p.plan.departureCost > 700.0);
+    CHECK(p.plan.departureCost < 1000.0);
+    CHECK(p.plan.arrival - p.plan.departure > 3.5 * kDay);
+    CHECK(p.plan.arrival - p.plan.departure < 6.0 * kDay);
+    CHECK(v.horizon > 0.0);
+
+    const VoyageResult end = playHints(v, 3);
+    CHECK(end.end == VoyageEnd::Reentered);
+    CHECK(end.goalMet);
+    CHECK(end.deltaVLeft > 0.0);
+    // Falling from the Moon's distance, the capsule meets the air at about
+    // 11 km/s, just under the Earth's escape speed there.
+    CHECK(end.entrySpeed > 10800.0);
+    CHECK(end.entrySpeed < 11100.0);
+    // Leaving the Moon is no flyby of it, though the path out has a low
+    // point just after the burn.
+    CHECK(std::ranges::none_of(end.flybys,
+                               [](const PlanetPass& pass) { return pass.planet == Body::Moon; }));
+}
+
+TEST_CASE("From one moon to another", "[moontrips]") {
+    struct Case {
+        Difficulty difficulty;
+        Body from;
+        Body to;
+        VoyageEnd end;
+    };
+    const Case c = GENERATE(
+        // Ganymede to Europa: inwards, deep in Jupiter's gravity.
+        Case{Difficulty::Hard, Body::Ganymede, Body::Europa, VoyageEnd::OrbitingPlanet},
+        // Titan to Enceladus: Enceladus is too small to orbit so near
+        // Saturn, so a close pass.
+        Case{Difficulty::Normal, Body::Titan, Body::Enceladus, VoyageEnd::PassedClose},
+        // Outwards, round tipped-over Uranus.
+        Case{Difficulty::Easy, Body::Ariel, Body::Oberon, VoyageEnd::ReachedPlanet});
+    INFO(bodyName(c.from) << " to " << bodyName(c.to));
+    PuzzleSpec spec;
+    spec.difficulty = c.difficulty;
+    spec.startMoon = c.from;
+    spec.to = c.to;
+    const Puzzle p = makePuzzle(spec, 9, epoch2027());
+    const Voyage& v = p.voyage;
+    REQUIRE(parkedAround(v.startEpoch, v.position, v.velocity) == c.from);
+    CHECK(p.plan.departure - v.startEpoch < kDay);
+    CHECK(p.plan.arrival - p.plan.departure < 20.0 * kDay);
+    CHECK(v.horizon > 0.0);
+    const VoyageResult end = playHints(v, 4);
+    CHECK(end.end == c.end);
+    CHECK(end.goalMet);
+    CHECK(end.deltaVLeft > 0.0);
+}
+
+TEST_CASE("From a moon out of its planet's system", "[moontrips]") {
+    struct Case {
+        Difficulty difficulty;
+        Body from;
+        Body to;
+        VoyageEnd end;
+    };
+    const Case c = GENERATE(
+        // From the Moon to Mars: out of the Moon's gravity, then the
+        // Earth's, then across to Mars.
+        Case{Difficulty::Normal, Body::Moon, Body::Mars, VoyageEnd::PassedClose},
+        // From Europa home: out of Jupiter's deep well.
+        Case{Difficulty::Easy, Body::Europa, Body::Earth, VoyageEnd::ReachedEarth},
+        // From the Moon to Titan: two moons, two planets.
+        Case{Difficulty::Easy, Body::Moon, Body::Titan, VoyageEnd::ReachedPlanet});
+    INFO(bodyName(c.from) << " to " << bodyName(c.to));
+    PuzzleSpec spec;
+    spec.difficulty = c.difficulty;
+    spec.startMoon = c.from;
+    spec.to = c.to;
+    const Puzzle p = makePuzzle(spec, 4, epoch2027());
+    const Voyage& v = p.voyage;
+    REQUIRE(parkedAround(v.startEpoch, v.position, v.velocity) == c.from);
+    CHECK(p.plan.departure - v.startEpoch < kDay);
+    CHECK(p.plan.departureCost > 0.0);
+    const VoyageResult end = playHints(v, 5);
     CHECK(end.end == c.end);
     CHECK(end.goalMet);
     CHECK(end.deltaVLeft > 0.0);

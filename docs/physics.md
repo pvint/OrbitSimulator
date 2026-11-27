@@ -634,6 +634,50 @@ Earth's own path; the game draws such trips as seen from the planet, each
 point where the ship is relative to the planet then, around where the
 planet is now.
 
+**Leaving a moon (`departureFromMoon`, `planFromMoon`).** Starting in a
+low orbit around a moon, the ship has two gravity wells to climb out of,
+one inside the other, and patched conics takes them one at a time. To go
+to another planet, the path out of the planet's gravity is a hyperbola,
+and leaving from the moon its low point is at the moon's distance a,
+moving at √(v∞² + 2μ/a) square to the radius (vis-viva again). The moon
+already moves at about √(μ/a) round the planet, so leaving forwards along
+its motion the ship only has to find the difference: a v∞ *relative to the
+moon*, which it gets by burning from its parking orbit (the Oberth effect,
+as from any orbit). From the Moon to Mars that is about 1.7 km/s, against
+3.6 km/s from low Earth orbit; from Europa home, 5.3 km/s, deep in
+Jupiter's well. The hyperbola leaves along v∞ only if the moon is in the
+right place round the planet, so the departure waits for it: within half
+the moon's period of the planned day (days; the Moon, two weeks), Lambert's
+problem is solved again for each moment and the moon's best place picked.
+Planned one body at a time, the escape comes out a little off (the moon
+still pulls as the ship climbs away from it), so Newton's method with the
+full simulation homes the burn in on the planned v∞, read off the
+hyperbola round the planet once well clear of its moons. A course
+correction ten days on (once clear of the planet) then aims at the
+destination: aiming the departure itself, from so deep in two wells, is a
+knife edge for a trip of years.
+
+To another moon of the same planet the leg is the porkchop around the
+planet again, from the moon's own position, over about one synodic period
+of the two, 1/|1/T₁ − 1/T₂|, the time for them to come back to the same
+places relative to each other (Ganymede and Europa: seven days).
+
+Home from the Moon is simplest: leave the Moon *backwards*, so that,
+relative to the Earth, the ship is left slower than the Moon at the high
+point of half an ellipse whose low point dips into the air. At the high
+point r_m of an ellipse down to r_p, v² = 2μ r_p / (r_m (r_m + r_p)):
+about 190 m/s, against the Moon's 1,020 m/s, so the ship leaves the Moon
+at about 830 m/s, costing some 810 m/s from a low lunar orbit (Apollo's
+trans-Earth injection was about 1 km/s, for a faster trip). The fall takes
+half the ellipse's period, about four and a half days, and ends at the air
+at about 11 km/s, just under the Earth's escape speed there. The perigee to
+aim for comes from the entry angle: h = r_I v_I cos γ at the entry
+interface r_I, with v_I from the path's energy, and the conic's perigee
+r_p = h² / (μ (1 + e)), e = √(1 + 2εh²/μ²). With no v∞ there is no
+B-plane, so the aim is Newton's method on that one number, the perigee
+(the smallest change to the burn that gets it). Missing the air, the path
+would come round again days later; only the first fall counts.
+
 ## Integration (`integrator.hpp`)
 
 The equations of motion are integrated with **Dormand–Prince 5(4)**, an

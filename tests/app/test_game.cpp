@@ -242,6 +242,54 @@ private slots:
                  qPrintable(messages[1]));
         QCOMPARE(session.burnCount(), 2);
     }
+
+    void aHintBringsYouHomeFromTheMoon() {
+        // In orbit around the Moon: one burn backwards, aimed so the fall
+        // meets the air at the right angle.
+        orbit::PuzzleSpec spec;
+        spec.difficulty = orbit::Difficulty::Hard;
+        spec.startMoon = orbit::Body::Moon;
+        GameSession session;
+        session.setPuzzle(
+            orbit::makePuzzle(spec, 2, orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0})));
+        session.waitForIdle();
+        QVERIFY(!session.prediction()->goalMet);
+        QSignalSpy hints(&session, &GameSession::hintReady);
+        session.requestHint();
+        session.waitForIdle();
+        QCOMPARE(hints.count(), 1);
+        const QString message = hints.at(0).at(0).toString();
+        QVERIFY2(message.contains(QStringLiteral("fall towards the Earth")), qPrintable(message));
+        QCOMPARE(session.burnCount(), 1);
+        QCOMPARE(session.prediction()->end, orbit::VoyageEnd::Reentered);
+        // The burn's directions are relative to the Moon.
+        QCOMPARE(session.prediction()->burns.front().planet, orbit::Body::Moon);
+    }
+
+    void hintsTakeYouFromTheMoonToMars() {
+        // Out of the Moon's gravity, then the Earth's: the departure, and a
+        // correction once clear of the Earth.
+        orbit::PuzzleSpec spec;
+        spec.difficulty = orbit::Difficulty::Normal;
+        spec.startMoon = orbit::Body::Moon;
+        spec.to = orbit::Body::Mars;
+        GameSession session;
+        session.setPuzzle(
+            orbit::makePuzzle(spec, 4, orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0})));
+        session.waitForIdle();
+        QStringList messages;
+        connect(&session, &GameSession::hintReady, this,
+                [&messages](const QString& m) { messages.append(m); });
+        for (int i = 0; i < 3 && !session.prediction()->goalMet; ++i) {
+            session.requestHint();
+            session.waitForIdle();
+        }
+        QVERIFY2(session.prediction()->goalMet, qPrintable(messages.join(QLatin1Char('\n'))));
+        QVERIFY2(messages.first().contains(QStringLiteral("two climbs")),
+                 qPrintable(messages.first()));
+        QCOMPARE(session.burnCount(), 2);
+        QVERIFY(session.prediction()->deltaVLeft > 0.0);
+    }
 };
 
 QTEST_MAIN(GameTests)

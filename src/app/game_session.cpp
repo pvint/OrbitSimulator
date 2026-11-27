@@ -327,6 +327,65 @@ void GameSession::onHintMade() {
     }
 }
 
+std::optional<GameSession::Hint>
+GameSession::hintFromMoon(orbit::Voyage voyage, std::size_t planned, orbit::Body moon, double now) {
+    using namespace orbit;
+    const auto leg = planFromMoon(voyage, now);
+    if (!leg) return std::nullopt;
+    std::erase_if(voyage.burns, [&](const Burn& b) { return b.epoch >= leg->from; });
+    const bool replaced = voyage.burns.size() < planned;
+    voyage.burns.push_back(leg->burn);
+    auto index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, leg->burn.epoch));
+    if (leg->correction) {
+        voyage.burns.push_back(*leg->correction);
+        index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, leg->burn.epoch));
+    } else if (const auto tuned = aimAtDestination(voyage, index)) {
+        voyage.burns[index] = *tuned;
+        index = static_cast<std::size_t>(indexOfEpoch(voyage.burns, tuned->epoch));
+    }
+    const Burn& first = voyage.burns[index];
+    const Body to = voyage.destination;
+    const Body planet = planetOf(moon);
+    const QString from = display::bodyInText(moon);
+    const QString when = display::date(first.epoch);
+    const QString size = display::speed(burnSize(first));
+    QString message;
+    if (to == planet) {
+        message = tr("Slow down to fall home: leave %1 on %2 with a burn of %3 at the right point "
+                     "in your orbit. You leave %1 backwards, slower than it goes round %4, and "
+                     "fall towards %4 for %5, meeting the air at just the right angle.")
+                      .arg(from, when, size, display::bodyInText(planet),
+                           display::duration(leg->plan.arrival - first.epoch));
+    } else if (isMoon(to) && planetOf(to) == planet) {
+        message =
+            tr("%1 goes round %2 too. The cheapest way to meet it leaves %3 on %4 with a "
+               "burn of %5 and gets there on %6, arriving at %7 relative to it.")
+                .arg(display::bodyInText(to, true), display::bodyInText(planet), from, when, size,
+                     display::date(leg->plan.arrival), display::speed(leg->plan.vInfinity));
+    } else {
+        message = tr("Leaving %1 takes two climbs: out of %1's gravity, then out of %2's. Burn "
+                     "%3 on %4, at the right point in your orbit and with %1 in the right place "
+                     "round %2, and you arrive on %5.")
+                      .arg(from, display::bodyInText(planet), size, when,
+                           display::date(leg->plan.arrival));
+        if (leg->correction) {
+            message += QLatin1Char(' ') + tr("A small correction of %1 on %2, once clear of %3, "
+                                             "lines you up.")
+                                              .arg(display::speed(burnSize(*leg->correction)),
+                                                   display::date(leg->correction->epoch),
+                                                   display::bodyInText(planet));
+        }
+        if (isMoon(to)) {
+            message += QLatin1Char(' ') +
+                       tr("That takes you to %1, crossing %2's orbit: once "
+                          "you're near, press Hint again to meet %2 itself.")
+                           .arg(display::bodyInText(planetOf(to)), display::bodyInText(to));
+        }
+    }
+    if (replaced) message += QLatin1Char(' ') + tr("(It replaces the burns you had planned.)");
+    return Hint{voyage.burns, static_cast<int>(index), message};
+}
+
 /// The hint: plan the way there if the path doesn't reach the destination;
 /// aim it if it does but misses the goal; brake if it would come in too
 /// fast to land; brake at the low point to stay, on Hard.
@@ -348,6 +407,16 @@ GameSession::Hint GameSession::computeHint(const orbit::Puzzle& puzzle,
     const double soi = sphereOfInfluence(to, now);
     const bool reaches =
         prediction.arrival.has_value() || (closest.valid && closest.distance < soi);
+
+    // Still in orbit around a moon: the way out of it (home to its planet,
+    // that's the first thing to plan, wherever the path goes now).
+    Voyage before = voyage;
+    std::erase_if(before.burns, [&](const Burn& b) { return b.epoch >= now; });
+    const VoyageSample start = voyageStateAt(before, now);
+    const auto startMoon = parkedAround(now, start.r, start.v);
+    if (startMoon && isMoon(*startMoon) && (!reaches || to == planetOf(*startMoon))) {
+        if (auto hint = hintFromMoon(voyage, burns.size(), *startMoon, now)) return *hint;
+    }
 
     if (!reaches && isMoon(to)) {
         // To a moon, once in (or on the way into) its planet's sphere of

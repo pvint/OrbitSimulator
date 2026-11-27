@@ -10,6 +10,7 @@
 #include <QString>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 /// The state of one game of "Lost in space": the puzzle, the player's
@@ -110,6 +111,10 @@ private:
                             double now);
     static Hint computeAim(const orbit::Puzzle& puzzle, const std::vector<orbit::Burn>& burns,
                            int index, const orbit::FlybyAim& aim);
+    /// Parked around `moon`: the way out of it (orbit::planFromMoon), aimed,
+    /// replacing the burns from `now` on (`planned` of them before).
+    static std::optional<Hint> hintFromMoon(orbit::Voyage voyage, std::size_t planned,
+                                            orbit::Body moon, double now);
     void sortBurns(int follow);
 
     /// The puzzle with the voyage's look-ahead stretched to reach m_reach.

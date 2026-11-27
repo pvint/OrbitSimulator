@@ -70,7 +70,7 @@ prototype settled the physics model and the UI ideas; this is the full version.
   pointer (down to 2,000 km); double-click centres on a planet, the Sun,
   the ship or a flyby; "Centre" lists Sun / You / Earth / destination /
   any planet double-clicked.
-- **In progress: G3, moons as bodies.** Done: `Planet` renamed `Body`,
+- **G3, moons as bodies, is done** (on `one-app`): `Planet` renamed `Body`,
   18 major moons (real sizes, masses, orbits; phases illustrative), their
   spheres of influence, parking orbits (Titan's above its haze),
   `canPark`; moons in the flight (they pull inside their planet's sphere,
@@ -82,9 +82,12 @@ prototype settled the physics model and the UI ideas; this is the full version.
   then a correction a month out), a planet's own moon starts in orbit
   around it, `Voyage::horizon` (weeks, among moons), the path drawn as
   seen from the planet on such trips, "Or one of its moons:" on the start
-  card, `--puzzle normal:earth:moon`. Still to do: **moons as starts** (in
-  orbit around a moon: escape the moon, then the planet; nested
-  departure costs), then puzzles from moon to moon.
+  card, `--puzzle normal:earth:moon`. **Moons as starts** (decision 40,
+  2026-11-27): in orbit around any moon, going anywhere (nested escapes,
+  `escapeFromMoon`; `planFromMoon` homes the departure in on the planned
+  v∞, then a correction ten days on), moon to moon, home from the Moon (a
+  re-entry, aimed on the perigee); "Or in orbit around one of its moons:"
+  on the start card; `--puzzle normal:moon:earth`, `hard:ganymede:europa`.
 - **Then, in order:** G4 free roam (pick a body, start in orbit, no goal,
   unlimited fuel); G5 close-ups (textures already found: Mercury, Mars,
   Titan, Io, Europa, Ganymede, Callisto from the USGS map server
@@ -132,6 +135,7 @@ build/dev/src/app/orbitsim --screenshot out.png   # render the window to a file 
 build/dev/src/app/orbitsim --puzzle hard:4 --hint --no-cards --screenshot out.png
 build/dev/src/app/orbitsim --puzzle normal:earth:saturn   # from low Earth orbit to Saturn
 build/dev/src/app/orbitsim --puzzle hard:earth:moon        # from low Earth orbit into lunar orbit
+build/dev/src/app/orbitsim --puzzle normal:moon:earth      # home from lunar orbit (a moon first = start there)
 build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
 build/dev/src/cli/orbitsim-cli --vehicle natural-body        # Apophis 2029 flyby
 build/dev/src/cli/orbitsim-cli        # CLI
@@ -231,7 +235,7 @@ Each milestone ends with something that runs.
 | D1 | Distribution: GitHub + CI builds for Windows/macOS/Linux (AppImage); a Gentoo ebuild (live `-9999` first, then versioned ebuilds once there are tagged releases); .desktop file + app icon | done (no release tagged yet) |
 | G1 | Lost in space: the game (puzzles from anywhere to anywhere, hints, flyby tools); decisions 35–37 | done |
 | G2 | One app (decision 38): the game window is the app; the old workbench UI is deleted (core physics, CLI and tests kept; the rocket launch to come back later as a mode) | done |
-| G3 | Moons as bodies: all 18 major moons (the Moon, the Galilean moons, Saturn's seven, Uranus's five, Triton): ephemerides, gravity, start/destination | bodies, flight, drawing, destinations done; starts at moons to do |
+| G3 | Moons as bodies: all 18 major moons (the Moon, the Galilean moons, Saturn's seven, Uranus's five, Triton): ephemerides, gravity, start/destination | done |
 | G4 | Free roam: pick a body, start in orbit, no goal, unlimited fuel | |
 | G5 | Close-ups: textured bodies at true size, lit by the Sun, Saturn's rings, seen when the camera is near them | |
 | G6 | The asteroid belt, drawn | done |
@@ -261,7 +265,11 @@ prograde/radial/normal relative to the Earth inside its SOI, else the Sun,
 `flyby.hpp`: `bPlane`, `impactParameter`, `FlybySide`, `aimFlyby`,
 `passAfter`. `moon_transfer.hpp`: `moonApproachSpeed`, `moonDistance`,
 `moonOrbitNormal`, `cheapestMoonTransfer` (planet-only porkchop),
-`planToMoon` → `MoonLeg` (burn homed in with the full simulation).
+`planToMoon` → `MoonLeg` (burn homed in with the full simulation);
+from a moon: `escapeFromMoon` (nested escapes), `departureFromMoon`,
+`planFromMoon` (`MoonLeg::correction` out of a planet's system).
+`refineAim` aims a bound return (from the Moon) on the perigee
+(`aimPerigee`).
 `lost_in_space.hpp`: `Region`, `makePuzzle(difficulty, seed, epoch, region)`,
 `cheapestWayHome` (porkchop), `searchSpan` (window and longest trip by
 distance), hints `burnTowardsEarth`, `refineAim` (B-plane Newton with the

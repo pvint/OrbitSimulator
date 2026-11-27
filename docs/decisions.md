@@ -834,6 +834,57 @@ moon comes next).
   picked; picking the planet you start at offers its moons (from the
   Earth, the Moon). `--puzzle normal:earth:moon`, `hard:earth:titan`.
 
+### 40. Starting at a moon: two escapes, then Newton (2026-11-27)
+
+G3's last part: a puzzle can start in a low orbit around any moon
+(`PuzzleSpec::startMoon`), going anywhere: another planet or its moon,
+another moon of the same planet, or (from the Moon) home.
+
+- **Nested patched conics for pricing** (`escapeFromMoon`): the escape
+  from the planet is a hyperbola with its low point at the moon; the ship
+  must leave the moon at the difference between that and the moon's own
+  velocity; that costs `departureCost` out of the moon's orbit. The Sun
+  porkchop (`cheapestTransfer`) prices each departure at the moon's best
+  place round its planet; the departure is then timed, within half the
+  moon's period, for the moon's real place.
+- **Then the full simulation, twice** (`planFromMoon`). `homeOut`: Newton
+  on the burn until the path leaves the planet with the planned v∞ (read
+  off its hyperbola once clear of the moons). Then a course correction ten
+  days on, aimed with `aimAtDestination`. Aiming the departure itself was
+  tried first: from the Moon to Mars it converged (and was 240 m/s
+  cheaper), from the Moon to Saturn it never did, and the patched-conic
+  departure missed Saturn by 84 million km. The correction costs 40 to
+  190 m/s. The puzzle's fuel is priced from these real burns if they cost
+  more than the plan (the Moon to Mars: 2.0 km/s against 1.7).
+- **Moon to moon** is the planet's porkchop from the moon's position,
+  over one synodic period, homed in as `planToMoon` does.
+- **Home from the Moon is a re-entry at every difficulty** (`goalFor`):
+  the ship is inside the Earth's sphere of influence from the start, so
+  "reach the Earth" means nothing, and almost any path that leaves the
+  Moon without falling in is already an Earth orbit. Easy, Normal and Hard
+  differ in fuel. The aim has no B-plane (no v∞): Newton on the perigee
+  (`aimPerigee`, `refineAim`'s bound branch), first fall only (it once
+  converged on the second pass, nine days later).
+- **From a moon, not to its planet** unless that is the Earth
+  (`settledSpec`): "from Titan to Saturn" would be met at the start.
+- **Sooner rather than later.** Just before one launch window the next,
+  a year on, can be 2% cheaper, and the hint jumped to it. Out of a
+  planet's system, a departure within two months wins unless waiting
+  saves over 3%; among moons, waiting counts 10 m/s a day.
+- **Leaving an orbit is no flyby** (`voyage.cpp`): the low point of the
+  path out of a moon was drawn as a "Moon flyby". A burn made from a bound
+  orbit marks that body until the ship leaves its sphere of influence.
+  (A burn on the way in to a pass doesn't hide the pass.) Also fixed: a
+  flight ending in the air didn't update its closest passes, so the
+  "closest to the Earth" label sat at the start.
+- **Drawing**: a ship parked around a moon rides along with it (the moon's
+  track, after one turn of the parking orbit), instead of a straight
+  line from the start of the stretch to its end.
+- **The start card**: "Or in orbit around one of its moons:" under the
+  places; the "In orbit around it" box hides then. `--puzzle` takes a
+  moon as where from if it comes first: `normal:moon:earth`,
+  `hard:ganymede:europa`, `easy:moon:titan`.
+
 ---
 
 ## Open questions

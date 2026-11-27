@@ -90,12 +90,19 @@ std::optional<Region> regionFromKey(std::string_view key);
 std::string_view regionName(Region region);
 /// The planet a region is about, if any.
 std::optional<Body> regionPlanet(Region region);
+/// The region about a planet (a moon: its planet's).
+Region regionOf(Body body);
 
 /// The goal at each difficulty. Going home: Easy, reach the Earth; Normal,
 /// re-enter inside the corridor; Hard, end in orbit around the Earth. To
 /// another planet or a moon: reach it; pass close (a flyby probe); end in
 /// orbit (at a moon too small to orbit, canPark(), a close pass again).
-Goal goalFor(Difficulty difficulty, Body destination = Body::Earth);
+/// Starting at the Moon, home is always a re-entry (Apollo's way back):
+/// the ship is inside the Earth's sphere of influence from the start, and
+/// any path that leaves the Moon without falling in is already an orbit
+/// around the Earth. The difficulty sets the fuel.
+Goal goalFor(Difficulty difficulty, Body destination = Body::Earth,
+             std::optional<Body> startMoon = std::nullopt);
 
 /// An orbit around a planet, by its low and high points (m from the
 /// centre; equal for a circle).
@@ -178,10 +185,16 @@ std::optional<TransferPlan> cheapestWayHome(double epoch, const Vec3& r, const V
 /// parked around a planet, the planet itself (paying departureCost for an
 /// orbit to be set up to suit; or, given `points` round an orbit already
 /// set, the cheapest escapeFrom one of them).
+///
+/// Parked around a moon, `planet` is the moon's planet, `moon` the moon,
+/// `orbit` the orbit around the moon and `points` the moon's own places
+/// round the planet: leaving takes two escapes, one inside the other
+/// (escapeFromMoon).
 struct DepartureFrom {
     std::optional<Body> planet;
     ParkingOrbit orbit;
     std::vector<TwoBodyState> points; ///< relative to the planet
+    std::optional<Body> moon = std::nullopt;
 };
 
 /// Leaving an orbit from the point `at` (relative to a body of μ) on an
@@ -193,6 +206,20 @@ struct Escape {
     double cost = 0.0;
 };
 std::optional<Escape> escapeFrom(const TwoBodyState& at, const Vec3& vInfinity, double mu);
+
+/// Leaving a planet's system from an orbit around one of its moons, so as
+/// to end up v∞ (vector) from the planet. Patched conics, twice: the path
+/// out of the planet's gravity is a hyperbola with its low point at the
+/// moon (`moonState`, relative to the planet), which escapeFrom gives; the
+/// ship must leave the moon at the difference between that hyperbola's
+/// speed there and the moon's own velocity, a v∞ relative to the moon; and
+/// climbing out of the moon's gravity to that costs departureCost from
+/// `orbit` around it. The moon's motion helps: leaving forwards along it,
+/// the ship starts with the moon's speed round the planet for free.
+/// Escape::deltaV is the v∞ relative to the moon; Escape::cost the whole
+/// burn, plus escapeFrom's penalty for a poorly placed moon.
+std::optional<Escape> escapeFromMoon(Body moon, const ParkingOrbit& orbit,
+                                     const TwoBodyState& moonState, const Vec3& vInfinity);
 
 /// `count` points evenly spaced in time round the orbit through `rel`.
 std::vector<TwoBodyState> orbitPoints(const TwoBodyState& rel, double mu, int count);
@@ -219,22 +246,27 @@ struct SearchSpan {
 SearchSpan searchSpan(const Vec3& r, const Vec3& v, Body to = Body::Earth);
 
 /// What to play: from where (drifting, or in orbit around the region's
-/// planet), to where, how hard.
+/// planet or one of its moons), to where, how hard.
 struct PuzzleSpec {
     Difficulty difficulty = Difficulty::Easy;
     Region from = Region::BetweenPlanets;
     bool inOrbit = false;
     Body to = Body::Earth;
+    /// In orbit around this moon (of the region's planet) instead.
+    std::optional<Body> startMoon = std::nullopt;
 };
 /// The spec made sensible: in orbit only around a planet (always around
 /// the Earth, and around a planet going to one of its moons), and not to
-/// the planet it starts at.
+/// the planet it starts at. A moon to start at sets the region to its
+/// planet's and means in orbit; from a moon, not to itself, nor to its
+/// planet unless that is the Earth (home from the Moon).
 PuzzleSpec settledSpec(PuzzleSpec spec);
 
 struct Puzzle {
     Difficulty difficulty = Difficulty::Easy;
     Region region = Region::BetweenPlanets;
     bool inOrbit = false;
+    std::optional<Body> startMoon; ///< parked around this moon at the start
     Body destination = Body::Earth;
     std::uint64_t seed = 0;
     Voyage voyage;       ///< the ship where it starts, no burns yet
@@ -250,7 +282,9 @@ Puzzle makePuzzle(Difficulty difficulty, std::uint64_t seed, double epoch,
 /// cheapest departure, the orbit set up as if launched for it: the escape
 /// starts at its low point, in its plane. In orbit around a planet going to
 /// one of its moons, an orbit or two before a Hohmann transfer to it, in the
-/// moon's plane.
+/// moon's plane. In orbit around a moon, an orbit or two before the
+/// cheapest departure from it (planFromMoon, moon_transfer.hpp), the orbit
+/// set up for it.
 Puzzle makePuzzle(const PuzzleSpec& spec, std::uint64_t seed, double epoch);
 
 // --- Hints ---------------------------------------------------------------
@@ -296,8 +330,20 @@ std::optional<Burn> aimAtDestination(const Voyage& voyage, std::size_t index,
 /// method on the B-vector B = ŝ × h / v∞ (ŝ the incoming direction, h the
 /// angular momentum about the Earth), with its derivatives by finite
 /// differences. Nothing if it doesn't converge.
+///
+/// A path that never escaped the Earth (falling back from the Moon) has no
+/// v∞ and no B-plane: then only the perigee matters, aimed with
+/// aimPerigee() (one equation, the smallest change to the burn).
 std::optional<Burn> refineAim(const Voyage& voyage, std::size_t index,
                               const VoyageOptions& options = {});
+
+/// The perigee (m, from the Earth's centre) for the goal on a path of
+/// energy ε = v²/2 − μ/r around the Earth (J/kg; negative if bound): for a
+/// re-entry, the one whose path meets the entry interface at −6.5°, from
+/// h = r_I v_I cos γ with v_I = √(2(ε + μ/r_I)), and the conic's
+/// r_p = h² / (μ (1 + e)), e = √(1 + 2εh²/μ²); else the goal's perigee
+/// height.
+double aimPerigee(Goal goal, double energy, const VoyageOptions& options = {});
 
 /// The braking burn at the coming low point that leaves the ship in an
 /// orbit around the destination reaching out to captureApoapsis (or

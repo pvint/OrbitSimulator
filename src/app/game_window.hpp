@@ -42,7 +42,11 @@ public:
     void setCardsEnabled(bool enabled) { m_cardsEnabled = enabled; }
 
     // Connected by name to VoyageScene.qml's signals.
-    Q_SLOT void chooseStart(int region, bool inOrbit, int destination, int difficulty);
+    /// From the start card: where from (an orbit::Region, in orbit there
+    /// or not, or around a moon: a body index, −1 for none), where to (a
+    /// body index), how hard.
+    Q_SLOT void chooseStart(int region, bool inOrbit, int startMoon, int destination,
+                            int difficulty);
     Q_SLOT void acceptCard(bool hideFromNowOn);
     Q_SLOT void showHiddenCards();
     /// Centre the view on what was double-clicked (index as the scene's

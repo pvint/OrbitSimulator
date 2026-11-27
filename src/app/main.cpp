@@ -35,10 +35,12 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
     window.setCardsEnabled(!parser.isSet(o.noCards));
     window.show();
     if (parser.isSet(o.puzzle)) {
-        // Any order: a difficulty, where from, "orbit" to start in orbit
-        // there, where to (a second planet, or a moon), a seed (e.g.
-        // "hard:jupiter:4", "normal:earth:saturn", "easy:mars:orbit",
-        // "normal:earth:moon", "hard:jupiter:orbit:europa").
+        // Any order: a difficulty, where from (a place, or a moon to start
+        // in orbit around), "orbit" to start in orbit there, where to (a
+        // second planet, or a moon), a seed (e.g. "hard:jupiter:4",
+        // "normal:earth:saturn", "easy:mars:orbit", "normal:earth:moon",
+        // "hard:jupiter:orbit:europa", "normal:moon:earth",
+        // "hard:ganymede:europa").
         orbit::PuzzleSpec spec;
         spec.difficulty = orbit::Difficulty::Normal;
         bool haveFrom = false;
@@ -65,7 +67,12 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
                 }
             } else if (const auto moon = orbit::bodyFromKey(word.toStdString());
                        moon && orbit::isMoon(*moon)) {
-                spec.to = *moon; // a moon is only ever where to
+                if (!haveFrom) {
+                    spec.startMoon = moon;
+                    haveFrom = true;
+                } else {
+                    spec.to = *moon;
+                }
             }
         }
         window.startPuzzle(spec, seed);
@@ -131,9 +138,10 @@ int main(int argc, char* argv[]) {
         QStringLiteral("Start the game with this puzzle, in any order: easy, normal or hard; "
                        "where from (between, mercury, venus, earth, mars, belt, jupiter, "
                        "saturn, uranus, neptune); \"orbit\" to start in orbit there; where "
-                       "to (a second planet or a moon, else the Earth); a seed "
-                       "(hard:jupiter:42, normal:earth:saturn, easy:mars:orbit, "
-                       "normal:earth:moon, hard:earth:titan)."),
+                       "to (a second planet or a moon, else the Earth); a seed. Where from "
+                       "can be a moon, to start in orbit around it (hard:jupiter:42, "
+                       "normal:earth:saturn, easy:mars:orbit, normal:earth:moon, "
+                       "hard:earth:titan, normal:moon:earth, hard:ganymede:europa)."),
         QStringLiteral("puzzle"));
     const QCommandLineOption hint(QStringLiteral("hint"),
                                   QStringLiteral("With --puzzle: take a hint straight away."));

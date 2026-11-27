@@ -176,6 +176,10 @@ private:
     /// on by each flyby (a pass changes the path as a burn does).
     double m_end = 0.0;
     double m_lookAhead = 0.0;
+    /// The body the last burn was made inside the sphere of influence of,
+    /// until the ship leaves it: the low point of the path out is a
+    /// departure, not a flyby.
+    std::optional<Body> m_leaving;
     VoyageResult m_out;
 
     Relative relative(Body planet, double t, const State& y) const {
@@ -297,7 +301,8 @@ void VoyageFlight::notePass(Body planet, bool atMinimum) {
     if (!closest.valid || pass.distance < closest.distance) closest = pass;
     // A flyby: a pass that comes in and leaves again (not each low point of
     // a ship going round and round).
-    if (!atMinimum || pass.vInfinity <= 0.0 || pass.distance >= sphereOfInfluence(planet, m_t)) {
+    if (!atMinimum || pass.vInfinity <= 0.0 || pass.distance >= sphereOfInfluence(planet, m_t) ||
+        m_leaving == planet) {
         return;
     }
     m_out.flybys.push_back(pass);
@@ -395,6 +400,10 @@ bool VoyageFlight::coastTo(double tEnd) {
         }
         m_t = tStop;
         m_y = yStop;
+        if (m_leaving &&
+            norm(relative(*m_leaving, m_t, m_y).r) > sphereOfInfluence(*m_leaving, m_t)) {
+            m_leaving.reset();
+        }
         if (fired && handle(*fired)) return true;
     }
     return false;
@@ -479,6 +488,14 @@ void VoyageFlight::burn(const Burn& planned) {
     }
     const double massAfter = m_y.m * std::exp(-size / ve);
     report.propellantUsed = m_y.m - massAfter;
+    // Leaving an orbit (bound around the body before the burn): its low
+    // point on the way out is no flyby. (A burn on the way in to a pass
+    // doesn't hide the pass.)
+    if (frame.planet) {
+        const Relative rel = relative(*frame.planet, m_t, m_y);
+        const double energy = 0.5 * normSquared(rel.v) - bodyMu(*frame.planet) / norm(rel.r);
+        if (energy < 0.0) m_leaving = frame.planet;
+    }
     m_y.v += deltaV;
     m_y.m = massAfter;
     m_out.burns.push_back(report);
@@ -542,14 +559,17 @@ VoyageResult VoyageFlight::run() {
             }
         }
     }
-    if (!ended && !coastTo(m_end)) {
-        addSample();
-        noteApproach();
-        notePasses();
-        finish(m_opt->stopAt ? VoyageEnd::StopTime : VoyageEnd::Horizon);
+    if (!ended) {
+        ended = coastTo(m_end);
+        if (!ended) {
+            addSample();
+            noteApproach();
+            notePasses();
+            finish(m_opt->stopAt ? VoyageEnd::StopTime : VoyageEnd::Horizon);
+        }
     }
 
-    if (ended) notePasses(); // the closest may be where it ended
+    if (ended) notePasses(); // the closest may be where it ended (in the air, say)
     m_out.goalMet = goalMet(m_voyage->goal, m_out.end);
     m_out.propellantLeft = m_y.m - ship.dryMass;
     m_out.deltaVLeft = exhaustVelocity(ship.isp) * std::log(m_y.m / ship.dryMass);

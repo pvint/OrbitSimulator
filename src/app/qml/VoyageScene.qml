@@ -88,6 +88,8 @@ Item {
     /// planet or a moon).
     property int regionIndex: 0
     property bool inOrbit: false
+    /// In orbit around this moon of the place's planet (body index), or -1.
+    property int startMoonIndex: -1
     property int destinationIndex: 2
     /// Each place: its name, the planet it's about (orbit::Planet, or -1)
     /// and what it's like.
@@ -114,9 +116,14 @@ Item {
           about: qsTr("The edge of the planets, thirty times further out. Thirty years the direct way: look for a gravity assist.") }
     ]
     readonly property int startPlanet: regions[regionIndex].planet
-    /// In orbit: always around the Earth, and around a planet going to one
-    /// of its moons; never where there's no planet.
-    readonly property bool startsInOrbit: startPlanet === 2
+    readonly property var startMoons: planetMoons[startPlanet] ?? []
+    readonly property bool atMoon: startMoonIndex >= 0
+    /// Home from the Moon: the Earth's within reach already, so always a
+    /// re-entry (orbit::goalFor).
+    readonly property bool homeFromMoon: atMoon && startPlanet === 2 && destinationIndex === 2
+    /// In orbit: always around the Earth or a moon, and around a planet
+    /// going to one of its moons; never where there's no planet.
+    readonly property bool startsInOrbit: startPlanet === 2 || atMoon
                                           || (startPlanet >= 0 && (inOrbit || destinationPlanet === startPlanet))
     readonly property bool goingHome: destinationIndex === 2
     readonly property string destinationName: bodyNames[destinationIndex] ?? ""
@@ -133,18 +140,37 @@ Item {
         return bodyNames[body] ?? ""
     }
     /// Picking a planet as where to; picking the one you start at offers
-    /// its moons instead (from the Earth, the Moon).
+    /// its moons instead (from the Earth, the Moon), other than the one you
+    /// start at; but from the Moon, the Earth is home.
     function chooseDestinationPlanet(index) {
-        if (index !== startPlanet) destinationIndex = index
-        else if ((planetMoons[index] ?? []).length > 0) destinationIndex = planetMoons[index][0]
+        if (index !== startPlanet || (atMoon && index === 2)) {
+            destinationIndex = index
+            return
+        }
+        const others = (planetMoons[index] ?? []).filter(m => m !== startMoonIndex)
+        if (others.length > 0) destinationIndex = others[0]
     }
     /// Picking where from: not to the same planet (from the Earth, Mars).
     function chooseRegion(index) {
         regionIndex = index
+        startMoonIndex = -1
         if (regions[index].planet === destinationIndex) destinationIndex = destinationIndex === 2 ? 3 : 2
     }
+    /// Picking a moon to start at (again: not at it): not to itself, nor to
+    /// its planet unless that's home.
+    function chooseStartMoon(moon) {
+        startMoonIndex = startMoonIndex === moon ? -1 : moon
+        if (!atMoon) {
+            if (destinationIndex === startPlanet) chooseDestinationPlanet(startPlanet)
+            return
+        }
+        if (destinationIndex === moon || (destinationIndex === startPlanet && startPlanet !== 2)) {
+            const others = startMoons.filter(m => m !== moon)
+            destinationIndex = others.length > 0 ? others[0] : 2
+        }
+    }
 
-    signal startChosen(int region, bool inOrbit, int destination, int difficulty)
+    signal startChosen(int region, bool inOrbit, int startMoon, int destination, int difficulty)
     /// The message card can be hidden for good ("Don't show this again"),
     /// and some cards already are (the start card offers to show them again).
     property bool cardHideable: false
@@ -775,9 +801,33 @@ Item {
                     }
                 }
             }
+            // ...or around one of its moons...
+            Flow {
+                visible: root.cardMode === "start" && root.startMoons.length > 0
+                Layout.fillWidth: true
+                spacing: 6
+                Text {
+                    height: 28
+                    text: root.startMoons.length === 1 ? qsTr("Or in orbit around its moon:")
+                                                       : qsTr("Or in orbit around one of its moons:")
+                    color: "#94a3b8"
+                    font.pixelSize: 12
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Repeater {
+                    model: root.cardMode === "start" ? root.startMoons : []
+                    delegate: Chip {
+                        required property int modelData
+                        objectName: "button-start-moon-" + modelData
+                        text: root.bodyNames[modelData] ?? ""
+                        chosen: modelData === root.startMoonIndex
+                        onClicked: root.chooseStartMoon(modelData)
+                    }
+                }
+            }
             CheckBox {
                 id: orbitBox
-                visible: root.cardMode === "start" && root.startPlanet >= 0
+                visible: root.cardMode === "start" && root.startPlanet >= 0 && !root.atMoon
                 objectName: "check-in-orbit"
                 enabled: root.startPlanet !== 2 && root.destinationPlanet !== root.startPlanet
                 checked: root.startsInOrbit
@@ -793,9 +843,12 @@ Item {
             Text {
                 visible: root.cardMode === "start"
                 Layout.fillWidth: true
-                text: root.regions[root.regionIndex].about
-                      + (root.startsInOrbit && root.startPlanet !== 2
-                         ? " " + qsTr("You start in orbit around it and must climb out first.") : "")
+                text: root.atMoon
+                      ? qsTr("You start in a low orbit around %1, which goes round %2. Leaving takes two climbs: out of %1's gravity, then out of %2's, though %1's speed round %2 comes with you.")
+                            .arg(root.nameInText(root.startMoonIndex, false)).arg(root.nameInText(root.startPlanet, false))
+                      : root.regions[root.regionIndex].about
+                        + (root.startsInOrbit && root.startPlanet !== 2
+                           ? " " + qsTr("You start in orbit around it and must climb out first.") : "")
                 color: "#94a3b8"
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
@@ -815,7 +868,8 @@ Item {
                         text: index === 2 ? qsTr("Earth (home)") : modelData
                         chosen: index === root.destinationPlanet
                         enabled: index !== root.startPlanet
-                                 || (root.planetMoons[index] ?? []).length > 0
+                                 || (root.atMoon && index === 2)
+                                 || (root.planetMoons[index] ?? []).some(m => m !== root.startMoonIndex)
                         onClicked: root.chooseDestinationPlanet(index)
                     }
                 }
@@ -840,6 +894,7 @@ Item {
                         objectName: "button-destination-" + modelData
                         text: root.bodyNames[modelData] ?? ""
                         chosen: modelData === root.destinationIndex
+                        enabled: modelData !== root.startMoonIndex
                         onClicked: root.destinationIndex = modelData
                     }
                 }
@@ -847,7 +902,11 @@ Item {
             Text {
                 visible: root.cardMode === "start" && root.toMoon
                 Layout.fillWidth: true
-                text: root.destinationPlanet === root.startPlanet
+                text: root.destinationPlanet === root.startPlanet && root.atMoon
+                      ? qsTr("%1 goes round %2, as %3 does: leave %3 at the right moment to meet it.")
+                            .arg(root.nameInText(root.destinationIndex, true)).arg(root.nameInText(root.destinationPlanet, false))
+                            .arg(root.nameInText(root.startMoonIndex, false))
+                      : root.destinationPlanet === root.startPlanet
                       ? qsTr("%1 goes round %2, and so do you: wait for the right moment in your orbit, then set off to meet it.")
                             .arg(root.nameInText(root.destinationIndex, true)).arg(root.nameInText(root.destinationPlanet, false))
                       : qsTr("%1 goes round %2: get to %2 first, then aim for %1 once you're near.")
@@ -859,7 +918,11 @@ Item {
             // ...and how hard.
             Heading { text: qsTr("How hard?"); Layout.topMargin: 2 }
             Repeater {
-                model: root.cardMode !== "start" ? [] : root.goingHome ? [
+                model: root.cardMode !== "start" ? [] : root.homeFromMoon ? [
+                    { name: qsTr("Easy"), goal: qsTr("Fall home and hit the atmosphere at just the right angle. Plenty of fuel.") },
+                    { name: qsTr("Normal"), goal: qsTr("The same, with less to spare.") },
+                    { name: qsTr("Hard"), goal: qsTr("The same, on tight fuel.") }
+                ] : root.goingHome ? [
                     { name: qsTr("Easy"), goal: qsTr("Reach the Earth's neighbourhood. Plenty of fuel.") },
                     { name: qsTr("Normal"), goal: qsTr("Hit the atmosphere at just the right angle to land.") },
                     { name: qsTr("Hard"), goal: qsTr("Brake into orbit around the Earth. Fuel is tight.") }
@@ -893,7 +956,7 @@ Item {
                         border.color: parent.hovered ? "#60a5fa" : "#334155"
                     }
                     onClicked: root.startChosen(root.regionIndex, root.startsInOrbit,
-                                                root.destinationIndex, index)
+                                                root.startMoonIndex, root.destinationIndex, index)
                 }
             }
             Text {
