@@ -2,6 +2,7 @@
 #pragma once
 
 #include "orbit/core/flyby.hpp"
+#include "orbit/core/free_roam.hpp"
 #include "orbit/core/lost_in_space.hpp"
 #include "orbit/core/voyage.hpp"
 
@@ -36,6 +37,11 @@ public:
     void newPuzzle(const orbit::PuzzleSpec& spec, std::uint64_t seed, double epoch);
     /// Start this puzzle now (tests, and replaying one).
     void setPuzzle(const orbit::Puzzle& puzzle);
+    /// Start free roam in orbit around `body` at `epoch` (orbit::freeRoam):
+    /// no goal, unlimited fuel. Predictions look further ahead as the clock
+    /// runs on (see setNow).
+    void newFreeRoam(orbit::Body body, double epoch);
+    bool isFreeRoam() const { return m_hasPuzzle && orbit::isFreeRoam(m_puzzle); }
 
     bool hasPuzzle() const { return m_hasPuzzle; }
     /// The puzzle being played (a default one before the first).
@@ -45,7 +51,9 @@ public:
     /// The game clock (s since J2000).
     double now() const { return m_now; }
     double startEpoch() const { return m_puzzle.voyage.startEpoch; }
-    /// Move the clock (not before the start). Burns it passes fire.
+    /// Move the clock (not before the start). Burns it passes fire. In free
+    /// roam, nearing the end of the prediction asks for one that looks
+    /// further ahead.
     void setNow(double epoch);
     /// Back to the start: every burn can be changed again.
     void restart();

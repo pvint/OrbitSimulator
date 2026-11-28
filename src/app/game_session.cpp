@@ -42,6 +42,8 @@ QString goalPhrase(orbit::Goal goal, orbit::Body destination) {
         return QObject::tr("a close pass by %1").arg(name);
     case orbit::Goal::PlanetOrbit:
         return QObject::tr("a pass just above %1").arg(name);
+    case orbit::Goal::Explore:
+        break;
     }
     return {};
 }
@@ -112,6 +114,12 @@ void GameSession::setPuzzle(const orbit::Puzzle& puzzle) {
     predict();
 }
 
+void GameSession::newFreeRoam(orbit::Body body, double epoch) {
+    if (m_makingPuzzle) return;
+    // Quick (no transfer to search for): straight away.
+    setPuzzle(orbit::freeRoam(body, epoch));
+}
+
 void GameSession::setNow(double epoch) {
     if (!m_hasPuzzle) return;
     epoch = std::max(epoch, startEpoch());
@@ -121,6 +129,15 @@ void GameSession::setNow(double epoch) {
     }
     if (epoch == m_now) return;
     m_now = epoch;
+    // Free roam goes on for as long as the player likes: past half of the
+    // look-ahead left, look a whole one ahead of the clock (once per step).
+    if (isFreeRoam() && m_prediction && m_prediction->end == orbit::VoyageEnd::Horizon) {
+        const double horizon = m_puzzle.voyage.horizon;
+        if (m_prediction->endEpoch < m_now + 0.5 * horizon && m_reach < m_now + 0.75 * horizon) {
+            m_reach = m_now + horizon;
+            predict();
+        }
+    }
     emit nowChanged(m_now);
 }
 
@@ -233,7 +250,8 @@ void GameSession::onPredicted() {
 }
 
 void GameSession::requestHint() {
-    if (!m_hasPuzzle || m_makingHint) return;
+    // Free roam has no goal to hint at.
+    if (!m_hasPuzzle || m_makingHint || isFreeRoam()) return;
     m_makingHint = true;
     m_hintWatcher.setFuture(
         QtConcurrent::run([puzzle = workingPuzzle(), burns = m_burns, now = m_now] {

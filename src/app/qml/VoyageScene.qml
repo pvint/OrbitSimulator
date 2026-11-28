@@ -171,6 +171,21 @@ Item {
     }
 
     signal startChosen(int region, bool inOrbit, int startMoon, int destination, int difficulty)
+
+    /// The start card shows "puzzle" (where from, where to, how hard) or
+    /// "roam" (free roam: a planet or a moon to start in orbit around).
+    property string startMode: "puzzle"
+    readonly property bool puzzleStart: cardMode === "start" && startMode === "puzzle"
+    readonly property bool roamStart: cardMode === "start" && startMode === "roam"
+    /// Free roam's body (orbit::Body index), its planet and that planet's moons.
+    property int roamBody: 2
+    readonly property int roamPlanet: roamBody < 8 ? roamBody : (moonPlanets[roamBody - 8] ?? 2)
+    readonly property var roamMoons: planetMoons[roamPlanet] ?? []
+    signal freeRoamChosen(int body)
+    /// Playing free roam: no destination to pick out; the body you started
+    /// at is marked instead.
+    property bool freeRoam: false
+    readonly property int markedIndex: freeRoam ? roamBody : destinationIndex
     /// The message card can be hidden for good ("Don't show this again"),
     /// and some cards already are (the start card offers to show them again).
     property bool cardHideable: false
@@ -294,7 +309,7 @@ Item {
                 required property int index
                 position: modelData
                 readonly property real influence: root.influenceRadii[index] ?? 0
-                readonly property bool destination: index === root.destinationIndex
+                readonly property bool destination: index === root.markedIndex
                 Model {
                     source: "#Sphere"
                     // The destination a little larger: it's where you're going.
@@ -359,7 +374,7 @@ Item {
                 required property var modelData
                 required property int index
                 readonly property int body: index + 8
-                readonly property bool destination: body === root.destinationIndex
+                readonly property bool destination: body === root.markedIndex
                 readonly property real influence: root.moonInfluenceRadii[index] ?? 0
                 position: modelData
                 visible: root.moonShown(index) || destination
@@ -779,18 +794,112 @@ Item {
                 }
             }
             component Heading: Text {
-                visible: root.cardMode === "start"
+                visible: root.puzzleStart
                 color: "#f8fafc"
                 font.pixelSize: 14
                 font.bold: true
             }
-            Heading { text: qsTr("Where are you?") }
+            // Play: a puzzle, or free roam.
             Flow {
                 visible: root.cardMode === "start"
                 Layout.fillWidth: true
                 spacing: 6
+                Chip {
+                    objectName: "button-mode-puzzle"
+                    text: qsTr("A puzzle")
+                    chosen: root.startMode === "puzzle"
+                    onClicked: root.startMode = "puzzle"
+                }
+                Chip {
+                    objectName: "button-mode-roam"
+                    text: qsTr("Free roam")
+                    chosen: root.startMode === "roam"
+                    onClicked: root.startMode = "roam"
+                }
+            }
+            // Free roam: in orbit around a planet...
+            Heading {
+                visible: root.roamStart
+                text: qsTr("Start in orbit around:")
+            }
+            Flow {
+                visible: root.roamStart
+                Layout.fillWidth: true
+                spacing: 6
                 Repeater {
-                    model: root.cardMode === "start" ? root.regions : []
+                    model: root.roamStart ? root.planetNames : []
+                    delegate: Chip {
+                        required property var modelData
+                        required property int index
+                        objectName: "button-roam-" + index
+                        text: modelData
+                        chosen: index === root.roamPlanet
+                        onClicked: root.roamBody = index
+                    }
+                }
+            }
+            // ...or one of its moons...
+            Flow {
+                visible: root.roamStart && root.roamMoons.length > 0
+                Layout.fillWidth: true
+                spacing: 6
+                Text {
+                    height: 28
+                    text: root.roamMoons.length === 1 ? qsTr("Or its moon:") : qsTr("Or one of its moons:")
+                    color: "#94a3b8"
+                    font.pixelSize: 12
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Repeater {
+                    model: root.roamStart ? root.roamMoons : []
+                    delegate: Chip {
+                        required property int modelData
+                        objectName: "button-roam-" + modelData
+                        text: root.bodyNames[modelData] ?? ""
+                        chosen: modelData === root.roamBody
+                        // Too small to orbit, so near its planet.
+                        enabled: root.bodyParkable[modelData] === true
+                        onClicked: root.roamBody = modelData
+                    }
+                }
+            }
+            Text {
+                visible: root.roamStart
+                Layout.fillWidth: true
+                text: qsTr("No goal and unlimited fuel: go anywhere, try anything. Speed up to climb, slow down to fall, and watch where each burn takes you. Burns cost nothing here; the game adds up their Δv, the number a real mission would need propellant for.")
+                color: "#94a3b8"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Button {
+                visible: root.roamStart
+                objectName: "button-start-roam"
+                Layout.fillWidth: true
+                implicitHeight: 46
+                contentItem: Column {
+                    spacing: 1
+                    leftPadding: 6
+                    Text { text: qsTr("Start exploring"); color: "#f8fafc"; font.pixelSize: 15; font.bold: true }
+                    Text {
+                        text: qsTr("In orbit around %1").arg(root.nameInText(root.roamBody, false))
+                        color: "#94a3b8"
+                        font.pixelSize: 12
+                    }
+                }
+                background: Rectangle {
+                    radius: 6
+                    color: parent.hovered ? "#1e3a5f" : "#1e293b"
+                    border.color: parent.hovered ? "#60a5fa" : "#334155"
+                }
+                onClicked: root.freeRoamChosen(root.roamBody)
+            }
+            Heading { text: qsTr("Where are you?") }
+            Flow {
+                visible: root.puzzleStart
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: root.puzzleStart ? root.regions : []
                     delegate: Chip {
                         required property var modelData
                         required property int index
@@ -803,7 +912,7 @@ Item {
             }
             // ...or around one of its moons...
             Flow {
-                visible: root.cardMode === "start" && root.startMoons.length > 0
+                visible: root.puzzleStart && root.startMoons.length > 0
                 Layout.fillWidth: true
                 spacing: 6
                 Text {
@@ -815,7 +924,7 @@ Item {
                     verticalAlignment: Text.AlignVCenter
                 }
                 Repeater {
-                    model: root.cardMode === "start" ? root.startMoons : []
+                    model: root.puzzleStart ? root.startMoons : []
                     delegate: Chip {
                         required property int modelData
                         objectName: "button-start-moon-" + modelData
@@ -827,7 +936,7 @@ Item {
             }
             CheckBox {
                 id: orbitBox
-                visible: root.cardMode === "start" && root.startPlanet >= 0 && !root.atMoon
+                visible: root.puzzleStart && root.startPlanet >= 0 && !root.atMoon
                 objectName: "check-in-orbit"
                 enabled: root.startPlanet !== 2 && root.destinationPlanet !== root.startPlanet
                 checked: root.startsInOrbit
@@ -841,7 +950,7 @@ Item {
                 }
             }
             Text {
-                visible: root.cardMode === "start"
+                visible: root.puzzleStart
                 Layout.fillWidth: true
                 text: root.atMoon
                       ? qsTr("You start in a low orbit around %1, which goes round %2. Leaving takes two climbs: out of %1's gravity, then out of %2's, though %1's speed round %2 comes with you.")
@@ -856,11 +965,11 @@ Item {
             // ...where to...
             Heading { text: qsTr("Where to?"); Layout.topMargin: 2 }
             Flow {
-                visible: root.cardMode === "start"
+                visible: root.puzzleStart
                 Layout.fillWidth: true
                 spacing: 6
                 Repeater {
-                    model: root.cardMode === "start" ? root.planetNames : []
+                    model: root.puzzleStart ? root.planetNames : []
                     delegate: Chip {
                         required property var modelData
                         required property int index
@@ -876,7 +985,7 @@ Item {
             }
             // ...or one of its moons...
             Flow {
-                visible: root.cardMode === "start" && root.destinationMoons.length > 0
+                visible: root.puzzleStart && root.destinationMoons.length > 0
                 Layout.fillWidth: true
                 spacing: 6
                 Text {
@@ -888,7 +997,7 @@ Item {
                     verticalAlignment: Text.AlignVCenter
                 }
                 Repeater {
-                    model: root.cardMode === "start" ? root.destinationMoons : []
+                    model: root.puzzleStart ? root.destinationMoons : []
                     delegate: Chip {
                         required property int modelData
                         objectName: "button-destination-" + modelData
@@ -900,7 +1009,7 @@ Item {
                 }
             }
             Text {
-                visible: root.cardMode === "start" && root.toMoon
+                visible: root.puzzleStart && root.toMoon
                 Layout.fillWidth: true
                 text: root.destinationPlanet === root.startPlanet && root.atMoon
                       ? qsTr("%1 goes round %2, as %3 does: leave %3 at the right moment to meet it.")
@@ -918,7 +1027,7 @@ Item {
             // ...and how hard.
             Heading { text: qsTr("How hard?"); Layout.topMargin: 2 }
             Repeater {
-                model: root.cardMode !== "start" ? [] : root.homeFromMoon ? [
+                model: !root.puzzleStart ? [] : root.homeFromMoon ? [
                     { name: qsTr("Easy"), goal: qsTr("Fall home and hit the atmosphere at just the right angle. Plenty of fuel.") },
                     { name: qsTr("Normal"), goal: qsTr("The same, with less to spare.") },
                     { name: qsTr("Hard"), goal: qsTr("The same, on tight fuel.") }

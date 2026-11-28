@@ -49,6 +49,7 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
     m_fuel->setTextVisible(false);
     m_fuel->setToolTip(tr("How much speed change (Δv) your propellant can still buy, after the "
                           "burns you have planned."));
+    m_fuelText->setObjectName(QStringLiteral("label-fuel"));
     m_fuelText->setWordWrap(true);
     layout->addWidget(fuelTitle);
     layout->addWidget(m_fuel);
@@ -120,6 +121,11 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
     layout->addStretch(1);
 
     connect(m_add, &QPushButton::clicked, this, [this] {
+        // Free roam: where the ship is now (pause where you want to burn).
+        if (m_session->isFreeRoam()) {
+            m_session->addBurn(m_session->now());
+            return;
+        }
         // A new burn a tenth of the way along what's left of the path,
         // or soon, if the flight is short.
         double when = m_session->now() + kDay;
@@ -160,7 +166,7 @@ BurnPlanner::BurnPlanner(GameSession* session, QWidget* parent)
     connect(m_session, &GameSession::puzzleChanged, this, &BurnPlanner::refresh);
     connect(m_session, &GameSession::predictionChanged, this, &BurnPlanner::refreshFuel);
     connect(m_session, &GameSession::busyChanged, this, [this](bool busy) {
-        m_hint->setEnabled(!busy && m_session->hasPuzzle());
+        m_hint->setEnabled(!busy && m_session->hasPuzzle() && !m_session->isFreeRoam());
         m_aim->setEnabled(!busy);
     });
     refresh();
@@ -283,8 +289,15 @@ void BurnPlanner::editorChanged() {
 void BurnPlanner::refresh() {
     m_updating = true;
     const bool playing = m_session->hasPuzzle();
+    const bool roaming = m_session->isFreeRoam();
     m_add->setEnabled(playing);
-    m_hint->setEnabled(playing && !m_session->isBusy());
+    // Free roam has no goal to hint at; burns start where you are.
+    m_hint->setVisible(!roaming);
+    m_hint->setEnabled(playing && !m_session->isBusy() && !roaming);
+    m_add->setToolTip(roaming ? tr("Plan a burn where you are now: pause the clock where you "
+                                   "want it, then set how hard in each direction.")
+                              : tr("Plan a burn: pick when, then how hard in each direction, "
+                                   "and watch the path change."));
     m_aim->setEnabled(!m_session->isBusy());
 
     // The list: one row per burn, the fired ones greyed.
@@ -327,9 +340,13 @@ void BurnPlanner::refresh() {
         }
         m_size->setText(tr("Size: %1").arg(display::speed(orbit::burnSize(b))));
     } else {
-        m_size->setText(m_session->burnCount() == 0
-                            ? tr("No burns yet. Add one, or ask for a hint.")
-                            : tr("Pick a burn in the list to change it."));
+        if (m_session->burnCount() > 0) {
+            m_size->setText(tr("Pick a burn in the list to change it."));
+        } else if (roaming) {
+            m_size->setText(tr("No burns yet. Add one where you are."));
+        } else {
+            m_size->setText(tr("No burns yet. Add one, or ask for a hint."));
+        }
     }
     m_updating = false;
     refreshFuel();
@@ -343,8 +360,15 @@ void BurnPlanner::refreshFuel() {
         m_fuelText->clear();
         return;
     }
-    const double budget = m_session->puzzle().budget;
     const auto* prediction = m_session->prediction();
+    m_fuel->setVisible(!m_session->isFreeRoam());
+    if (m_session->isFreeRoam()) {
+        // Unlimited: what the burns add up to instead.
+        m_fuelText->setText(tr("Unlimited. Your burns add up to <b>%1</b> of Δv.")
+                                .arg(display::speed(prediction ? prediction->deltaVUsed : 0.0)));
+        return;
+    }
+    const double budget = m_session->puzzle().budget;
     const double left = prediction ? prediction->deltaVLeft : budget;
     m_fuel->setValue(static_cast<int>(std::lround(1000.0 * std::clamp(left / budget, 0.0, 1.0))));
     QString text =

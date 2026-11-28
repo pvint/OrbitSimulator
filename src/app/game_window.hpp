@@ -35,6 +35,8 @@ public:
 
     /// Start a puzzle straight away (from the command line).
     void startPuzzle(const orbit::PuzzleSpec& spec, std::uint64_t seed);
+    /// Start free roam in orbit around `body` (from the command line).
+    void startFreeRoam(orbit::Body body);
     GameSession* session() const { return m_session; }
     /// Centre the view on a planet or a moon, as "Centre" does.
     void centreOnBody(orbit::Body body);
@@ -47,6 +49,8 @@ public:
     /// body index), how hard.
     Q_SLOT void chooseStart(int region, bool inOrbit, int startMoon, int destination,
                             int difficulty);
+    /// From the start card: free roam around a body (index).
+    Q_SLOT void chooseFreeRoam(int body);
     Q_SLOT void acceptCard(bool hideFromNowOn);
     Q_SLOT void showHiddenCards();
     /// Centre the view on what was double-clicked (index as the scene's
@@ -84,12 +88,21 @@ private:
     void updateInfo(double now, const orbit::VoyageSample& ship);
     QString closestPassRow(orbit::Body planet) const;
     void updateStatus();
+    /// Free roam's status: what the path comes to (no goal to measure it by).
+    QString freeRoamStatus(QColor& color) const;
+    /// Free roam: centred on the body you start at, close enough to see
+    /// your orbit around it.
+    void frameFreeRoam();
     /// A message card. With a `key`, it offers "Don't show this again", and
     /// isn't shown once the player has said so (kept in the settings).
     void showCard(const QString& title, const QString& text, const QString& button,
                   const QString& key = {});
     void showEnding();
     static QString welcomeText(const orbit::Puzzle& puzzle);
+    /// Where you are in orbit: how high, how long once round (and, at a
+    /// moon, how it goes round its planet).
+    static QString inOrbitText(const orbit::Voyage& voyage, orbit::Body home);
+    static QString freeRoamWelcome(const orbit::Puzzle& puzzle);
 
     GameSession* m_session;
     BurnPlanner* m_planner;
@@ -125,7 +138,8 @@ private:
     /// it moves).
     std::size_t m_pathSplit = 0;
     /// On a trip among a planet's moons, the path and its markers are drawn
-    /// as seen from the planet (see drawn()).
+    /// as seen from the planet (see drawn()); in free roam, as seen from
+    /// whatever body the view is centred on.
     std::optional<orbit::Body> m_drawFrame;
     /// Where to draw a point the ship passes at `epoch`: where it is, or,
     /// with a planet as the frame, where it is relative to the planet then,

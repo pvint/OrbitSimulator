@@ -6,11 +6,13 @@
 #include "display_format.hpp"
 #include "game_session.hpp"
 #include "orbit/core/astro_time.hpp"
+#include "orbit/core/free_roam.hpp"
 #include "orbit/core/lost_in_space.hpp"
 
 #include <QDateTimeEdit>
 #include <QDoubleSpinBox>
 #include <QGroupBox>
+#include <QLabel>
 #include <QListWidget>
 #include <QProgressBar>
 #include <QPushButton>
@@ -289,6 +291,51 @@ private slots:
                  qPrintable(messages.first()));
         QCOMPARE(session.burnCount(), 2);
         QVERIFY(session.prediction()->deltaVLeft > 0.0);
+    }
+
+    void freeRoamHasNoGoalAndUnlimitedFuel() {
+        GameSession session;
+        BurnPlanner planner(&session);
+        session.newFreeRoam(orbit::Body::Earth, orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0}));
+        session.waitForIdle();
+        QVERIFY(session.isFreeRoam());
+        QVERIFY(session.prediction());
+        // No fuel gauge, no hint: nothing to run out of, no goal to hint at.
+        QVERIFY(planner.findChild<QProgressBar*>(QStringLiteral("bar-fuel"))->isHidden());
+        QVERIFY(planner.findChild<QPushButton*>(QStringLiteral("button-hint"))->isHidden());
+        QSignalSpy hints(&session, &GameSession::hintReady);
+        session.requestHint();
+        session.waitForIdle();
+        QCOMPARE(hints.count(), 0);
+
+        // A burn starts where the ship is: pause where you want it.
+        session.setNow(session.now() + 1800.0);
+        planner.findChild<QPushButton*>(QStringLiteral("button-add-burn"))->click();
+        QCOMPARE(session.burnCount(), 1);
+        QCOMPARE(session.burns()[0].epoch, session.now());
+        // Far more than a puzzle's tanks hold: given in full, and counted.
+        planner.findChild<QDoubleSpinBox*>(QStringLiteral("spin-burn-prograde"))->setValue(9000.0);
+        session.waitForIdle();
+        const orbit::VoyageResult& p = *session.prediction();
+        QVERIFY(!p.burns.at(0).shortOfFuel);
+        QCOMPARE(p.deltaVUsed, 9000.0);
+        const QString fuel = planner.findChild<QLabel*>(QStringLiteral("label-fuel"))->text();
+        QVERIFY2(fuel.contains(QStringLiteral("Unlimited")), qPrintable(fuel));
+        QVERIFY2(fuel.contains(display::speed(9000.0)), qPrintable(fuel));
+    }
+
+    void freeRoamLooksFurtherAheadAsTheClockRuns() {
+        GameSession session;
+        session.newFreeRoam(orbit::Body::Moon, orbit::epochFromCalendar({2027, 1, 1, 0, 0, 0.0}));
+        session.waitForIdle();
+        const double horizon = orbit::freeRoamHorizon(orbit::Body::Moon);
+        const double end = session.prediction()->endEpoch;
+        QVERIFY(std::abs(end - (session.startEpoch() + horizon)) < 1.0);
+        // Past half of it: the next prediction reaches a whole look-ahead on.
+        session.setNow(end - 0.4 * horizon);
+        session.waitForIdle();
+        QVERIFY(std::abs(session.prediction()->endEpoch - (session.now() + horizon)) < 1.0);
+        QCOMPARE(session.prediction()->end, orbit::VoyageEnd::Horizon);
     }
 };
 

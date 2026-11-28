@@ -88,8 +88,15 @@ prototype settled the physics model and the UI ideas; this is the full version.
   v∞, then a correction ten days on), moon to moon, home from the Moon (a
   re-entry, aimed on the perigee); "Or in orbit around one of its moons:"
   on the start card; `--puzzle normal:moon:earth`, `hard:ganymede:europa`.
-- **Then, in order:** G4 free roam (pick a body, start in orbit, no goal,
-  unlimited fuel); G5 close-ups (textures already found: Mercury, Mars,
+- **G4, free roam, is done** (on `one-app`, decision 41): "A puzzle" /
+  "Free roam" on the start card; pick a planet or a parkable moon, start in
+  orbit (giants: a circle at 2 radii, inside their moons), no goal
+  (`Goal::Explore`), unlimited fuel (`Ship::unlimitedFuel`, mass constant,
+  `VoyageResult::deltaVUsed` shown instead), predictions a year ahead (30
+  days among a giant's moons) that roll on as the clock runs; Add burn
+  burns where the ship is; the path drawn as seen from the centred body.
+  `orbitsim --free-roam titan`.
+- **Then, in order:** G5 close-ups (textures already found: Mercury, Mars,
   Titan, Io, Europa, Ganymede, Callisto from the USGS map server
   (planetarymaps.usgs.gov WMS, simple cylindrical); Jupiter PIA07782
   (assets.science.nasa.gov); Saturn, Neptune, Venus and Saturn's and
@@ -136,6 +143,7 @@ build/dev/src/app/orbitsim --puzzle hard:4 --hint --no-cards --screenshot out.pn
 build/dev/src/app/orbitsim --puzzle normal:earth:saturn   # from low Earth orbit to Saturn
 build/dev/src/app/orbitsim --puzzle hard:earth:moon        # from low Earth orbit into lunar orbit
 build/dev/src/app/orbitsim --puzzle normal:moon:earth      # home from lunar orbit (a moon first = start there)
+build/dev/src/app/orbitsim --free-roam titan               # free roam: no goal, unlimited fuel
 build/dev/src/cli/orbitsim-cli --sweep kick-angle:5:45:9     # sweep as a table
 build/dev/src/cli/orbitsim-cli --vehicle natural-body        # Apophis 2029 flyby
 build/dev/src/cli/orbitsim-cli        # CLI
@@ -236,7 +244,7 @@ Each milestone ends with something that runs.
 | G1 | Lost in space: the game (puzzles from anywhere to anywhere, hints, flyby tools); decisions 35–37 | done |
 | G2 | One app (decision 38): the game window is the app; the old workbench UI is deleted (core physics, CLI and tests kept; the rocket launch to come back later as a mode) | done |
 | G3 | Moons as bodies: all 18 major moons (the Moon, the Galilean moons, Saturn's seven, Uranus's five, Triton): ephemerides, gravity, start/destination | done |
-| G4 | Free roam: pick a body, start in orbit, no goal, unlimited fuel | |
+| G4 | Free roam: pick a body, start in orbit, no goal, unlimited fuel | done |
 | G5 | Close-ups: textured bodies at true size, lit by the Sun, Saturn's rings, seen when the camera is near them | |
 | G6 | The asteroid belt, drawn | done |
 | G7 | Landing where there's air: an entry goal at Titan, Mars, Venus (the Earth's re-entry generalised) | |
@@ -270,6 +278,9 @@ from a moon: `escapeFromMoon` (nested escapes), `departureFromMoon`,
 `planFromMoon` (`MoonLeg::correction` out of a planet's system).
 `refineAim` aims a bound return (from the Moon) on the perigee
 (`aimPerigee`).
+`free_roam.hpp`: `freeRoam(body, epoch)` → a `Puzzle` with `Goal::Explore`,
+`canRoamFrom`, `freeRoamOrbit`, `freeRoamHorizon`, `isFreeRoam`;
+`Ship::unlimitedFuel`, `deltaVAvailable`, `VoyageResult::deltaVUsed`.
 `lost_in_space.hpp`: `Region`, `makePuzzle(difficulty, seed, epoch, region)`,
 `cheapestWayHome` (porkchop), `searchSpan` (window and longest trip by
 distance), hints `burnTowardsEarth`, `refineAim` (B-plane Newton with the

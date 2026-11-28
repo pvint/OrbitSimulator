@@ -885,6 +885,50 @@ another moon of the same planet, or (from the Moon) home.
   moon as where from if it comes first: `normal:moon:earth`,
   `hard:ganymede:europa`, `easy:moon:titan`.
 
+### 41. Free roam: a game with no goal (2026-11-27)
+
+G4: pick a planet or a moon, start in orbit around it, and go anywhere
+with unlimited fuel (`free_roam.hpp`, `orbitsim --free-roam titan`).
+
+- **Played as a Puzzle**, not a new kind of game: `freeRoam()` fills a
+  `Puzzle` with `Goal::Explore` and the body as its "destination", so the
+  session, the planner, the clock, burns, flyby aiming and the drawing all
+  work unchanged. `Goal::Explore` is never met, and a flight with it never
+  stops on arriving or settling into an orbit; crashes, and the Earth's
+  air, still end it (a re-entry is a landing).
+- **Unlimited fuel keeps the mass constant** (`Ship::unlimitedFuel`): the
+  burns are instant, so the mass never changes the path, only what a burn
+  costs. Giving the ship a huge tank instead would make every burn a tiny
+  fraction of it and the numbers meaningless. The game shows the Δv the
+  burns add up to (`VoyageResult::deltaVUsed`): what a real mission would
+  need propellant for.
+- **The start orbit**: the puzzles' parking orbit, except around the giant
+  planets, where the puzzles' long Juno-like ellipse loops out through the
+  moons (so it can't be flown with Kepler's equations, and a year of it
+  takes seconds to predict). Free roam starts on a circle at two radii
+  there, inside all the moons. The orbit is in the plane of the body's own
+  orbit, prograde; the game has no axial tilts, so no equator to use.
+- **How far to look**: a year past the last burn, but only 30 days around
+  a giant planet or its moons. Measured (release build): a year of
+  climbing out among Jupiter's moons took 3 s and 220,000 samples; a year
+  leaving the Earth, 40 ms. As the clock runs past half of what's left,
+  the session asks for a prediction a whole look-ahead past the clock, and
+  the clock waits at the end for it, so free roam goes on for as long as
+  the player likes. Each prediction still flies from the start: fine for a
+  game of months, slower for one of years among moons (rebasing the start
+  on the last fired burn would fix it, if needed).
+- **In the game**: the start card has "A puzzle" / "Free roam"; free roam
+  picks a planet, or one of its moons (those too small to orbit greyed).
+  No Hint, no fuel gauge ("Unlimited. Your burns add up to …"). Add burn
+  puts the burn where the ship is now: pause there first. The view starts
+  centred on the body, a dozen times the orbit's size, and the path is
+  drawn as seen from whatever body the view is centred on (from the Sun
+  when centred on it). The status line says what's coming: a crash, a
+  landing, the next pass by a planet or a moon. Every flyby is marked.
+- **Seen so far**: a low orbit 9.5 au out (Titan) is drawn slightly jagged:
+  floats at that distance resolve about 100 km. The floating origin
+  planned for close-ups (G5) fixes that.
+
 ---
 
 ## Open questions

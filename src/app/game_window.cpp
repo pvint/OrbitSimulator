@@ -7,6 +7,7 @@
 #include "orbit/core/astro_time.hpp"
 #include "orbit/core/constants.hpp"
 #include "orbit/core/ephemeris.hpp"
+#include "orbit/core/free_roam.hpp"
 #include "orbit/core/orbit.hpp"
 #include "orbit/core/solar_system.hpp"
 #include "polyline_geometry.hpp"
@@ -186,6 +187,8 @@ QString goalText(orbit::Goal goal, orbit::Body destination) {
     case orbit::Goal::PlanetOrbit:
         if (moon) return GameWindow::tr("Brake into an orbit around %1.").arg(name);
         return GameWindow::tr("Brake into an orbit around %1, like Cassini or Juno.").arg(name);
+    case orbit::Goal::Explore:
+        return GameWindow::tr("Free roam: no goal and unlimited fuel. Go anywhere.");
     }
     return {};
 }
@@ -415,6 +418,7 @@ void GameWindow::connectScene() {
     m_scene->setProperty("moonInfluenceRadii", moonInfluence);
     connect(m_scene, SIGNAL(startChosen(int, bool, int, int, int)), this,
             SLOT(chooseStart(int, bool, int, int, int)));
+    connect(m_scene, SIGNAL(freeRoamChosen(int)), this, SLOT(chooseFreeRoam(int)));
     connect(m_scene, SIGNAL(cardAccepted(bool)), this, SLOT(acceptCard(bool)));
     connect(m_scene, SIGNAL(hiddenCardsReset()), this, SLOT(showHiddenCards()));
     connect(m_scene, SIGNAL(centreRequested(int)), this, SLOT(centreOn(int)));
@@ -457,6 +461,25 @@ void GameWindow::chooseStart(int region, bool inOrbit, int startMoon, int destin
     }
     spec.to = orbit::kAllBodies.at(static_cast<std::size_t>(std::clamp(destination, 0, lastBody)));
     startPuzzle(spec, QRandomGenerator::global()->generate64());
+}
+
+void GameWindow::chooseFreeRoam(int body) {
+    const int lastBody = static_cast<int>(orbit::kBodyCount) - 1;
+    startFreeRoam(orbit::kAllBodies.at(static_cast<std::size_t>(std::clamp(body, 0, lastBody))));
+}
+
+void GameWindow::startFreeRoam(orbit::Body body) {
+    if (!orbit::canRoamFrom(body)) body = orbit::Body::Earth;
+    setFlying(false);
+    m_endingShown = false;
+    m_welcomePending = true;
+    if (m_scene) {
+        // The start card remembers the choice for next time.
+        m_scene->setProperty("cardMode", QString());
+        m_scene->setProperty("startMode", QStringLiteral("roam"));
+        m_scene->setProperty("roamBody", static_cast<int>(body));
+    }
+    m_session->newFreeRoam(body, epochNow());
 }
 
 void GameWindow::acceptCard(bool hideFromNowOn) {
@@ -510,13 +533,18 @@ void GameWindow::onPuzzleChanged() {
     const orbit::Puzzle& puzzle = m_session->puzzle();
     const orbit::Voyage& v = puzzle.voyage;
     m_planner->setEnabled(true);
+    const bool roaming = orbit::isFreeRoam(puzzle);
     if (m_scene) {
+        m_scene->setProperty("freeRoam", roaming);
         m_scene->setProperty("goalText", goalText(v.goal, v.destination));
-        m_scene->setProperty("destinationIndex", static_cast<int>(v.destination));
+        // (Free roam leaves the puzzle's destination for the next puzzle.)
+        if (!roaming) m_scene->setProperty("destinationIndex", static_cast<int>(v.destination));
     }
     updatePlanetOrbits();
     updateStartOrbit();
-    if (const auto local = localPlanet(v); m_scene && local) {
+    if (roaming) {
+        frameFreeRoam();
+    } else if (const auto local = localPlanet(v); m_scene && local) {
         // A trip among a planet's moons: centred on the planet, the moons'
         // orbits filling the view.
         const orbit::Body planet = *local;
@@ -543,10 +571,24 @@ void GameWindow::onPuzzleChanged() {
     // A clock that flies the way there in a minute and a half or so: the
     // slowest speed that does, and not slower than 20 days a second between
     // the planets; a trip of days among a planet's moons in half a minute.
+    // Free roam: once round the orbit in eight seconds or more (the
+    // fastest speed that allows it, else the slowest).
     const double tripDays = (puzzle.plan.arrival - v.startEpoch) / kDay;
     const bool local = tripDays < 60.0;
+    double orbitDays = 0.0;
+    if (const auto home = parkedHome(v); roaming && home) {
+        orbitDays = orbit::elementsFromState(v.position - orbit::bodyPosition(*home, v.startEpoch),
+                                             v.velocity - orbit::bodyVelocity(*home, v.startEpoch),
+                                             orbit::bodyMu(*home), orbit::bodyRadius(*home))
+                        .period /
+                    kDay;
+    }
     for (int i = 0; i < m_speed->count(); ++i) {
         const double daysPerSecond = m_speed->itemData(i).toDouble();
+        if (roaming) {
+            if (i == 0 || orbitDays / daysPerSecond >= 8.0) m_speed->setCurrentIndex(i);
+            continue;
+        }
         m_speed->setCurrentIndex(i);
         if (local ? tripDays / daysPerSecond <= 30.0
                   : daysPerSecond >= 20.0 && tripDays / daysPerSecond <= 90.0) {
@@ -556,10 +598,57 @@ void GameWindow::onPuzzleChanged() {
 
     if (m_welcomePending) {
         m_welcomePending = false;
-        const bool lost = puzzle.destination == orbit::Body::Earth && !puzzle.startMoon;
-        showCard(lost ? tr("Lost!") : tr("Ready to go"), welcomeText(puzzle), tr("Let's go"),
-                 QStringLiteral("welcome"));
+        if (roaming) {
+            showCard(tr("Free roam"), freeRoamWelcome(puzzle), tr("Let's go"),
+                     QStringLiteral("welcome-roam"));
+        } else {
+            const bool lost = puzzle.destination == orbit::Body::Earth && !puzzle.startMoon;
+            showCard(lost ? tr("Lost!") : tr("Ready to go"), welcomeText(puzzle), tr("Let's go"),
+                     QStringLiteral("welcome"));
+        }
     }
+}
+
+QString GameWindow::inOrbitText(const orbit::Voyage& v, orbit::Body home) {
+    // In orbit: how high, and how long once round.
+    const orbit::Vec3 rel = v.position - orbit::bodyPosition(home, v.startEpoch);
+    const orbit::Vec3 relV = v.velocity - orbit::bodyVelocity(home, v.startEpoch);
+    const double radius = orbit::bodyRadius(home);
+    const orbit::OrbitalElements el =
+        orbit::elementsFromState(rel, relV, orbit::bodyMu(home), radius);
+    QString where =
+        el.apoapsis < 1.05 * el.periapsis
+            ? tr("You're in orbit around %1, %2 up, going round every %3.")
+                  .arg(planetInText(home), display::longDistance(el.periapsis - radius),
+                       periodText(el.period))
+            : tr("You're in a long orbit around %1, from %2 to %3 above it, going "
+                 "round every %4.")
+                  .arg(planetInText(home), display::longDistance(el.periapsis - radius),
+                       display::longDistance(el.apoapsis - radius), periodText(el.period));
+    if (orbit::isMoon(home)) {
+        // Around a moon: it goes round its planet, and so do you.
+        const orbit::Body planet = orbit::planetOf(home);
+        const double a = orbit::moonOrbit(home).semiMajorAxis;
+        const double moonPeriod =
+            2.0 * std::numbers::pi * std::sqrt(a * a * a / orbit::bodyMu(planet));
+        where += QLatin1Char(' ') +
+                 tr("%1 goes round %2 every %3, taking you with it.")
+                     .arg(planetInText(home, true), planetInText(planet), periodText(moonPeriod));
+    }
+    return where;
+}
+
+/// Free roam: where you are, and how to play with no goal.
+QString GameWindow::freeRoamWelcome(const orbit::Puzzle& puzzle) {
+    const orbit::Voyage& v = puzzle.voyage;
+    return inOrbitText(v, v.destination) + QStringLiteral("<br><br>") +
+           tr("<b>No goal, unlimited fuel:</b> go anywhere. Pause where you want to burn (the "
+              "arrow keys step the clock), press <b>Add burn</b> on the right, and push it "
+              "<b>prograde</b> to climb or back to fall, watching your path change. Then "
+              "<b>Fly</b>.<br><br>Ideas: raise your orbit until %1's gravity lets you go; "
+              "visit its neighbours; try a gravity assist. The burns cost nothing, but the "
+              "game adds up their Δv: the number a real mission would need propellant for.")
+               .arg(planetInText(v.destination));
 }
 
 /// Where you are, what you have, and what to do.
@@ -570,30 +659,10 @@ QString GameWindow::welcomeText(const orbit::Puzzle& puzzle) {
         orbit::norm(v.position - orbit::bodyPosition(v.destination, v.startEpoch));
     QString where;
     if (const auto parked = orbit::parkedAround(v.startEpoch, v.position, v.velocity)) {
-        // In orbit: how high, and how long once round.
         const orbit::Body home = *parked;
-        const orbit::Vec3 rel = v.position - orbit::bodyPosition(home, v.startEpoch);
-        const orbit::Vec3 relV = v.velocity - orbit::bodyVelocity(home, v.startEpoch);
-        const double radius = orbit::bodyRadius(home);
-        const orbit::OrbitalElements el =
-            orbit::elementsFromState(rel, relV, orbit::bodyMu(home), radius);
-        where = el.apoapsis < 1.05 * el.periapsis
-                    ? tr("You're in orbit around %1, %2 up, going round every %3.")
-                          .arg(planetInText(home), display::longDistance(el.periapsis - radius),
-                               periodText(el.period))
-                    : tr("You're in a long orbit around %1, from %2 to %3 above it, going "
-                         "round every %4.")
-                          .arg(planetInText(home), display::longDistance(el.periapsis - radius),
-                               display::longDistance(el.apoapsis - radius), periodText(el.period));
+        where = inOrbitText(v, home);
         if (orbit::isMoon(home)) {
-            // Around a moon: it goes round its planet, and so do you.
             const orbit::Body planet = orbit::planetOf(home);
-            const double a = orbit::moonOrbit(home).semiMajorAxis;
-            const double moonPeriod =
-                2.0 * std::numbers::pi * std::sqrt(a * a * a / orbit::bodyMu(planet));
-            where += QLatin1Char(' ') + tr("%1 goes round %2 every %3, taking you with it.")
-                                            .arg(planetInText(home, true), planetInText(planet),
-                                                 periodText(moonPeriod));
             if (v.destination == planet) {
                 where += QLatin1Char(' ') +
                          tr("To go home, leave %1 backwards at the right point in your orbit: "
@@ -711,7 +780,10 @@ void GameWindow::setCentreChoices(int select) {
     m_centre->addItem(tr("Centre: You"), kCentreShip);
     QList<int> planets{static_cast<int>(orbit::Body::Earth)};
     if (m_session->hasPuzzle()) {
-        planets.append(static_cast<int>(m_session->puzzle().voyage.destination));
+        const orbit::Body destination = m_session->puzzle().voyage.destination;
+        // Free roam: the body you started at, and its planet.
+        if (m_session->isFreeRoam()) planets.append(static_cast<int>(orbit::planetOf(destination)));
+        planets.append(static_cast<int>(destination));
     }
     if (select >= 0) planets.append(select);
     for (const int p : planets) {
@@ -727,6 +799,18 @@ void GameWindow::onCentreChanged() {
     if (!m_scene) return;
     const int choice = m_centre->currentData().toInt();
     m_scene->setProperty("panOffset", QVector3D());
+    if (m_session->isFreeRoam() && choice != kCentreShip) {
+        // Seen from the body centred on (a closed loop round it is a loop),
+        // or from the Sun.
+        std::optional<orbit::Body> frame;
+        if (choice >= 0) frame = static_cast<orbit::Body>(choice);
+        if (frame != m_drawFrame) {
+            m_drawFrame = frame;
+            m_pathSplit = static_cast<std::size_t>(-1);
+            updatePath();
+            updateMarkers();
+        }
+    }
     if (choice == kCentreSun) {
         resetView();
         return;
@@ -764,7 +848,10 @@ void GameWindow::centreOn(int index) {
         QList<orbit::PlanetPass> shown;
         if (const auto* p = m_session->prediction(); p) {
             for (const orbit::PlanetPass& pass : p->flybys) {
-                if (pass.planet != m_session->puzzle().voyage.destination) shown.append(pass);
+                if (pass.planet != m_session->puzzle().voyage.destination ||
+                    m_session->isFreeRoam()) {
+                    shown.append(pass);
+                }
             }
         }
         if (flyby >= 0 && flyby < shown.size()) {
@@ -797,7 +884,9 @@ void GameWindow::onTick() {
     const double daysPerSecond = m_speed->currentData().toDouble();
     const double next = m_session->now() + seconds * daysPerSecond * kDay;
     m_session->setNow(std::min(next, prediction->endEpoch));
-    if (m_session->now() >= prediction->endEpoch) setFlying(false);
+    // Free roam waits at the end for the longer prediction it asked for.
+    const bool more = m_session->isFreeRoam() && prediction->end == orbit::VoyageEnd::Horizon;
+    if (m_session->now() >= prediction->endEpoch && !more) setFlying(false);
 }
 
 namespace {
@@ -932,7 +1021,9 @@ void GameWindow::updateInfo(double now, const orbit::VoyageSample& ship) {
         infoRow(near ? tr("Orbit period (%1)").arg(planetText(*near)) : tr("Orbit period"),
                 shipOrbit.bound ? periodText(shipOrbit.period) : tr("none: escaping")) +
         infoRow(tr("Mass"), display::mass(ship.mass));
-    if (prediction) {
+    if (prediction && m_session->isFreeRoam()) {
+        rows += infoRow(tr("Δv of all burns"), display::speed(prediction->deltaVUsed));
+    } else if (prediction) {
         rows += infoRow(tr("Δv left after burns"), display::speed(prediction->deltaVLeft));
     }
     texts.append(card(tr("You"), rows));
@@ -947,6 +1038,26 @@ void GameWindow::jumpToNextBurn() {
             return;
         }
     }
+}
+
+void GameWindow::frameFreeRoam() {
+    if (!m_scene) return;
+    const orbit::Voyage& v = m_session->puzzle().voyage;
+    const orbit::Body home = v.destination;
+    m_drawFrame = home;
+    if (m_startOrbit) m_startOrbit->setPoints({}, {}); // its orbit round the Sun means little
+    setCentreChoices(static_cast<int>(home));
+    m_scene->setProperty("followTarget", 2);
+    m_scene->setProperty("followPlanet", static_cast<int>(home));
+    // Close enough to see your orbit: a dozen times its far point.
+    const orbit::OrbitalElements el =
+        orbit::elementsFromState(v.position - orbit::bodyPosition(home, v.startEpoch),
+                                 v.velocity - orbit::bodyVelocity(home, v.startEpoch),
+                                 orbit::bodyMu(home), orbit::bodyRadius(home));
+    QMetaObject::invokeMethod(
+        m_scene, "lookAt",
+        Q_ARG(QVariant, QVariant::fromValue(scene::fromPhysics({0.0, -0.45, 1.0}).normalized())),
+        Q_ARG(QVariant, 12.0 * el.apoapsis / scene::kSolarMetresPerUnit));
 }
 
 /// From ecliptic north, tilted a little, far enough to see the ship's orbit
@@ -1031,7 +1142,7 @@ void GameWindow::updateMoonOrbits() {
 
 /// The orbit the ship starts on, faint: where it would go without burns.
 void GameWindow::updateStartOrbit() {
-    if (!m_startOrbit || !m_session->hasPuzzle()) return;
+    if (!m_startOrbit || !m_session->hasPuzzle() || m_session->isFreeRoam()) return;
     const orbit::Voyage& v = m_session->puzzle().voyage;
     const orbit::OrbitalElements el =
         orbit::elementsFromState(v.position, v.velocity, orbit::kMuSun, orbit::kRadiusSun);
@@ -1051,6 +1162,7 @@ void GameWindow::onPredictionChanged() {
     if (m_framePending && m_session->predictionCurrent()) {
         m_framePending = false;
         setCentreChoices(kCentreSun);
+        if (m_session->isFreeRoam()) m_drawFrame.reset(); // seen from the Sun, as centred
         resetView(true);
     }
     updateTimeline();
@@ -1107,7 +1219,19 @@ void GameWindow::updatePath() {
             // The rest of the stretch: riding along with the body (a moon
             // round its planet, a planet round the Sun), unless seen from it.
             const double stretch = end - samples[i].epoch;
-            if (stretch > span && m_drawFrame != planet) {
+            if (stretch > span && m_drawFrame == planet) {
+                // Seen from it, the orbit retraces itself: go on round to
+                // where the stretch ends (the same point, n turns later),
+                // so the path joins the sample after it.
+                const double turns = std::floor(stretch / span);
+                const double rest = stretch - turns * span;
+                const int steps = static_cast<int>(std::ceil(kTurn * rest / span));
+                for (int k = 1; k <= steps; ++k) {
+                    const double t = samples[i].epoch + turns * span + rest * k / steps;
+                    points.append(drawn(orbit::sampleAt(*prediction, t).r, t));
+                    colors.append(color);
+                }
+            } else if (stretch > span) {
                 double step = kDay;
                 if (orbit::isMoon(planet)) {
                     const double a = orbit::moonOrbit(planet).semiMajorAxis;
@@ -1203,8 +1327,9 @@ void GameWindow::updateMarkers() {
     QVariantList flybyPositions;
     QVariantList flybyLabels;
     QVariantList flybyTexts;
+    const bool roaming = m_session->isFreeRoam();
     for (const orbit::PlanetPass& pass : prediction->flybys) {
-        if (pass.planet == to) continue; // the arrival, shown on its own below
+        if (pass.planet == to && !roaming) continue; // the arrival, shown on its own below
         const QString name = planetText(pass.planet);
         // A moon's flyby changes the speed around its planet.
         const QString around =
@@ -1234,7 +1359,7 @@ void GameWindow::updateMarkers() {
     m_scene->setProperty("flybyLabels", flybyLabels);
     m_scene->setProperty("flybyInfoTexts", flybyTexts);
 
-    const bool show = c.valid && c.epoch > m_session->now();
+    const bool show = c.valid && c.epoch > m_session->now() && !roaming;
     m_scene->setProperty("arrivalVisible", show);
     if (show) {
         const orbit::Vec3 target = orbit::bodyPosition(to, c.epoch);
@@ -1271,7 +1396,9 @@ void GameWindow::updateStatus() {
     QString text;
     QColor color(0xcb, 0xd5, 0xe1);
     const QString when = display::date(p->endEpoch);
-    if (p->goalMet) {
+    if (m_session->isFreeRoam()) {
+        text = freeRoamStatus(color);
+    } else if (p->goalMet) {
         color = QColor(0x86, 0xef, 0xac);
         switch (goal) {
         case orbit::Goal::ReachEarth:
@@ -1296,6 +1423,8 @@ void GameWindow::updateStatus() {
             break;
         case orbit::Goal::PlanetOrbit:
             text = tr("<b>On course!</b> You settle into orbit around %1 on %2.").arg(name, when);
+            break;
+        case orbit::Goal::Explore: // (never met: see freeRoamStatus)
             break;
         }
     } else if (p->end == VoyageEnd::TooSteep || p->end == VoyageEnd::TooFast ||
@@ -1331,11 +1460,64 @@ void GameWindow::updateStatus() {
                        .arg(name, display::longDistance(pass.distance), day);
         }
     }
-    if (std::ranges::any_of(p->burns, [](const auto& b) { return b.shortOfFuel; })) {
+    if (!m_session->isFreeRoam() &&
+        std::ranges::any_of(p->burns, [](const auto& b) { return b.shortOfFuel; })) {
         text += QStringLiteral("<br>") + tr("<b>The tanks run dry before the burns are done.</b>");
     }
     m_scene->setProperty("statusText", text);
     m_scene->setProperty("statusColor", color);
+}
+
+/// No goal: what's coming (a crash, a landing, the next pass by a planet or
+/// a moon), else where the path ends up.
+QString GameWindow::freeRoamStatus(QColor& color) const {
+    const auto* p = m_session->prediction();
+    using orbit::VoyageEnd;
+    const double now = m_session->now();
+    const QString when = display::date(p->endEpoch);
+    switch (p->end) {
+    case VoyageEnd::Reentered:
+        color = QColor(0x86, 0xef, 0xac);
+        return tr("<b>Coming in to land</b> on the Earth on %1, at %2, %3 below level.")
+            .arg(when, display::speed(p->entrySpeed), display::angle(-p->entryAngle));
+    case VoyageEnd::TooSteep:
+    case VoyageEnd::TooFast:
+    case VoyageEnd::Skipped:
+    case VoyageEnd::HitSun:
+    case VoyageEnd::HitPlanet: {
+        color = QColor(0xfc, 0xa5, 0xa5);
+        QString text =
+            tr("<b>Trouble ahead:</b> %1 on %2.")
+                .arg(endText(*p, p->hitPlanet.value_or(orbit::Body::Earth)).toLower(), when);
+        if (p->entrySpeed > 0.0) {
+            text += QLatin1Char(' ') +
+                    tr("You'd hit the air at %1, %2 below level.")
+                        .arg(display::speed(p->entrySpeed), display::angle(-p->entryAngle));
+        }
+        return text;
+    }
+    default:
+        break;
+    }
+    // The next pass by a body, coming in from outside its sphere of influence.
+    for (const orbit::PlanetPass& pass : p->flybys) {
+        if (pass.epoch <= now) continue;
+        return tr("Next: you pass <b>%1</b> on %2, %3 above it.")
+            .arg(display::bodyInText(pass.planet), display::date(pass.epoch),
+                 display::longDistance(pass.distance - orbit::bodyRadius(pass.planet)));
+    }
+    // Else: in orbit around something (no burns to come), or out there.
+    const orbit::VoyageSample& last = p->samples.back();
+    if (const auto around = orbit::parkedAround(last.epoch, last.r, last.v)) {
+        return tr("In orbit around %1. Add a burn to go somewhere else.")
+            .arg(display::bodyInText(*around));
+    }
+    if (const auto near = orbit::dominantBody(last.epoch, last.r)) {
+        return tr("Still near %1 on %2, as far as the prediction looks.")
+            .arg(display::bodyInText(*near), display::date(last.epoch));
+    }
+    return tr("Around the Sun, %1 from it on %2, as far as the prediction looks.")
+        .arg(display::longDistance(orbit::norm(last.r)), display::date(last.epoch));
 }
 
 void GameWindow::onNowChanged() {
@@ -1389,6 +1571,18 @@ void GameWindow::showEnding() {
     m_endingShown = true;
     setFlying(false);
     const double days = (p->endEpoch - m_session->startEpoch()) / kDay;
+    if (m_session->isFreeRoam()) {
+        const bool landed = p->end == orbit::VoyageEnd::Reentered;
+        showCard(landed ? tr("Landed!") : endingTitle(p->end),
+                 tr("%1 after %2 days, with burns adding up to %3 of Δv. Press <b>Restart</b> "
+                    "to go back and try something else, or start a <b>New game</b>.")
+                     .arg(landed ? tr("Down safely on the Earth")
+                                 : endText(*p, p->hitPlanet.value_or(orbit::Body::Earth)))
+                     .arg(std::lround(days))
+                     .arg(display::speed(p->deltaVUsed)),
+                 tr("OK"));
+        return;
+    }
     if (p->goalMet) {
         const double budget = m_session->puzzle().budget;
         // Against the direct way home worked out at the start: a good

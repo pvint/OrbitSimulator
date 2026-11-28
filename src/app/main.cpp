@@ -23,6 +23,7 @@ void saveScreenshotLater(QWidget* window, const QString& path, int delayMs) {
 /// The game: the app's one window (--puzzle starts one straight away).
 struct GameOptions {
     QCommandLineOption puzzle;
+    QCommandLineOption freeRoam;
     QCommandLineOption hint;
     QCommandLineOption centre;
     QCommandLineOption noCards;
@@ -34,7 +35,10 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
     GameWindow window;
     window.setCardsEnabled(!parser.isSet(o.noCards));
     window.show();
-    if (parser.isSet(o.puzzle)) {
+    if (parser.isSet(o.freeRoam)) {
+        const auto body = orbit::bodyFromKey(parser.value(o.freeRoam).toLower().toStdString());
+        window.startFreeRoam(body.value_or(orbit::Body::Earth));
+    } else if (parser.isSet(o.puzzle)) {
         // Any order: a difficulty, where from (a place, or a moon to start
         // in orbit around), "orbit" to start in orbit there, where to (a
         // second planet, or a moon), a seed (e.g. "hard:jupiter:4",
@@ -76,15 +80,19 @@ int runGame(const QCommandLineParser& parser, const GameOptions& o) {
             }
         }
         window.startPuzzle(spec, seed);
-        if (const auto body = orbit::bodyFromKey(parser.value(o.centre).toStdString())) {
-            QObject::connect(
-                window.session(), &GameSession::puzzleChanged, &window,
-                [&window, body] { window.centreOnBody(*body); }, Qt::SingleShotConnection);
-        }
         if (parser.isSet(o.hint)) {
             QObject::connect(
                 window.session(), &GameSession::puzzleChanged, &window,
                 [&window] { window.session()->requestHint(); }, Qt::SingleShotConnection);
+        }
+    }
+    if (const auto body = orbit::bodyFromKey(parser.value(o.centre).toStdString())) {
+        const auto centre = [&window, body] { window.centreOnBody(*body); };
+        if (window.session()->hasPuzzle()) {
+            centre(); // free roam starts at once
+        } else {
+            QObject::connect(window.session(), &GameSession::puzzleChanged, &window, centre,
+                             Qt::SingleShotConnection);
         }
     }
     if (parser.isSet(o.screenshot)) {
@@ -143,16 +151,21 @@ int main(int argc, char* argv[]) {
                        "normal:earth:saturn, easy:mars:orbit, normal:earth:moon, "
                        "hard:earth:titan, normal:moon:earth, hard:ganymede:europa)."),
         QStringLiteral("puzzle"));
+    const QCommandLineOption freeRoam(
+        QStringLiteral("free-roam"),
+        QStringLiteral("Start free roam (no goal, unlimited fuel) in orbit around this planet or "
+                       "moon (earth, moon, mars, jupiter, titan, ...)."),
+        QStringLiteral("body"));
     const QCommandLineOption hint(QStringLiteral("hint"),
                                   QStringLiteral("With --puzzle: take a hint straight away."));
     const QCommandLineOption centre(QStringLiteral("centre"),
-                                    QStringLiteral("With --puzzle: centre the view on this planet "
-                                                   "or moon (saturn, titan)."),
+                                    QStringLiteral("With --puzzle or --free-roam: centre the view "
+                                                   "on this planet or moon (saturn, titan)."),
                                     QStringLiteral("body"));
     const QCommandLineOption noCards(QStringLiteral("no-cards"),
                                      QStringLiteral("In the game, skip the message cards "
                                                     "(for screenshots)."));
-    parser.addOptions({screenshot, delay, game, puzzle, hint, centre, noCards});
+    parser.addOptions({screenshot, delay, game, puzzle, freeRoam, hint, centre, noCards});
     parser.process(app);
-    return runGame(parser, {puzzle, hint, centre, noCards, screenshot, delay});
+    return runGame(parser, {puzzle, freeRoam, hint, centre, noCards, screenshot, delay});
 }
