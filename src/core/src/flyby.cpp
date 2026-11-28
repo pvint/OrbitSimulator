@@ -231,8 +231,7 @@ FlybyAimResult aimFlybyFrom(const Voyage& voyage, std::size_t index, const Flyby
     withBurn(x);
     auto pass = passAfter(flyVoyage(trial, fly), aim.planet, original.epoch);
     const bool heading = pass && pass->distance < 3.0 * sphereOfInfluence(aim.planet, pass->epoch);
-    const double available =
-        exhaustVelocity(voyage.ship.isp) * std::log(start.mass / voyage.ship.dryMass);
+    const double available = deltaVAvailable(voyage.ship, start.mass);
     const auto parked = parkedAround(original.epoch, start.r, start.v);
     if (!heading && parked && mayGuess) {
         // In orbit around a planet: the cheapest way out towards it, and

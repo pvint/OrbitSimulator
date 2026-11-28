@@ -441,6 +441,8 @@ double aimPeriapsis(Goal goal, Body planet) {
     case Goal::Reentry:
     case Goal::EarthOrbit:
         return kRadiusEarth + kCapturePerigeeAltitude;
+    case Goal::Explore:
+        break;
     }
     return 10.0 * radius;
 }
@@ -484,6 +486,7 @@ double arrivalCost(Goal goal, double vInfinity, const VoyageOptions& options) {
     case Goal::ReachPlanet:
     case Goal::ClosePass:
     case Goal::PlanetOrbit:
+    case Goal::Explore:
         break;
     }
     return 0.0;
@@ -516,6 +519,7 @@ double aimImpactParameter(Goal goal, double vInfinity, const VoyageOptions& opti
     case Goal::ReachPlanet:
     case Goal::ClosePass:
     case Goal::PlanetOrbit:
+    case Goal::Explore:
         break;
     }
     return 0.0;
@@ -1078,6 +1082,7 @@ double aimPerigee(Goal goal, double energy, const VoyageOptions& options) {
     case Goal::ReachPlanet:
     case Goal::ClosePass:
     case Goal::PlanetOrbit:
+    case Goal::Explore:
         break;
     }
     return kRadiusEarth + kCapturePerigeeAltitude;

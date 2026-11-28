@@ -88,10 +88,18 @@ struct Ship {
     double dryMass = 2000.0;    ///< kg, empty
     double propellant = 1000.0; ///< kg, in the tanks
     double isp = 320.0;         ///< s, specific impulse (a storable-propellant engine)
+    /// Free roam: the tanks never run dry and burns spend nothing, so the
+    /// mass stays the same. (Burns are instant, so the mass never changes
+    /// the path: only how much a burn would have cost.)
+    bool unlimitedFuel = false;
 };
 
 /// What a full tank is worth: Δv = v_e ln((dry + propellant) / dry) (m/s).
 double deltaVCapacity(const Ship& ship);
+
+/// What the tanks are still worth at mass `mass`: v_e ln(m / m_dry) (m/s);
+/// infinite with unlimited fuel.
+double deltaVAvailable(const Ship& ship, double mass);
 
 /// The propellant needed to give `deltaV` to a ship of mass `mass`:
 /// m (1 − e^(−Δv / v_e)) (kg).
@@ -106,6 +114,9 @@ enum class Goal {
     ReachPlanet, ///< enter the destination's sphere of influence
     ClosePass,   ///< pass within VoyageOptions::closePassRadii of its radius
     PlanetOrbit, ///< end on a closed orbit around it, clear of the surface
+    /// Free roam: no goal. The flight goes on until the look-ahead ends,
+    /// or it hits something (a re-entry into the Earth's air still ends it).
+    Explore,
 };
 
 /// One instant burn (m/s in each direction; see the top of the file).
@@ -308,7 +319,8 @@ struct VoyageResult {
     double entrySpeed = 0.0;     ///< m/s, at the entry interface, if reached
     double entryAngle = 0.0;     ///< radians, flight-path angle there
     double propellantLeft = 0.0; ///< kg
-    double deltaVLeft = 0.0;     ///< m/s
+    double deltaVLeft = 0.0;     ///< m/s (infinite with unlimited fuel)
+    double deltaVUsed = 0.0;     ///< m/s, given by all the burns flown
 };
 
 VoyageResult flyVoyage(const Voyage& voyage, const VoyageOptions& options = {});

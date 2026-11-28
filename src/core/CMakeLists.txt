@@ -27,6 +27,7 @@ add_library(orbit_core STATIC
     src/earth.cpp
     src/guidance.cpp
     src/integrator.cpp
+    src/free_roam.cpp
     src/lost_in_space.cpp
     src/moon_transfer.cpp
     src/lunar_targeting.cpp

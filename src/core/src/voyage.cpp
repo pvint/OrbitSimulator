@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <optional>
 
 namespace orbit {
@@ -477,8 +478,9 @@ void VoyageFlight::burn(const Burn& planned) {
     double size = norm(deltaV);
 
     // Tsiolkovsky: what is left in the tank is worth v_e ln(m / m_dry).
-    const double ve = exhaustVelocity(m_voyage->ship.isp);
-    const double available = ve * std::log(m_y.m / m_voyage->ship.dryMass);
+    const Ship& ship = m_voyage->ship;
+    const double ve = exhaustVelocity(ship.isp);
+    const double available = deltaVAvailable(ship, m_y.m);
     BurnReport report{planned, frame.planet, size, 0.0, false};
     if (size > available) {
         deltaV = size > 0.0 ? deltaV * (available / size) : deltaV;
@@ -486,8 +488,10 @@ void VoyageFlight::burn(const Burn& planned) {
         report.deltaV = available;
         report.shortOfFuel = true;
     }
-    const double massAfter = m_y.m * std::exp(-size / ve);
+    // m_after = m e^(−Δv / v_e): the rocket equation turned round.
+    const double massAfter = ship.unlimitedFuel ? m_y.m : m_y.m * std::exp(-size / ve);
     report.propellantUsed = m_y.m - massAfter;
+    m_out.deltaVUsed += size;
     // Leaving an orbit (bound around the body before the burn): its low
     // point on the way out is no flyby. (A burn on the way in to a pass
     // doesn't hide the pass.)
@@ -505,6 +509,7 @@ void VoyageFlight::burn(const Burn& planned) {
 /// With no burns to come: left on a closed orbit around the destination
 /// that clears its air (or surface), so nothing more will happen?
 std::optional<VoyageEnd> VoyageFlight::settled() const {
+    if (m_voyage->goal == Goal::Explore) return std::nullopt; // free roam: nowhere to settle
     const Body planet = m_voyage->destination;
     const Relative rel = relative(planet, m_t, m_y);
     if (norm(rel.r) > m_destinationSoi) return std::nullopt;
@@ -572,7 +577,7 @@ VoyageResult VoyageFlight::run() {
     if (ended) notePasses(); // the closest may be where it ended (in the air, say)
     m_out.goalMet = goalMet(m_voyage->goal, m_out.end);
     m_out.propellantLeft = m_y.m - ship.dryMass;
-    m_out.deltaVLeft = exhaustVelocity(ship.isp) * std::log(m_y.m / ship.dryMass);
+    m_out.deltaVLeft = deltaVAvailable(ship, m_y.m);
     return std::move(m_out);
 }
 
@@ -624,6 +629,11 @@ PlanetPass passAt(Body planet, double epoch, const Vec3& r, const Vec3& v) {
 
 double deltaVCapacity(const Ship& ship) {
     return exhaustVelocity(ship.isp) * std::log((ship.dryMass + ship.propellant) / ship.dryMass);
+}
+
+double deltaVAvailable(const Ship& ship, double mass) {
+    if (ship.unlimitedFuel) return std::numeric_limits<double>::infinity();
+    return exhaustVelocity(ship.isp) * std::log(mass / ship.dryMass);
 }
 
 double propellantFor(double deltaV, double mass, double isp) {
@@ -782,6 +792,8 @@ bool goalMet(Goal goal, VoyageEnd end) {
         return end == VoyageEnd::PassedClose;
     case Goal::PlanetOrbit:
         return end == VoyageEnd::OrbitingPlanet;
+    case Goal::Explore:
+        return false;
     }
     return false;
 }
