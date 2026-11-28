@@ -350,7 +350,9 @@ void GameWindow::buildControls(QBoxLayout* layout) {
         m_scene->setProperty("cardTitle", tr("Lost in space"));
         m_scene->setProperty("cardText", tr("Where to this time?"));
     });
-    connect(m_centre, &QComboBox::currentIndexChanged, this, &GameWindow::onCentreChanged);
+    // Every pick, even of the choice already shown: picking it again
+    // re-centres after panning away.
+    connect(m_centre, &QComboBox::activated, this, &GameWindow::onCentreChanged);
 }
 
 void GameWindow::connectScene() {
