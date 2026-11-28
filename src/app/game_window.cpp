@@ -1204,9 +1204,9 @@ void GameWindow::updatePath() {
             const orbit::Body planet = samples[i].parked.value_or(orbit::Body::Earth);
             const orbit::Vec3 rel = samples[i].r - orbit::bodyPosition(planet, samples[i].epoch);
             const orbit::Vec3 relV = samples[i].v - orbit::bodyVelocity(planet, samples[i].epoch);
-            const double period = orbit::elementsFromState(rel, relV, orbit::bodyMu(planet),
-                                                           orbit::bodyRadius(planet))
-                                      .period;
+            const orbit::OrbitalElements el = orbit::elementsFromState(
+                rel, relV, orbit::bodyMu(planet), orbit::bodyRadius(planet));
+            const double period = el.period;
             const double end =
                 last + 1 < samples.size() ? samples[last + 1].epoch : samples[last].epoch;
             const double span = std::min(period, end - samples[i].epoch);
@@ -1220,7 +1220,16 @@ void GameWindow::updatePath() {
             }
             // The rest of the stretch: riding along with the body (a moon
             // round its planet, a planet round the Sun), unless seen from it.
+            // That's only right for an orbit small next to how far the body
+            // is from what the view is centred on: a ship low around Titan
+            // seen from Saturn, but not one in a wide orbit round Saturn
+            // seen from Titan (its loops are the picture).
             const double stretch = end - samples[i].epoch;
+            const orbit::Vec3 origin =
+                m_drawFrame ? orbit::bodyPosition(*m_drawFrame, samples[i].epoch) : orbit::Vec3{};
+            const bool small =
+                el.apoapsis <
+                0.05 * orbit::norm(orbit::bodyPosition(planet, samples[i].epoch) - origin);
             if (stretch > span && m_drawFrame == planet) {
                 // Seen from it, the orbit retraces itself: go on round to
                 // where the stretch ends (the same point, n turns later),
@@ -1230,6 +1239,16 @@ void GameWindow::updatePath() {
                 const int steps = static_cast<int>(std::ceil(kTurn * rest / span));
                 for (int k = 1; k <= steps; ++k) {
                     const double t = samples[i].epoch + turns * span + rest * k / steps;
+                    points.append(drawn(orbit::sampleAt(*prediction, t).r, t));
+                    colors.append(color);
+                }
+            } else if (stretch > span && !small) {
+                // The real path, turn after turn (at most a few thousand points).
+                constexpr double kMaxPoints = 6000.0;
+                const auto steps = static_cast<int>(
+                    std::min(kMaxPoints, std::ceil(kTurn * (stretch - span) / period)));
+                for (int k = 1; k <= steps; ++k) {
+                    const double t = samples[i].epoch + span + (stretch - span) * k / steps;
                     points.append(drawn(orbit::sampleAt(*prediction, t).r, t));
                     colors.append(color);
                 }

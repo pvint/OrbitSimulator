@@ -925,6 +925,15 @@ with unlimited fuel (`free_roam.hpp`, `orbitsim --free-roam titan`).
   drawn as seen from whatever body the view is centred on (from the Sun
   when centred on it). The status line says what's coming: a crash, a
   landing, the next pass by a planet or a moon. Every flyby is marked.
+- **Drawing a parked stretch**: one turn, then the body's own track at a
+  fixed offset is only right for an orbit small next to the body's
+  distance from the view's centre (a ship low around Titan seen from
+  Saturn). Leaving Titan into a wide orbit round Saturn, seen from Titan,
+  that drew a false curve; such stretches are now drawn turn by turn (up
+  to 6,000 points). Seen from Titan, the real path out has a sharp-looking
+  bend: 3.5 days and 210,000 km out the ship has nearly stopped relative
+  to Titan (185 m/s) and turns 90° in half a day, as Saturn's pull makes
+  its bigger, slower orbit fall behind Titan's.
 - **Seen so far**: a low orbit 9.5 au out (Titan) is drawn slightly jagged:
   floats at that distance resolve about 100 km. The floating origin
   planned for close-ups (G5) fixes that.
