@@ -37,6 +37,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <utility>
 
 namespace {
 
@@ -424,6 +425,8 @@ void GameWindow::connectScene() {
     connect(m_scene, SIGNAL(cardAccepted(bool)), this, SLOT(acceptCard(bool)));
     connect(m_scene, SIGNAL(hiddenCardsReset()), this, SLOT(showHiddenCards()));
     connect(m_scene, SIGNAL(centreRequested(int)), this, SLOT(centreOn(int)));
+    // Zooming in may need the lines rebuilt nearer the camera (see placeScene).
+    connect(m_scene, SIGNAL(distanceChanged()), this, SLOT(onZoomed()));
     // The circle that each sphere of influence is drawn with, and their sizes.
     if (auto* circle =
             qobject_cast<PolylineGeometry*>(m_scene->property("unitCircle").value<QObject*>())) {
@@ -815,16 +818,18 @@ void GameWindow::onCentreChanged() {
     }
     if (choice == kCentreSun) {
         resetView();
-        return;
-    }
-    if (choice == kCentreShip) {
+    } else if (choice == kCentreShip) {
         m_scene->setProperty("followTarget", 1);
         m_scene->setProperty("distance", 40.0); // million km
-        return;
+    } else {
+        centreOnPlanet(static_cast<orbit::Body>(choice));
     }
-    const auto planet = static_cast<orbit::Body>(choice);
+    onNowChanged(); // the scene around its new centre
+}
+
+void GameWindow::centreOnPlanet(orbit::Body planet) {
     m_scene->setProperty("followTarget", 2);
-    m_scene->setProperty("followPlanet", choice);
+    m_scene->setProperty("followPlanet", static_cast<int>(planet));
     m_scene->setProperty("distance", 3.0 * orbit::sphereOfInfluence(planet, m_session->now()) /
                                          scene::kSolarMetresPerUnit);
 }
@@ -1095,7 +1100,7 @@ void GameWindow::updateBelt(double now) {
     colors.reserve(static_cast<qsizetype>(m_asteroids.size()));
     const QColor colour(0x8c, 0x84, 0x76, 140); // warm grey, faint
     for (const orbit::Asteroid& a : m_asteroids) {
-        points.append(scene::fromHeliocentric(orbit::asteroidPosition(a, now)));
+        points.append(scene::fromHeliocentric(orbit::asteroidPosition(a, now) - m_staticAnchor));
         colors.append(colour);
     }
     m_belt->setPointCloud(points, colors);
@@ -1115,7 +1120,8 @@ void GameWindow::updatePlanetOrbits() {
             points.append(scene::fromHeliocentric(
                 orbit::stateFromPeriapsis(q, o.eccentricity, o.inclination, o.raan,
                                           o.argumentOfPeriapsis, nu, orbit::kMuSun)
-                    .r));
+                    .r -
+                m_staticAnchor));
         }
         line->setPoints(points, QList<QColor>(points.size(), bodyColor(planet)));
     }
@@ -1155,7 +1161,8 @@ void GameWindow::updateStartOrbit() {
         points.append(scene::fromHeliocentric(
             orbit::stateFromPeriapsis(el.periapsis, el.eccentricity, el.inclination, el.raan,
                                       el.argumentOfPeriapsis, nu, orbit::kMuSun)
-                .r));
+                .r -
+            m_staticAnchor));
     }
     m_startOrbit->setPoints(points, QList<QColor>(points.size(), QColor(0x94, 0xa3, 0xb8)));
 }
@@ -1183,9 +1190,17 @@ void GameWindow::updatePath() {
     const double now = m_session->now();
     const auto split = static_cast<std::size_t>(
         std::ranges::upper_bound(samples, now, {}, &orbit::VoyageSample::epoch) - samples.begin());
-    // Seen from a planet, the whole path moves with it.
-    if (split == m_pathSplit && !m_drawFrame) return;
+    // Drawn around the frame body now, or around an anchor near the camera
+    // (a new one, and the path rebuilt, once the camera is far from it).
+    const bool rebase = !m_drawFrame && orbit::norm(m_origin - m_pathAnchor) > rebaseDistance();
+    if (m_scene) {
+        orbit::Vec3 base = rebase ? m_origin : m_pathAnchor;
+        if (m_drawFrame) base = orbit::bodyPosition(*m_drawFrame, now);
+        m_scene->setProperty("pathPosition", toScene(base));
+    }
+    if (split == m_pathSplit && !rebase) return;
     m_pathSplit = split;
+    if (rebase) m_pathAnchor = m_origin;
 
     QList<QVector3D> points;
     QList<QColor> colors;
@@ -1215,7 +1230,7 @@ void GameWindow::updatePath() {
             constexpr int kTurn = 96;
             for (int k = 0; k <= kTurn; ++k) {
                 const double t = samples[i].epoch + span * k / kTurn;
-                points.append(drawn(orbit::sampleAt(*prediction, t).r, t));
+                points.append(pathVertex(orbit::sampleAt(*prediction, t).r, t));
                 colors.append(color);
             }
             // The rest of the stretch: riding along with the body (a moon
@@ -1239,7 +1254,7 @@ void GameWindow::updatePath() {
                 const int steps = static_cast<int>(std::ceil(kTurn * rest / span));
                 for (int k = 1; k <= steps; ++k) {
                     const double t = samples[i].epoch + turns * span + rest * k / steps;
-                    points.append(drawn(orbit::sampleAt(*prediction, t).r, t));
+                    points.append(pathVertex(orbit::sampleAt(*prediction, t).r, t));
                     colors.append(color);
                 }
             } else if (stretch > span && !small) {
@@ -1249,7 +1264,7 @@ void GameWindow::updatePath() {
                     std::min(kMaxPoints, std::ceil(kTurn * (stretch - span) / period)));
                 for (int k = 1; k <= steps; ++k) {
                     const double t = samples[i].epoch + span + (stretch - span) * k / steps;
-                    points.append(drawn(orbit::sampleAt(*prediction, t).r, t));
+                    points.append(pathVertex(orbit::sampleAt(*prediction, t).r, t));
                     colors.append(color);
                 }
             } else if (stretch > span) {
@@ -1262,7 +1277,7 @@ void GameWindow::updatePath() {
                 const auto steps = static_cast<int>(std::min(1000.0, (stretch - span) / step));
                 for (int k = 1; k <= steps; ++k) {
                     const double t = samples[i].epoch + span + (stretch - span) * k / (steps + 1);
-                    points.append(drawn(orbit::bodyPosition(planet, t) + rel, t));
+                    points.append(pathVertex(orbit::bodyPosition(planet, t) + rel, t));
                     colors.append(color);
                 }
             }
@@ -1275,7 +1290,7 @@ void GameWindow::updatePath() {
                                         samples[i - 1].epoch == samples[i].epoch))) {
             ++burn;
         }
-        points.append(drawn(samples[i].r, samples[i].epoch));
+        points.append(pathVertex(samples[i].r, samples[i].epoch));
         colors.append(i < split ? kFlownColor : kSegmentColors.at(burn % kSegmentColors.size()));
     }
     m_path->setPoints(points, colors);
@@ -1544,15 +1559,15 @@ QString GameWindow::freeRoamStatus(QColor& color) const {
 void GameWindow::onNowChanged() {
     if (!m_scene) return;
     const double now = m_session->hasPuzzle() ? m_session->now() : epochNow();
+    placeScene(now);
     QVariantList planets;
     for (const orbit::Body planet : orbit::kAllPlanets) {
-        planets.append(
-            QVariant::fromValue(scene::fromHeliocentric(orbit::bodyPosition(planet, now))));
+        planets.append(QVariant::fromValue(toScene(orbit::bodyPosition(planet, now))));
     }
     m_scene->setProperty("planetPositions", planets);
     QVariantList moons;
     for (const orbit::Body moon : orbit::kMoons) {
-        moons.append(QVariant::fromValue(scene::fromHeliocentric(orbit::bodyPosition(moon, now))));
+        moons.append(QVariant::fromValue(toScene(orbit::bodyPosition(moon, now))));
     }
     m_scene->setProperty("moonPositions", moons);
     updateBelt(now);
@@ -1562,7 +1577,7 @@ void GameWindow::onNowChanged() {
     const auto* prediction = m_session->prediction();
     if (!prediction) return;
     const orbit::VoyageSample ship = orbit::sampleAt(*prediction, now);
-    m_scene->setProperty("shipPosition", scene::fromHeliocentric(ship.r));
+    m_scene->setProperty("shipPosition", toScene(ship.r));
     // Your own speed: the number to compare with a burn's size. Δv is a change
     // of velocity, so a burn of 1,000 m/s adds or removes up to that much.
     const double sunSpeed = orbit::norm(ship.v);
@@ -1580,11 +1595,69 @@ void GameWindow::onNowChanged() {
     }
 }
 
-QVector3D GameWindow::drawn(const orbit::Vec3& r, double epoch) const {
-    if (!m_drawFrame) return scene::fromHeliocentric(r);
+orbit::Vec3 GameWindow::drawnPoint(const orbit::Vec3& r, double epoch) const {
+    if (!m_drawFrame) return r;
     const double now = m_session->now();
-    return scene::fromHeliocentric(r - orbit::bodyPosition(*m_drawFrame, epoch) +
-                                   orbit::bodyPosition(*m_drawFrame, now));
+    return r - orbit::bodyPosition(*m_drawFrame, epoch) + orbit::bodyPosition(*m_drawFrame, now);
+}
+
+QVector3D GameWindow::drawn(const orbit::Vec3& r, double epoch) const {
+    return toScene(drawnPoint(r, epoch));
+}
+
+QVector3D GameWindow::toScene(const orbit::Vec3& r) const {
+    return scene::fromHeliocentric(r - m_origin);
+}
+
+orbit::Vec3 GameWindow::followedPoint(double now) const {
+    if (!m_scene) return {};
+    switch (m_scene->property("followTarget").toInt()) {
+    case 1:
+        if (const auto* p = m_session->prediction(); p && !p->samples.empty()) {
+            return orbit::sampleAt(*p, now).r;
+        }
+        return {};
+    case 2: {
+        const int body = m_scene->property("followPlanet").toInt();
+        if (body < 0 || std::cmp_greater_equal(body, orbit::kBodyCount)) return {};
+        return orbit::bodyPosition(orbit::kAllBodies.at(static_cast<std::size_t>(body)), now);
+    }
+    default:
+        return {};
+    }
+}
+
+double GameWindow::rebaseDistance() const {
+    const double distance = m_scene ? m_scene->property("distance").toDouble() : 1.0;
+    return 1000.0 * std::max(distance, 0.001) * scene::kSolarMetresPerUnit;
+}
+
+QVector3D GameWindow::pathVertex(const orbit::Vec3& r, double epoch) const {
+    // Seen from a body: relative to it then (drawn around it now, by
+    // pathPosition). Else relative to the anchor.
+    if (m_drawFrame) return scene::fromHeliocentric(r - orbit::bodyPosition(*m_drawFrame, epoch));
+    return scene::fromHeliocentric(r - m_pathAnchor);
+}
+
+void GameWindow::onZoomed() {
+    if (m_flying) return; // the next tick does it
+    placeScene(m_session->hasPuzzle() ? m_session->now() : epochNow());
+    updatePath();
+}
+
+void GameWindow::placeScene(double now) {
+    m_origin = followedPoint(now);
+    if (!m_scene) return;
+    m_scene->setProperty("sunPosition", toScene({}));
+    // The big lines: rebuilt around the origin once it has wandered far
+    // from where they were built.
+    if (orbit::norm(m_origin - m_staticAnchor) > rebaseDistance()) {
+        m_staticAnchor = m_origin;
+        updatePlanetOrbits();
+        updateStartOrbit();
+        m_beltEpoch = -1e300; // redraw it
+    }
+    m_scene->setProperty("staticPosition", toScene(m_staticAnchor));
 }
 
 void GameWindow::showEnding() {

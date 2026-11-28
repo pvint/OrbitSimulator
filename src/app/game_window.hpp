@@ -56,6 +56,8 @@ public:
     /// Centre the view on what was double-clicked (index as the scene's
     /// hoverIndex: planets, the Sun, the ship, burns, flybys, moons).
     Q_SLOT void centreOn(int index);
+    /// The camera zoomed: keep the scene precise near it.
+    Q_SLOT void onZoomed();
 
 protected:
     /// Arrows step the clock (see the .cpp); keys a focused control uses
@@ -77,6 +79,8 @@ private:
     /// you: -1).
     void setCentreChoices(int select);
     void onCentreChanged();
+    /// Follow a planet or a moon, close enough to see its sphere of influence.
+    void centreOnPlanet(orbit::Body planet);
     void updatePlanetOrbits();
     void updateMoonOrbits();
     void updateBelt(double now);
@@ -141,9 +145,35 @@ private:
     /// as seen from the planet (see drawn()); in free roam, as seen from
     /// whatever body the view is centred on.
     std::optional<orbit::Body> m_drawFrame;
-    /// Where to draw a point the ship passes at `epoch`: where it is, or,
-    /// with a planet as the frame, where it is relative to the planet then,
-    /// around where the planet is now. A parked orbit is then a closed loop
-    /// round the planet, not a smear along the planet's own path.
+    /// Where to draw a point the ship passes at `epoch` (heliocentric, m):
+    /// where it is, or, with a planet as the frame, where it is relative to
+    /// the planet then, around where the planet is now. A parked orbit is
+    /// then a closed loop round the planet, not a smear along the planet's
+    /// own path.
+    orbit::Vec3 drawnPoint(const orbit::Vec3& r, double epoch) const;
+    /// The same, in the scene (relative to the floating origin).
     QVector3D drawn(const orbit::Vec3& r, double epoch) const;
+
+    // FLOATING ORIGIN (see VoyageScene.qml): scene positions are relative
+    // to the point the camera follows, so a close view far from the Sun
+    // keeps its precision.
+    /// The point the camera follows at `now` (heliocentric, m): the Sun, the
+    /// ship, or a planet or a moon.
+    orbit::Vec3 followedPoint(double now) const;
+    /// A heliocentric point in the scene, relative to m_origin.
+    QVector3D toScene(const orbit::Vec3& r) const;
+    /// How far the origin may move from a line's anchor before the line is
+    /// rebuilt around a new one (m): a thousand times the camera's distance,
+    /// so a float near the camera still resolves far below a pixel.
+    double rebaseDistance() const;
+    /// A point of the path, relative to the point the path is drawn around:
+    /// the frame body now, or else m_pathAnchor.
+    QVector3D pathVertex(const orbit::Vec3& r, double epoch) const;
+    /// Move the scene to m_origin: the Sun, and the anchors of the planets'
+    /// orbits, the belt and the path (rebuilt around new anchors if the
+    /// origin is far from them).
+    void placeScene(double now);
+    orbit::Vec3 m_origin;       ///< heliocentric, m
+    orbit::Vec3 m_staticAnchor; ///< the planets' orbits, the start orbit and the belt
+    orbit::Vec3 m_pathAnchor;   ///< the path, when drawn as seen from the Sun
 };

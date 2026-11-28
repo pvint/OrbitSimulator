@@ -18,6 +18,16 @@ Item {
 
     // --- from C++ -----------------------------------------------------
     property vector3d shipPosition: Qt.vector3d(0, 0, 0)
+    /// FLOATING ORIGIN. Every position here is relative to what the camera
+    /// follows (worked out in double precision in C++), not to the Sun: a
+    /// 32-bit float 9.5 au out resolves only about 120 km, enough to make a
+    /// close view of Titan jitter. So the Sun sits at sunPosition, and the
+    /// big lines drawn around it (the planets' orbits, the belt) and the
+    /// path are each drawn relative to a point near the camera, placed at
+    /// staticPosition and pathPosition.
+    property vector3d sunPosition: Qt.vector3d(0, 0, 0)
+    property vector3d staticPosition: Qt.vector3d(0, 0, 0)
+    property vector3d pathPosition: Qt.vector3d(0, 0, 0)
     /// The eight planets, Mercury first (vector3d each), at the game clock.
     property var planetPositions: []
     /// Every body's name and colour, in orbit::Body order: the planets,
@@ -220,7 +230,7 @@ Item {
             ? planetPositions[followPlanet]
         : followTarget === 2 && moonPositions.length > followPlanet - 8
             ? moonPositions[followPlanet - 8]
-        : Qt.vector3d(0, 0, 0)
+        : sunPosition
     readonly property vector3d target: centrePoint.plus(panOffset)
     /// As close as 2,000 km; but not inside the Sun when circling it.
     readonly property real minDistance:
@@ -280,6 +290,7 @@ Item {
 
         Model {
             source: "#Sphere"
+            position: root.sunPosition
             readonly property real size: Math.max(root.sunRadius / 50, root.markerScale * 1.8)
             scale: Qt.vector3d(size, size, size)
             materials: PrincipledMaterial {
@@ -293,6 +304,7 @@ Item {
             model: 8
             delegate: Model {
                 property alias line: orbitGeometry
+                position: root.staticPosition
                 geometry: PolylineGeometry { id: orbitGeometry }
                 materials: PrincipledMaterial {
                     lighting: PrincipledMaterial.NoLighting
@@ -415,6 +427,7 @@ Item {
 
         // The orbit the ship started on: where it would go without burns.
         Model {
+            position: root.staticPosition
             geometry: PolylineGeometry { id: startOrbitGeometry }
             materials: PrincipledMaterial {
                 lighting: PrincipledMaterial.NoLighting
@@ -425,6 +438,7 @@ Item {
 
         // The path: flown (faint) and predicted (bright), coloured by C++.
         Model {
+            position: root.pathPosition
             geometry: PolylineGeometry { id: pathGeometry }
             materials: PrincipledMaterial {
                 lighting: PrincipledMaterial.NoLighting
@@ -494,6 +508,7 @@ Item {
 
         // The asteroid belt: faint dots (see asteroid_belt.hpp).
         Model {
+            position: root.staticPosition
             geometry: PolylineGeometry { id: beltGeometry }
             materials: PrincipledMaterial {
                 lighting: PrincipledMaterial.NoLighting
@@ -572,7 +587,7 @@ Item {
             font.pixelSize: 10
         }
     }
-    Label3D { at: Qt.vector3d(0, 0, 0); text: qsTr("Sun"); color: "#ffd27a" }
+    Label3D { at: root.sunPosition; text: qsTr("Sun"); color: "#ffd27a" }
     Label3D {
         at: root.shipPosition
         text: qsTr("You")
@@ -606,7 +621,7 @@ Item {
         const pointer = hover.point.position
         let best = -1
         let bestDistance = 16 // pixels
-        const objects = root.planetPositions.concat([Qt.vector3d(0, 0, 0), root.shipPosition],
+        const objects = root.planetPositions.concat([root.sunPosition, root.shipPosition],
                                                     root.burnPositions, root.flybyPositions,
                                                     root.moonPositions)
         const firstMoon = objects.length - root.moonPositions.length

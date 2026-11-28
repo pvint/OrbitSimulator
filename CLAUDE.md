@@ -102,8 +102,7 @@ prototype settled the physics model and the UI ideas; this is the full version.
   (assets.science.nasa.gov); Saturn, Neptune, Venus and Saturn's and
   Uranus's moons from github.com/nasa/NASA-3D-Resources; Uranus, Venus's
   clouds and Saturn's rings to be painted from real data; record each in
-  tools/make_planet_textures.sh; close-ups need a floating origin, as
-  floats at 1 au resolve only ~10 km); G7 landing where there's air
+  tools/make_planet_textures.sh; the floating origin they need is done); G7 landing where there's air
   (Titan: Huygens came in at ~6 km/s). The user also wants famous
   missions later, and asked whether landing on Titan after leaving the
   Earth is too hard (no: it's an entry, like the Earth's).
@@ -193,9 +192,12 @@ prototype/web/ the original JavaScript prototype, kept for reference
   in `scenarios/` with a name and description, and must load without warnings
   (a test checks).
 - Texts on cards are for a curious newcomer: plain words, what to look at.
-- 3D scene: 1 unit = 1 million km, heliocentric ecliptic, scene y = ecliptic
-  north; always convert with `scene::fromHeliocentric()`
-  (src/app/scene_coordinates.hpp).
+- 3D scene: 1 unit = 1 million km, ecliptic axes, scene y = ecliptic
+  north, with a **floating origin**: positions are relative to what the
+  camera follows. In GameWindow convert with `toScene()` (heliocentric
+  double → scene), never `scene::fromHeliocentric()` on an absolute
+  position; big heliocentric lines go relative to `m_staticAnchor`, the
+  path to `m_pathAnchor` or its frame body (decision 41).
 - Git: one branch per milestone (`m1-physics`, ...), small focused commits,
   merged to `main` when the milestone runs. Commit messages: a short summary
   line, then why.

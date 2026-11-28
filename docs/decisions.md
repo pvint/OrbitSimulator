@@ -934,10 +934,21 @@ with unlimited fuel (`free_roam.hpp`, `orbitsim --free-roam titan`).
   bend: 3.5 days and 210,000 km out the ship has nearly stopped relative
   to Titan (185 m/s) and turns 90° in half a day, as Saturn's pull makes
   its bigger, slower orbit fall behind Titan's.
-- **Seen so far**: a low orbit 9.5 au out (Titan) is drawn slightly jagged:
-  floats at that distance resolve about 100 km. The floating origin
-  planned for close-ups (G5) fixes that.
-
+- **The jog is real.** Seen from Titan after leaving it on 750 m/s, the
+  ship slows to 13 m/s relative to Titan 4.5 days and 239,000 km out, and
+  turns back. Checked twice: the same at 100× tighter tolerances, and the
+  same with the ship and Titan on Kepler orbits with only Saturn pulling.
+  It is Saturn's differential pull (0.01 m/s² there, 60 times Titan's).
+- **A floating origin** (planned for G5, needed now): 9.5 au out a float
+  resolves about 120 km, so a close view of Titan was jagged and jittered
+  by several pixels a frame. Every scene position is now passed relative
+  to what the camera follows (`GameWindow::toScene`, worked out in
+  double). The planets' orbits, the start orbit and the belt are built
+  around an anchor near the camera and placed by `staticPosition`; the
+  path likewise (`pathPosition`), or around the body it's seen from. They
+  are rebuilt round a new anchor only when the camera is more than a
+  thousand camera-distances from it. A side benefit: a path seen from a
+  body no longer has to be rebuilt every frame (10 → 6 ms a frame, debug).
 ---
 
 ## Open questions
