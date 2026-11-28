@@ -2,7 +2,7 @@
 Type=Application
 Name=Orbit Simulator
 GenericName=Orbit Simulator
-Comment=Launch rockets from a turning Earth and see how orbits work
+Comment=Find your way around the solar system with real orbital physics
 Exec=orbitsim %f
 Icon=io.github.pvint.OrbitSimulator
 Terminal=false

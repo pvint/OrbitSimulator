@@ -1,32 +1,26 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# orbitsim: the Qt desktop app.
+# orbitsim: the Qt desktop app, the "Lost in space" game.
 #
-# The window, panels and forms are Qt Widgets. The 3D view and the plots are
-# Qt Quick scenes written in QML, embedded with QQuickWidget. Simulations run
-# on a worker thread via Qt Concurrent.
+# The window and the burn planner are Qt Widgets. The 3D view is a Qt Quick 3D
+# scene written in QML, embedded with QQuickWidget. Predictions and hints run
+# on worker threads via Qt Concurrent.
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Quick QuickWidgets Quick3D Graphs Concurrent)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Quick QuickWidgets Quick3D Concurrent)
 
 # Turns on AUTOMOC etc. and opts in to Qt's current CMake policies.
 qt_standard_project_setup(REQUIRES 6.8)
 
-# orbitsim_ui: the panels and the simulation controller, i.e. everything that
-# doesn't need QML. A separate library so tests/app can test it too.
+# orbitsim_ui: the game session and the panels, i.e. everything that doesn't
+# need QML. A separate library so tests/app can test it too.
 qt_add_library(orbitsim_ui STATIC
+    burn_planner.cpp
+    burn_planner.hpp
     display_format.cpp
     display_format.hpp
-    flight_stats_panel.cpp
-    flight_stats_panel.hpp
-    parameter_panel.cpp
-    parameter_panel.hpp
-    program_panel.cpp
-    program_panel.hpp
-    run_set.cpp
-    run_set.hpp
-    simulation_controller.cpp
-    simulation_controller.hpp
-    sweep_panel.cpp
-    sweep_panel.hpp
+    game_session.cpp
+    game_session.hpp
+    timeline_bar.cpp
+    timeline_bar.hpp
 )
 target_include_directories(orbitsim_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(orbitsim_ui PUBLIC orbit::core Qt6::Widgets Qt6::Concurrent)
@@ -45,17 +39,11 @@ endif()
 
 qt_add_executable(orbitsim
     ${orbitsim_platform_sources}
-    demo_controller.cpp
-    demo_controller.hpp
+    game_window.cpp
+    game_window.hpp
     globe_geometry.cpp
     globe_geometry.hpp
-    globe_view.cpp
-    globe_view.hpp
     main.cpp
-    main_window.cpp
-    main_window.hpp
-    plot_panel.cpp
-    plot_panel.hpp
     polyline_geometry.cpp
     polyline_geometry.hpp
     scene_coordinates.hpp
@@ -67,30 +55,8 @@ qt_add_qml_module(orbitsim
     URI OrbitSim
     VERSION 1.0
     QML_FILES
-        qml/AxisArrow.qml
         qml/CameraControls.qml
-        qml/DemoCaption.qml
-        qml/GlobeScene.qml
-        qml/OrientationGizmo.qml
-        qml/Plots.qml
-        qml/SolarScene.qml
-        qml/TimeGraph.qml
-)
-
-# The example scenarios from scenarios/, compiled in for File ▸ Examples
-# (qrc:/scenarios/...).
-file(GLOB example_scenarios CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/scenarios/*.json")
-qt_add_resources(orbitsim "example_scenarios"
-    PREFIX "/scenarios"
-    BASE "${PROJECT_SOURCE_DIR}/scenarios"
-    FILES ${example_scenarios}
-)
-
-# The demo tour (Help ▸ Demo Tour), qrc:/demos/tour.json.
-qt_add_resources(orbitsim "demos"
-    PREFIX "/demos"
-    BASE "${PROJECT_SOURCE_DIR}/demos"
-    FILES "${PROJECT_SOURCE_DIR}/demos/tour.json"
+        qml/VoyageScene.qml
 )
 
 # Earth texture, compiled into the executable (qrc:/textures/...). BIG_RESOURCES
@@ -132,8 +98,7 @@ target_link_libraries(orbitsim PRIVATE
     orbitsim_ui
     Qt6::Quick
     Qt6::QuickWidgets
-    Qt6::Quick3D
-    Qt6::Graphs)
+    Qt6::Quick3D)
 
 orbit_set_warnings(orbitsim)
 

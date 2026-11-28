@@ -53,7 +53,7 @@ std::optional<double> firstEvent(const SimResult& r, EventType type) {
     return r.startEpoch + it->sample.t;
 }
 
-const SolarSummary::Approach& approach(const SolarSummary& s, Planet planet) {
+const SolarSummary::Approach& approach(const SolarSummary& s, Body planet) {
     return s.approaches.at(static_cast<std::size_t>(planet));
 }
 
@@ -116,7 +116,7 @@ TEST_CASE("Apophis's 2029 flyby moves it outside the Earth's orbit", "[helio]") 
     REQUIRE(r.solar);
 
     // It still passes the Earth at 38,011 km.
-    CHECK_THAT(approach(*r.solar, Planet::Earth).distance, WithinAbs(38011e3, 50e3));
+    CHECK_THAT(approach(*r.solar, Body::Earth).distance, WithinAbs(38011e3, 50e3));
     // JPL's orbit (Horizons, osculating, ecliptic J2000): before, on
     // 1 January 2028, a = 0.92237 au, e = 0.19119, i = 3.3412°; after, on
     // 29 June 2030, a = 1.10298 au, e = 0.18904, i = 2.2210°. From inside the
@@ -136,7 +136,7 @@ TEST_CASE("Halley's comet passes the Earth in April 1986", "[helio][example]") {
     REQUIRE(r.solar);
     CHECK(r.outcome == Outcome::Orbit);
     // JPL: 0.4172 au on 10 April 1986, 22h UTC.
-    const SolarSummary::Approach& earth = approach(*r.solar, Planet::Earth);
+    const SolarSummary::Approach& earth = approach(*r.solar, Body::Earth);
     CHECK_THAT(earth.distance / kAstronomicalUnit, WithinAbs(0.4172, 0.002));
     CHECK_THAT(r.startEpoch + earth.t,
                WithinAbs(epochFromCalendar({1986, 4, 10, 22, 0, 0.0}), 6.0 * 3600.0));
@@ -154,7 +154,7 @@ TEST_CASE("ʻOumuamua leaves the solar system", "[helio][example]") {
     CHECK(r.outcome == Outcome::Escape);
     CHECK(r.solar->finalOrbit.eccentricity > 1.0);
     // JPL: closest to the Earth on 14 October 2017 at 0.1618 au.
-    const SolarSummary::Approach& earth = approach(*r.solar, Planet::Earth);
+    const SolarSummary::Approach& earth = approach(*r.solar, Body::Earth);
     CHECK_THAT(earth.distance / kAstronomicalUnit, WithinAbs(0.1618, 0.003));
     CHECK_THAT(r.startEpoch + earth.t,
                WithinAbs(epochFromCalendar({2017, 10, 14, 14, 0, 0.0}), 12.0 * 3600.0));
@@ -184,11 +184,11 @@ TEST_CASE("Bodies can hit the Sun or a planet", "[helio]") {
         // 2 million km from Jupiter, falling straight at it at 10 km/s.
         Mission m = sunMission(kAstronomicalUnit, 0.0);
         const double epoch = m.body.epoch;
-        const Vec3 jupiter = planetPosition(Planet::Jupiter, epoch);
+        const Vec3 jupiter = bodyPosition(Body::Jupiter, epoch);
         const Vec3 out = normalized(jupiter);
         m.body.given = BodyGiven::StateVector;
         m.body.position = jupiter + 2.0e9 * out;
-        m.body.velocity = planetVelocity(Planet::Jupiter, epoch) - 10e3 * out;
+        m.body.velocity = bodyVelocity(Body::Jupiter, epoch) - 10e3 * out;
         m.body.timeAfter = 30.0 * kDay;
         const SimResult r = simulate(m);
         CHECK(r.outcome == Outcome::Impact);

@@ -95,8 +95,107 @@ constexpr std::array<double, 8> kRadiusKm{2439.4,  6051.8,  6371.0,  3389.5,
                                           69911.0, 58232.0, 25362.0, 24622.0};
 
 constexpr double kMuMoonKm3 = 4902.800118;
+constexpr double kRadiusMoonKm = 1737.4;
 
-std::size_t index(Planet planet) { return static_cast<std::size_t>(planet); }
+std::size_t index(Body planet) { return static_cast<std::size_t>(planet); }
+
+/// The moons other than ours: semi-major axis (km), eccentricity,
+/// inclination to the planet's equator (°), μ (km³/s²), mean radius (km),
+/// from JPL's satellite mean elements and physical parameters; and a mean
+/// anomaly at J2000 (°) that only spreads them round their orbits.
+struct MoonRow {
+    Body planet;
+    double aKm, e, iDeg, muKm3, radiusKm, m0Deg;
+};
+constexpr std::array<MoonRow, kMoons.size() - 1> kMoonRows{{
+    {Body::Jupiter, 421700.0, 0.0041, 0.050, 5959.916, 1821.6, 106.1},     // Io
+    {Body::Jupiter, 671034.0, 0.0094, 0.471, 3202.739, 1560.8, 175.7},     // Europa
+    {Body::Jupiter, 1070412.0, 0.0013, 0.204, 9887.834, 2631.2, 120.6},    // Ganymede
+    {Body::Jupiter, 1882709.0, 0.0074, 0.205, 7179.289, 2410.3, 84.4},     // Callisto
+    {Body::Saturn, 185539.0, 0.0196, 1.574, 2.503, 198.2, 10.0},           // Mimas
+    {Body::Saturn, 237948.0, 0.0047, 0.009, 7.211, 252.1, 60.0},           // Enceladus
+    {Body::Saturn, 294619.0, 0.0001, 1.091, 41.21, 531.1, 120.0},          // Tethys
+    {Body::Saturn, 377396.0, 0.0022, 0.028, 73.116, 561.4, 200.0},         // Dione
+    {Body::Saturn, 527108.0, 0.0013, 0.331, 153.94, 763.8, 270.0},         // Rhea
+    {Body::Saturn, 1221870.0, 0.0288, 0.312, 8978.14, 2574.7, 30.0},       // Titan
+    {Body::Saturn, 3560820.0, 0.0283, 15.47, 120.51, 734.5, 300.0},        // Iapetus
+    {Body::Uranus, 129390.0, 0.0013, 4.338, 4.4, 235.8, 50.0},             // Miranda
+    {Body::Uranus, 191020.0, 0.0012, 0.041, 83.46, 578.9, 140.0},          // Ariel
+    {Body::Uranus, 266300.0, 0.0039, 0.128, 85.09, 584.7, 220.0},          // Umbriel
+    {Body::Uranus, 435910.0, 0.0011, 0.079, 226.94, 788.9, 310.0},         // Titania
+    {Body::Uranus, 583520.0, 0.0014, 0.068, 205.32, 761.4, 20.0},          // Oberon
+    {Body::Neptune, 354759.0, 0.000016, 156.885, 1428.495, 1353.4, 100.0}, // Triton
+}};
+
+const MoonRow& moonRow(Body moon) { return kMoonRows.at(index(moon) - index(Body::Io)); }
+
+/// A giant planet's north pole, from the IAU's right ascension and
+/// declination of the pole at J2000 (degrees), turned into the ecliptic.
+Vec3 poleOf(Body planet) {
+    double ra = 0.0;
+    double dec = 90.0;
+    switch (planet) {
+    case Body::Jupiter:
+        ra = 268.056595;
+        dec = 64.495303;
+        break;
+    case Body::Saturn:
+        ra = 40.589;
+        dec = 83.537;
+        break;
+    case Body::Uranus: // tipped right over: its pole lies almost in its orbit's plane
+        ra = 257.311;
+        dec = -15.175;
+        break;
+    case Body::Neptune:
+        ra = 299.36;
+        dec = 43.46;
+        break;
+    default:
+        break;
+    }
+    const double a = degToRad(ra);
+    const double d = degToRad(dec);
+    return equatorialToEcliptic(
+        Vec3{std::cos(d) * std::cos(a), std::cos(d) * std::sin(a), std::sin(d)});
+}
+
+/// A giant planet's equatorial axes in the ecliptic frame: x along the line
+/// where its equator crosses the ecliptic, z its pole. Worked out once (the
+/// moons are asked for at every step of a flight near a giant planet).
+struct EquatorAxes {
+    Vec3 x, y, z;
+};
+const EquatorAxes& equatorOf(Body planet) {
+    static const std::array<EquatorAxes, 4> axes = [] {
+        std::array<EquatorAxes, 4> all{};
+        for (std::size_t i = 0; i < all.size(); ++i) {
+            const Vec3 z = poleOf(static_cast<Body>(index(Body::Jupiter) + i));
+            const Vec3 x = normalized(cross(Vec3{0.0, 0.0, 1.0}, z));
+            all.at(i) = {x, cross(z, x), z};
+        }
+        return all;
+    }();
+    return axes.at(index(planet) - index(Body::Jupiter));
+}
+
+/// A moon (not ours) relative to its planet: Kepler's equation on its mean
+/// elements, in the planet's equatorial plane, turned into the ecliptic.
+PositionVelocity moonRelative(Body moon, double epoch) {
+    const MoonRow& row = moonRow(moon);
+    const double mu = bodyMu(row.planet);
+    const double a = row.aKm * 1e3;
+    const double e = row.e;
+    const double n = std::sqrt(mu / (a * a * a));
+    const double meanAnomaly = std::fmod(degToRad(row.m0Deg) + n * epoch, 2.0 * std::numbers::pi);
+    const double bigE = eccentricAnomaly(meanAnomaly, e);
+    const double nu = 2.0 * std::atan2(std::sqrt(1.0 + e) * std::sin(bigE / 2.0),
+                                       std::sqrt(1.0 - e) * std::cos(bigE / 2.0));
+    const PositionVelocity inPlane = stateFromElements(a, e, degToRad(row.iDeg), 0.0, 0.0, nu, mu);
+    const EquatorAxes& eq = equatorOf(row.planet);
+    const auto turn = [&](const Vec3& w) { return w.x * eq.x + w.y * eq.y + w.z * eq.z; };
+    return {turn(inPlane.r), turn(inPlane.v)};
+}
 
 /// Table 1 between 1800 and 2050, where it is the more accurate; table 2
 /// elsewhere.
@@ -104,7 +203,7 @@ bool useTable1(double t) { return t >= -2.0 && t <= 0.5; }
 
 /// Heliocentric ecliptic position of a planet's (for the Earth row, the
 /// Earth–Moon barycentre's) orbit, from the tables, as JPL's formulae say.
-Vec3 tablePosition(Planet planet, double epoch) {
+Vec3 tablePosition(Body planet, double epoch) {
     const PlanetOrbit o = planetOrbit(planet, epoch);
     const double ecc = eccentricAnomaly(o.meanAnomaly, o.eccentricity);
     // In the orbit's plane, x towards perihelion.
@@ -121,33 +220,144 @@ Vec3 moonFromEarth(double epoch) {
 
 } // namespace
 
-std::string_view planetName(Planet planet) {
+bool isMoon(Body body) { return index(body) >= index(Body::Moon); }
+
+Body planetOf(Body body) {
+    if (!isMoon(body)) return body;
+    if (body == Body::Moon) return Body::Earth;
+    return moonRow(body).planet;
+}
+
+MoonOrbit moonOrbit(Body moon) {
+    if (moon == Body::Moon) {
+        // Ours: about 384,400 km, e 0.055, tilted 5.1° to the ecliptic.
+        return {384400e3, 0.0549, degToRad(5.145), Vec3{0.0, 0.0, 1.0}};
+    }
+    const MoonRow& row = moonRow(moon);
+    return {row.aKm * 1e3, row.e, degToRad(row.iDeg), poleOf(row.planet)};
+}
+
+std::span<const Body> moonsOf(Body planet) {
+    // kMoons keeps each planet's moons together, innermost first.
+    const std::span<const Body> all(kMoons);
     switch (planet) {
-    case Planet::Mercury:
+    case Body::Earth:
+        return all.subspan(0, 1);
+    case Body::Jupiter:
+        return all.subspan(1, 4);
+    case Body::Saturn:
+        return all.subspan(5, 7);
+    case Body::Uranus:
+        return all.subspan(12, 5);
+    case Body::Neptune:
+        return all.subspan(17, 1);
+    default:
+        return {};
+    }
+}
+
+MoonState moonFromPlanet(Body moon, double epoch) {
+    if (moon == Body::Moon) {
+        constexpr double dt = 1800.0;
+        return {moonFromEarth(epoch),
+                (moonFromEarth(epoch + dt) - moonFromEarth(epoch - dt)) / (2.0 * dt)};
+    }
+    const PositionVelocity rel = moonRelative(moon, epoch);
+    return {rel.r, rel.v};
+}
+
+double planetMuAlone(Body planet) {
+    if (planet == Body::Earth) return bodyMu(planet);
+    double mu = bodyMu(planet);
+    for (const Body moon : moonsOf(planet)) mu -= bodyMu(moon);
+    return mu;
+}
+
+std::string_view bodyName(Body body) {
+    switch (body) {
+    case Body::Mercury:
         return "Mercury";
-    case Planet::Venus:
+    case Body::Venus:
         return "Venus";
-    case Planet::Earth:
+    case Body::Earth:
         return "Earth";
-    case Planet::Mars:
+    case Body::Mars:
         return "Mars";
-    case Planet::Jupiter:
+    case Body::Jupiter:
         return "Jupiter";
-    case Planet::Saturn:
+    case Body::Saturn:
         return "Saturn";
-    case Planet::Uranus:
+    case Body::Uranus:
         return "Uranus";
-    case Planet::Neptune:
+    case Body::Neptune:
         return "Neptune";
+    case Body::Moon:
+        return "Moon";
+    case Body::Io:
+        return "Io";
+    case Body::Europa:
+        return "Europa";
+    case Body::Ganymede:
+        return "Ganymede";
+    case Body::Callisto:
+        return "Callisto";
+    case Body::Mimas:
+        return "Mimas";
+    case Body::Enceladus:
+        return "Enceladus";
+    case Body::Tethys:
+        return "Tethys";
+    case Body::Dione:
+        return "Dione";
+    case Body::Rhea:
+        return "Rhea";
+    case Body::Titan:
+        return "Titan";
+    case Body::Iapetus:
+        return "Iapetus";
+    case Body::Miranda:
+        return "Miranda";
+    case Body::Ariel:
+        return "Ariel";
+    case Body::Umbriel:
+        return "Umbriel";
+    case Body::Titania:
+        return "Titania";
+    case Body::Oberon:
+        return "Oberon";
+    case Body::Triton:
+        return "Triton";
     }
     return {};
 }
 
-double planetMu(Planet planet) { return kMuKm3.at(index(planet)) * 1e9; }
+std::optional<Body> bodyFromKey(std::string_view key) {
+    const auto lower = [](char c) {
+        return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+    };
+    for (const Body body : kAllBodies) {
+        const std::string_view name = bodyName(body);
+        if (name.size() == key.size() && std::ranges::equal(name, key, {}, lower, lower)) {
+            return body;
+        }
+    }
+    return std::nullopt;
+}
 
-double planetRadius(Planet planet) { return kRadiusKm.at(index(planet)) * 1e3; }
+double bodyMu(Body body) {
+    if (body == Body::Moon) return kMuMoonKm3 * 1e9;
+    if (isMoon(body)) return moonRow(body).muKm3 * 1e9;
+    return kMuKm3.at(index(body)) * 1e9;
+}
 
-PlanetOrbit planetOrbit(Planet planet, double epoch) {
+double bodyRadius(Body body) {
+    if (body == Body::Moon) return kRadiusMoonKm * 1e3;
+    if (isMoon(body)) return moonRow(body).radiusKm * 1e3;
+    return kRadiusKm.at(index(body)) * 1e3;
+}
+
+PlanetOrbit planetOrbit(Body body, double epoch) {
+    const Body planet = planetOf(body);
     const double t = julianCenturies(epoch);
     const bool table1 = useTable1(t);
     const ElementRow& row = (table1 ? kTable1 : kTable2a).at(index(planet));
@@ -174,24 +384,40 @@ PlanetOrbit planetOrbit(Planet planet, double epoch) {
     return o;
 }
 
-Vec3 planetPosition(Planet planet, double epoch) {
-    if (planet != Planet::Earth) return tablePosition(planet, epoch);
+double sphereOfInfluence(Body body, double epoch) {
+    if (isMoon(body)) {
+        const Body planet = planetOf(body);
+        const double mu = planet == Body::Earth ? bodyMu(Body::Earth) : bodyMu(planet);
+        return moonOrbit(body).semiMajorAxis * std::pow(bodyMu(body) / mu, 0.4);
+    }
+    return planetOrbit(body, epoch).semiMajorAxis * std::pow(bodyMu(body) / kMuSun, 0.4);
+}
+
+Vec3 bodyPosition(Body body, double epoch) {
+    if (body == Body::Moon) return earthAndMoonHeliocentric(epoch).moon;
+    if (isMoon(body)) {
+        return bodyPosition(planetOf(body), epoch) + moonRelative(body, epoch).r;
+    }
+    if (body != Body::Earth) return tablePosition(body, epoch);
     // The table gives the Earth–Moon barycentre; the Earth is 1/82 of the
     // way from it to the Moon, on the other side.
     return earthAndMoonHeliocentric(epoch).earth;
 }
 
-Vec3 planetVelocity(Planet planet, double epoch) {
+Vec3 bodyVelocity(Body body, double epoch) {
+    if (isMoon(body) && body != Body::Moon) {
+        return bodyVelocity(planetOf(body), epoch) + moonRelative(body, epoch).v;
+    }
     constexpr double dt = 1800.0;
-    return (planetPosition(planet, epoch + dt) - planetPosition(planet, epoch - dt)) / (2.0 * dt);
+    return (bodyPosition(body, epoch + dt) - bodyPosition(body, epoch - dt)) / (2.0 * dt);
 }
 
 Vec3 moonHeliocentric(double epoch) { return earthAndMoonHeliocentric(epoch).moon; }
 
 EarthMoon earthAndMoonHeliocentric(double epoch) {
-    const Vec3 barycentre = tablePosition(Planet::Earth, epoch);
+    const Vec3 barycentre = tablePosition(Body::Earth, epoch);
     const Vec3 moon = moonFromEarth(epoch);
-    const double moonShare = kMuMoonKm3 / (kMuKm3.at(index(Planet::Earth)) + kMuMoonKm3);
+    const double moonShare = kMuMoonKm3 / (kMuKm3.at(index(Body::Earth)) + kMuMoonKm3);
     const Vec3 earth = barycentre - moonShare * moon;
     return {earth, earth + moon};
 }

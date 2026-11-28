@@ -492,6 +492,192 @@ for the closest approach to that planet.
 zero, an ellipse; above, a hyperbola. ʻOumuamua had ε > 0 all along: it came
 from another star and left again.
 
+## Lost in space: going home (`two_body.hpp`, `voyage.hpp`, `lost_in_space.hpp`)
+
+The game puts a ship on an orbit around the Sun and asks you to get back
+to the Earth. Three pieces of physics make it work.
+
+**Instant burns and the rocket equation.** A burn changes the velocity by
+Δv in one moment and uses up propellant by Tsiolkovsky's equation,
+Δv = v_e ln(m_before / m_after) with v_e = Isp · g0. The "fuel gauge" shows
+v_e ln(m / m_dry), the speed change the tanks can still buy. Treating a
+burn as instant is how interplanetary transfers are first planned: the
+engine runs for minutes, the trip lasts months.
+
+Each burn is given in the ship's own directions, relative to the body it
+is falling around (the Earth inside its sphere of influence, about
+925,000 km, otherwise the Sun): *prograde* along the velocity (faster:
+the far side of the orbit swings out), *outward* square to the velocity
+in the orbit's plane, and *north* along the orbit's angular momentum
+(tilts the plane).
+
+**Kepler's and Lambert's problems.** Kepler's problem asks where a body
+will be after a time Δt; Lambert's asks which orbit joins two points in a
+given time. Both are solved with "universal variables", one form for
+ellipses and hyperbolas alike, built on Stumpff's functions C(z) and S(z)
+(Curtis, *Orbital Mechanics for Engineering Students*, chapters 3 and 5).
+Lambert's answer gives the velocity needed at the start: the difference
+from the ship's velocity is the burn. Trying every pair of departure and
+arrival days and plotting the total cost gives a *porkchop plot*; the
+puzzle maker searches it for its lowest point to decide how much fuel to
+give you, and the Hint button does the same from wherever you are.
+
+**Aiming: the B-plane.** Aiming at the Earth's centre is no good: the
+path must miss by just the right amount for the Earth's gravity to bend it
+into the air at the right angle, or to the right perigee. The miss is
+measured on the *B-plane*, square to the incoming path through the
+Earth's centre. Angular momentum and energy give the miss distance
+b = r_p √(1 + 2μ/(r_p v∞²)) for a perigee r_p, arriving at speed v∞: the
+Earth's gravity focuses the approach, so the target is several times
+wider than the Earth. The hint aims with Lambert's answer, then refines
+the burn with Newton's method using the full simulation (every planet
+pulling), measuring where the path crosses the B-plane.
+
+**Coming home.** Re-entry is judged at 120 km up: the flight-path angle
+must be between −5° (shallower, and the capsule skips off) and −8°
+(steeper, and it burns up), at under 13 km/s (Stardust, the fastest
+return so far, came in at 12.9 km/s). Staying in orbit means braking at
+perigee, straight back along the motion, from the hyperbola's speed
+√(v∞² + 2μ/r_p) to an ellipse's (vis-viva).
+
+**Coming home from further out.** A puzzle can start near Venus, Mars,
+in the asteroid belt or near one of the giant planets. Near a planet the ship shares its
+orbit a few degrees ahead or behind, pushed so it drifts away: by Kepler's
+third law (T ∝ a^(3/2)) a ship slowed down a little has a smaller, quicker
+orbit and pulls ahead. How long to search depends on the distance: the
+ship and the Earth line up again every *synodic period*,
+1 / |1/T − 1/T_earth| (Mars: 780 days; Jupiter: 399), and the trip takes
+about half the period of a Hohmann transfer ellipse, π √(a³/μ) with a the
+average of the two distances: 146 days from Venus, 259 from Mars, 2.7
+years from Jupiter, 6 from Saturn, 16 from Uranus and 31 from Neptune
+(which is why real missions to the outer planets use gravity assists).
+Far from every planet the integrator takes steps of up to a month, as
+long as no planet could be reached within five of them. The further out, the faster the Earth is met: from
+Jupiter, v∞ ≈ 9 km/s, so the capsule would hit the air at
+√(v∞² + 2μ/r) ≈ 14 km/s. To land, it brakes first, inside the Earth's
+sphere of influence, against its motion relative to the Earth, until the
+entry speed is under 13 km/s; a slower arrival is bent more by the
+Earth, so the same burn is aimed again on the B-plane.
+
+**Gravity assists (`flyby.hpp`).** Every planet pulls on the ship all the
+way, so passing close to one changes the path for free. Seen from the
+planet, the ship follows a hyperbola: it leaves as fast as it came (v∞),
+only turned by δ, with sin(δ/2) = 1/e and e = 1 + r_p v∞²/μ (closer
+passes and slower approaches turn more). Seen from the Sun the planet is
+moving, so the ship's velocity is the planet's plus v∞, and turning v∞
+changes the sum: |V_planet + v∞_out| instead of |V_planet + v∞_in|. Turned
+towards the planet's motion (usually by passing behind it) the ship speeds
+up; turned away, it slows down. A ship the planet is catching up from
+behind (as at the end of a Hohmann transfer outwards) speeds up whichever
+way it turns. The energy comes from the planet, which slows by an amount
+far too small to notice.
+
+**Moons.** The 18 round moons each go round their planet on JPL's mean
+elements, in the planet's equatorial plane (Saturn's tipped 27° to its
+orbit, Uranus's 98°, Triton going backwards), at the mean motion
+n = √(μ_planet / a³). Each has its own sphere of influence, set against its
+planet's pull instead of the Sun's: `a (m_moon / m_planet)^(2/5)`, about
+66,000 km for the Moon, 43,000 km for Titan, and so small for Mimas that it
+barely clears the surface. From outside a giant planet's sphere of
+influence the planet and its moons pull as one mass; inside it, the planet
+pulls on its own and each moon from where it is. Everything above about
+passes works the same around a planet: a close pass by a moon turns the
+velocity *relative to the moon*, and since the moon is moving around its
+planet, the speed around the planet changes. Galileo, Cassini and Juno used
+dozens of moon flybys to tour their planets on little fuel. A ship inside a
+moon's sphere of influence burns relative to the moon, can crash into it,
+and can be parked around it. A low orbit is moved by Kepler's equations
+(around a planet, only if it stays well inside the innermost moon's orbit);
+further out the moons' pulls matter, and the flight is integrated.
+
+The game records each closest approach inside a planet's sphere of
+influence, with these numbers from the hyperbola at that moment (the
+"patched conic" estimate: within a few percent of the full simulation's
+change in orbital energy). Aiming at a planet uses the same B-plane as
+aiming at the Earth: b = r_p √(1 + 2μ/(r_p v∞²)) sets the distance, the
+direction of B the side, and Newton's method with the full simulation
+finds the smallest change to the burn. The outgoing direction is ŝ turned
+by δ towards −B̂, so B̂ against the planet's velocity (as seen square to ŝ)
+gains the most speed. If the path isn't heading there yet, Lambert's
+problem first picks the trip time that needs the smallest burn.
+
+**Going to a moon (`moon_transfer.hpp`).** A trip to Titan is planned in
+two pieces, as mission designers do ("patched conics"). Far from Saturn
+only the Sun matters, and the transfer aims at Saturn, to pass it at
+Titan's distance. Inside Saturn's sphere of influence only Saturn
+matters, and Titan is a target going round it. Arriving from far away at
+v∞, energy around the planet gives the speed at the moon's distance a,
+√(v∞² + 2μ/a), while the moon moves at √(μ/a): at best (grazing the moon's
+orbit, moving its way) the moon is met at the difference, nearly 4 km/s at
+Titan straight from the Earth, so a planet's gravity makes every arrival at
+its moons fast. The path crosses the moon's orbit at some moment, and the
+moon is somewhere else then: putting that right once there would take
+km/s, but a month earlier a few m/s moves the arrival by thousands of km,
+so the hint's second step is a correction a month out. It picks the
+moment to meet the moon where the gap to close, per second left to close
+it, is smallest, guesses the burn as that gap over the time (a straight
+line), and then finds the real burn with Newton's method on the full
+simulation: three equations (the miss in x, y and z at that moment) for
+three unknowns (the burn's components). The B-plane aim then finishes the
+job at the moon itself.
+
+From an orbit around the planet (from 200 km above the Earth to the Moon)
+the leg is a Lambert problem around the planet, with its μ instead of the
+Sun's: the porkchop search again, over departure points round the orbit
+and trip times around a Hohmann transfer's, π √(a³/μ) with a the average
+of the two distances (about five days to the Moon, starting at 10.9 km/s
+instead of the 7.8 km/s of the parking orbit: trans-lunar injection,
+3.1 km/s). The puzzle puts the orbit in the Moon's plane, turned so a
+Hohmann transfer an orbit or two after the start meets the Moon. Seen from
+the Sun, the path of a ship in orbit round the Earth is a smear along the
+Earth's own path; the game draws such trips as seen from the planet, each
+point where the ship is relative to the planet then, around where the
+planet is now.
+
+**Leaving a moon (`departureFromMoon`, `planFromMoon`).** Starting in a
+low orbit around a moon, the ship has two gravity wells to climb out of,
+one inside the other, and patched conics takes them one at a time. To go
+to another planet, the path out of the planet's gravity is a hyperbola,
+and leaving from the moon its low point is at the moon's distance a,
+moving at √(v∞² + 2μ/a) square to the radius (vis-viva again). The moon
+already moves at about √(μ/a) round the planet, so leaving forwards along
+its motion the ship only has to find the difference: a v∞ *relative to the
+moon*, which it gets by burning from its parking orbit (the Oberth effect,
+as from any orbit). From the Moon to Mars that is about 1.7 km/s, against
+3.6 km/s from low Earth orbit; from Europa home, 5.3 km/s, deep in
+Jupiter's well. The hyperbola leaves along v∞ only if the moon is in the
+right place round the planet, so the departure waits for it: within half
+the moon's period of the planned day (days; the Moon, two weeks), Lambert's
+problem is solved again for each moment and the moon's best place picked.
+Planned one body at a time, the escape comes out a little off (the moon
+still pulls as the ship climbs away from it), so Newton's method with the
+full simulation homes the burn in on the planned v∞, read off the
+hyperbola round the planet once well clear of its moons. A course
+correction ten days on (once clear of the planet) then aims at the
+destination: aiming the departure itself, from so deep in two wells, is a
+knife edge for a trip of years.
+
+To another moon of the same planet the leg is the porkchop around the
+planet again, from the moon's own position, over about one synodic period
+of the two, 1/|1/T₁ − 1/T₂|, the time for them to come back to the same
+places relative to each other (Ganymede and Europa: seven days).
+
+Home from the Moon is simplest: leave the Moon *backwards*, so that,
+relative to the Earth, the ship is left slower than the Moon at the high
+point of half an ellipse whose low point dips into the air. At the high
+point r_m of an ellipse down to r_p, v² = 2μ r_p / (r_m (r_m + r_p)):
+about 190 m/s, against the Moon's 1,020 m/s, so the ship leaves the Moon
+at about 830 m/s, costing some 810 m/s from a low lunar orbit (Apollo's
+trans-Earth injection was about 1 km/s, for a faster trip). The fall takes
+half the ellipse's period, about four and a half days, and ends at the air
+at about 11 km/s, just under the Earth's escape speed there. The perigee to
+aim for comes from the entry angle: h = r_I v_I cos γ at the entry
+interface r_I, with v_I from the path's energy, and the conic's perigee
+r_p = h² / (μ (1 + e)), e = √(1 + 2εh²/μ²). With no v∞ there is no
+B-plane, so the aim is Newton's method on that one number, the perigee
+(the smallest change to the burn that gets it). Missing the air, the path
+would come round again days later; only the first fall counts.
+
 ## Integration (`integrator.hpp`)
 
 The equations of motion are integrated with **Dormand–Prince 5(4)**, an

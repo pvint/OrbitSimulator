@@ -4,6 +4,9 @@
 #include "orbit/core/ephemeris.hpp"
 #include "orbit/core/solar_system.hpp"
 
+#include <array>
+#include <cstddef>
+
 namespace orbit {
 
 namespace {
@@ -33,12 +36,34 @@ Vec3 heliocentricGravity(const Vec3& r, double epoch, bool thirdBodies) {
     const double rNorm = norm(r);
     Vec3 acceleration = (-kMuSun / (rNorm * rNorm * rNorm)) * r;
     if (!thirdBodies) return acceleration;
-    for (const Planet planet : kAllPlanets) {
-        if (planet == Planet::Earth) continue; // with the Moon, below
-        acceleration += tidalPull(r, planetPosition(planet, epoch), planetMu(planet));
+    // Each planet's sphere of influence, from its orbit at J2000 (they
+    // barely change), to tell when the ship is among a giant's moons.
+    static const std::array<double, kAllPlanets.size()> influence = [] {
+        std::array<double, kAllPlanets.size()> radii{};
+        for (const Body planet : kAllPlanets) {
+            radii.at(static_cast<std::size_t>(planet)) = sphereOfInfluence(planet, 0.0);
+        }
+        return radii;
+    }();
+    for (const Body planet : kAllPlanets) {
+        if (planet == Body::Earth) continue; // with the Moon, below
+        const Vec3 p = bodyPosition(planet, epoch);
+        const auto moons = moonsOf(planet);
+        if (moons.empty() || norm(r - p) > influence.at(static_cast<std::size_t>(planet))) {
+            // From far away a planet and its moons pull as one mass.
+            acceleration += tidalPull(r, p, bodyMu(planet));
+            continue;
+        }
+        // Among its moons: the planet alone, and each moon from where it
+        // is. (The tables place the planet system's centre of mass; the
+        // planet itself is at most about 100 km from it, left out.)
+        acceleration += tidalPull(r, p, planetMuAlone(planet));
+        for (const Body moon : moons) {
+            acceleration += tidalPull(r, p + moonFromPlanet(moon, epoch).r, bodyMu(moon));
+        }
     }
     const EarthMoon em = earthAndMoonHeliocentric(epoch);
-    acceleration += tidalPull(r, em.earth, planetMu(Planet::Earth));
+    acceleration += tidalPull(r, em.earth, bodyMu(Body::Earth));
     acceleration += tidalPull(r, em.moon, kMuMoon);
     return acceleration;
 }

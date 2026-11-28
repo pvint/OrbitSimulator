@@ -587,6 +587,368 @@ the test allows for. A ΔT model could fix it if old dates come to matter.
 the Earth (switch the body's centre to the Earth to see one); rockets
 flying between planets.
 
+### 35. Regroup: simple first, and a game, "Lost in space" (2026-11-24)
+
+**Context:** after N2 the user opened the app and was overwhelmed: about
+25 sliders, a sweep table and a flight-program grid before doing anything.
+They asked for something much easier, with advanced settings still there
+but out of the way, and more like a game than a simulator while keeping
+the physics real. Their example: drop a ship on a random orbit in the
+solar system and find your way back to the Earth on the fuel you have.
+
+**Decision:**
+- A game of its own, *Lost in space* (Game ▸ Lost in Space, or
+  `orbitsim --game`), in a separate window: the solar system, a fuel
+  gauge, the goal, the date, and a burn planner. Nothing else.
+- **You plan burns rather than fly by hand** (the user's choice): pick
+  when, and how hard prograde / outward / north, and the predicted path
+  updates as you go; then fly, and burns fire as the clock passes them.
+  Months-long trips suit planning better than piloting.
+- **Burns are instant** (impulsive). Burns last minutes and the trip lasts
+  months, so this is how transfers are first designed; it is said so in
+  the code and physics.md. Finite burns can come later.
+- **The goal grows with the difficulty** (the user's choice): Easy, reach
+  the Earth's sphere of influence; Normal, hit the re-entry corridor
+  (−5° to −8°, under 13 km/s at 120 km); Hard, brake into orbit.
+- **Every puzzle is solvable:** the game solves it first (a porkchop
+  search with Lambert's problem, Sun only) and gives that cost × a
+  margin (1.6 / 1.4 / 1.25) plus a reserve for corrections. A test plays
+  puzzles of each difficulty with the hints in the full simulation and
+  checks each reaches its goal on its own fuel.
+- **Hints** do the next sensible step: the cheapest way home from now; a
+  course correction aimed on the B-plane with the full simulation; on
+  Hard, the braking burn at perigee. Hints used are counted at the end.
+- Puzzles start today, and a seed gives the same puzzle on every platform
+  (the random numbers are made from the engine's raw output, not
+  std::uniform_real_distribution, which differs between libraries).
+
+**Next (to talk over with the user):** a start screen in the main app
+that offers the game, launching a rocket, the tour, and the workbench
+(today's panels); dragging burn handles in 3D; a "go to a point on a
+path" for the game's path.
+
+### 36. Lost in space from other places in the solar system (2026-11-25)
+
+**Context:** the user asked to find the way home from other places in the
+solar system, not only from an orbit near the Earth's.
+
+**Decision:**
+- The start card asks **where** (between the planets, near Venus, near
+  Mars, the asteroid belt, near Jupiter) and then **how hard**; the
+  difficulty still sets the goal and the fuel margin. "Between the
+  planets" is the old game, unchanged. `--puzzle hard:jupiter:42` on the
+  command line (any order).
+- **Near a planet, the ship shares its orbit,** 2–6° ahead or behind
+  (12–20° for Jupiter, whose sphere of influence is 0.3 au), pushed so it
+  drifts *away* from the planet. A random push let ships near Venus meet
+  it again before leaving, and Venus's pull then made the departure up to
+  20 % dearer than the Sun-only search said.
+- **The fuel is priced with the full simulation:** the departure burn is
+  worked out again from where the ship really is on the day (every planet
+  pulling), and the dearer of the two estimates sets the fuel.
+- **The search grows with the distance:** departures within one synodic
+  period (1 to 2.2 years), trips up to 1.3 Hohmann transfer times (at
+  least 540 days, at most 3.5 years). The prediction now looks 4 years
+  ahead (it was 3), so the trip home from Jupiter (about 3 years) fits.
+- **Too fast to land:** from the belt or Jupiter the Earth is met at
+  v∞ ≈ 7–10 km/s, an entry of 14+ km/s, beyond any heat shield. On Normal
+  the fuel includes the braking, and a hint brakes inside the Earth's
+  sphere of influence (straight back against the motion relative to the
+  Earth, to 100 m/s under 13 km/s at entry) and aims that same burn
+  (a correction before it would be aimed for the faster arrival).
+- Saturn and beyond are left out: a Hohmann return from Saturn takes about
+  six years, too long to play; Mercury would need ~10 km/s just to leave.
+  Both could come back with faster engines or gravity assists.
+- The ship is the same everywhere (2 t dry, Isp 320 s), so a Jupiter
+  puzzle carries 30–90 t of propellant. Real, and a point for a future
+  talk about better engines.
+
+### 37. Outer planets, gravity assists, and Earth → X (2026-11-25)
+
+**Context:** the user asked for the outer planets as start places, for
+trips the other way (from the Earth to a planet), and said they look
+forward to trying gravity assists.
+
+**Decision (the user's choices, asked before starting):**
+- **Order:** outer planets first, then flyby tools, then Earth → X,
+  checking in after each.
+- **Assists are for the player to find, not the hints.** Hints keep
+  finding direct routes (Lambert, one leg); the player gets tools: where
+  the path passes each planet and what the pass did, and a helper that
+  aims a burn at a chosen planet, distance and side. A good assist beats
+  the hint's fuel use.
+- **Earth → X starts in a 200 km parking orbit** (the Oberth effect is
+  part of the physics to learn), a few weeks before a good departure so
+  nobody sits through months of orbits. Goals: Easy, reach the planet's
+  sphere of influence; Normal, a close pass (a few planet radii, a
+  flyby probe); Hard, brake into orbit around it.
+
+**Step 1, outer planets (done):** Saturn, Uranus and Neptune as start
+places. The direct way home takes about 6, 16 and 30 years, which is the
+point: room for an assist to do better.
+- Puzzles set `Voyage::lookAhead` to their longest searched trip (up to
+  40 years), so predictions reach the Earth; the default horizon stays 4
+  years.
+- The integrator's step cap grows from a day to up to 30 days far from
+  every planet (no planet within five steps at 60 km/s closing speed), so
+  a 30-year flight costs about what a 4-year one did. Near a planet it is
+  still a day, so a step can't jump over a flyby.
+- The porkchop's flight-time step widens for long trips (600 columns),
+  and the ship's state is propagated once per departure day.
+- The clock picks a speed that flies the way home in about 90 s, with
+  new speeds of 180 and 365 days a second; the timeline ticks every 5 or
+  10 years on long trips.
+
+**Step 2, flyby tools (done):**
+- The flight watches for the closest approach to every planet (an event
+  each). Each one inside a sphere of influence is a *flyby*
+  (`VoyageResult::flybys`, `PlanetPass`): distance, speed, v∞, turn, and
+  the speed around the Sun before and after from the hyperbola there
+  (checked against the full simulation's energy change, within 5 %).
+  `closestPasses` keeps each planet's closest approach, marked `turning`
+  only if it really is one (not where the flight happened to end).
+- A hyperbolic flyby pushes the end of the prediction on, as a burn does
+  (capped at 60 years from the start); an aimed pass makes predictions
+  reach a year past it.
+- **Sides are named by effect, not position:** "speed up the most" and
+  "slow down the most" (plus north, south, keep). "Behind speeds you up"
+  is only true when the ship moves with the planet: arriving from a
+  Hohmann transfer the planet catches the ship up, and every pass speeds
+  it up. The aim helper's B-vector for "faster" is against the planet's
+  velocity, seen square to the incoming path.
+- The aim helper (`aimFlyby`) is a tool, not a hint: not counted, and it
+  says so when the planet is out of reach from that date (the smallest
+  Lambert burn is more than the tanks hold).
+- In the game: "Aim at a planet…" on the selected burn (planet, distance
+  in planet radii, side), violet flyby markers with hover cards ("gained
+  for free"), each planet's card shows your closest pass, and the
+  ending compares the fuel used with the direct way home worked out at
+  the start ("You beat it!"), listing the assists.
+
+**Step 3, from anywhere to anywhere (done):** the user asked mid-step to
+start in orbit around planets too, so step 3 became one general piece:
+a start (drifting as before, or in orbit around a planet; around the
+Earth always in orbit) and a destination (the Earth, with the home goals,
+or another planet: reach it / pass within 5 radii / end in orbit around
+it). `PuzzleSpec`, `settledSpec`.
+- **Parking orbits:** 200 km around the Earth and Mercury, 300 km around
+  Venus and Mars, and a Juno-like ellipse (1.1 to 50 radii) around a
+  giant, since a low circular orbit there would take ~17 km/s to leave.
+- **Parked ships move by Kepler's equations** (only that planet pulling),
+  with a sample a day and `sampleAt` interpolating by Kepler; the app
+  draws the parked stretch as one turn of the orbit. Integrating low
+  orbits for months would take hundreds of thousands of steps. The Sun's
+  and moons' tugs on such an orbit are left out (said so in voyage.hpp).
+- **Leaving an orbit:** the porkchop prices the departure at the orbit's
+  low point (Oberth: √(v∞² + 2μ/r_p) − v_p); a puzzle in orbit starts
+  10–30 days before the cheapest departure, the orbit's plane holding the
+  departure direction (as if launched for it); `departureBurn` finds the
+  best point in any orbit for a given v∞, and "Aim at a planet" uses it
+  from a parked orbit.
+- **Burn directions are relative to whichever planet's sphere of
+  influence the ship is in** (not just the Earth's).
+- **Crashing into any planet ends the flight** (and counts as a pass, so
+  aiming near the surface still converges). Flights asked for a state at
+  a moment, or flown to aim a burn, don't stop at the goal
+  (`VoyageOptions::stopAtGoal`).
+- The start card: where are you (ten places), "in orbit around it",
+  where to (the Earth or a planet), how hard (texts by destination).
+  `--puzzle normal:earth:saturn`, `hard:mars:orbit`.
+
+### 38. One app, built around the game (2026-11-25)
+
+**Context:** the user likes where the game is going and asked for a
+better overall plan, "probably scrapping the old version".
+
+**Decision (the user's answers):**
+- **Delete the workbench** (the parameter, sweep, program and plot
+  panels, the globe view, the demo tour UI, the main window). The game
+  window becomes the app. The core physics library, the CLI and their
+  tests stay. The rocket launch from the ground is to come back later as
+  a mode ("launch, then leave for Mars"); the hard part will be fitting
+  it in smoothly, so not now.
+- **Free roam:** unlimited fuel (the gauge shows what's been used).
+- **The Moon becomes a body** you can start at and go to; so do Titan
+  (the user would like to leave the Earth and land on Titan one day) and
+  Jupiter's four big moons.
+- **Close-ups should look really nice:** NASA/JPL/USGS public-domain maps
+  for every body (tools/make_planet_textures.sh records each source).
+- **The asteroid belt is drawn,** though it wouldn't really be visible: it
+  "feels right".
+- Ideas noted for later: famous missions' trajectories to replay and
+  change; landing on airless moons.
+
+**Plan, in order (work through it, testing and committing each):**
+G2 one app; G6 the asteroid belt; G3 moons as bodies; G4 free roam; G5
+close-ups; G7 landing where there's air. See the roadmap in CLAUDE.md.
+
+**Since (2026-11-25/26):**
+- G2 and G6 done. The user then asked for **all the major moons**, not
+  just Titan and Jupiter's four: 18 round moons (Phobos and Deimos left
+  out: their spheres of influence lie inside them). `Planet` became
+  `Body`. Moons orbit in their planet's equatorial plane (IAU poles);
+  their phases are illustrative, which is fine for a game and said so.
+  Small moons close to a giant (Mimas, Enceladus, Miranda) can't be
+  orbited inside their spheres of influence (`canPark`).
+- The user couldn't zoom in close enough to adjust a pass near the
+  Earth, and wanted to see where a planet's gravity takes over: spheres
+  of influence are drawn, the wheel zooms towards the pointer, and
+  double-click centres on things.
+
+### 39. Trips to a moon: patched conics, then Newton with everything (2026-11-26)
+
+G3's second half: any of the 18 moons as a destination (starting at a
+moon comes next).
+
+- **Two steps, as missions plan them.** Far out, the Sun-only porkchop
+  aims at the moon's planet, to pass it at the moon's distance, and prices
+  the arrival at the speed the moon is met with (√(v∞² + 2μ/a) − √(μ/a),
+  `moonApproachSpeed`). Then the last leg (`planToMoon`): from an orbit
+  around the planet, a planet-only Lambert porkchop; on a path through the
+  planet's system, a correction a month before the path crosses the moon's
+  orbit. Each is then corrected with the full simulation (`homeIn`,
+  Newton on the 3D miss at the meeting time), and the B-plane aim
+  (`aimFlyby`) finishes at the moon. The hint does one step per press and
+  says so ("get to Saturn first ... press Hint again").
+- **Why not plan the last leg once inside the sphere of influence?** It
+  was tried first. At the sphere's edge the Sun pulls about as hard as the
+  planet, so a planet-only Lambert leg misses by a lot (Uranus's moons were
+  never reached), and deeper in, meeting a moon that is on the wrong side
+  of the planet costs km/s (2.3 km/s at Callisto). A month out, with the
+  full simulation, it costs a few hundred m/s at most.
+- **A planet's own moon always starts in orbit around it** (`settledSpec`):
+  "near Jupiter, going to Ganymede" meant drifting away and coming back
+  years later. The orbit lies in the moon's plane, an orbit or two before
+  a Hohmann transfer to it.
+- **A moon too small to orbit (Mimas, Enceladus, Miranda): Hard is a close
+  pass on tight fuel** (`goalFor`). Orbits around a moon reach out to 0.35
+  of its sphere of influence, and Titan's stay above its haze.
+- **Predictions among a planet's moons look weeks ahead, not years**
+  (`Voyage::horizon`): flying four years among Saturn's moons took most of
+  a 27 s hint.
+- **Seen from the planet.** On such a trip the camera follows the planet
+  and the path is drawn relative to it (`GameWindow::drawn`); otherwise a
+  ship waiting in orbit smears along the planet's path round the Sun.
+  Clock speeds of an hour and six hours a second were added.
+- **The start card**: the planets, then "Or one of its moons:" for the one
+  picked; picking the planet you start at offers its moons (from the
+  Earth, the Moon). `--puzzle normal:earth:moon`, `hard:earth:titan`.
+
+### 40. Starting at a moon: two escapes, then Newton (2026-11-27)
+
+G3's last part: a puzzle can start in a low orbit around any moon
+(`PuzzleSpec::startMoon`), going anywhere: another planet or its moon,
+another moon of the same planet, or (from the Moon) home.
+
+- **Nested patched conics for pricing** (`escapeFromMoon`): the escape
+  from the planet is a hyperbola with its low point at the moon; the ship
+  must leave the moon at the difference between that and the moon's own
+  velocity; that costs `departureCost` out of the moon's orbit. The Sun
+  porkchop (`cheapestTransfer`) prices each departure at the moon's best
+  place round its planet; the departure is then timed, within half the
+  moon's period, for the moon's real place.
+- **Then the full simulation, twice** (`planFromMoon`). `homeOut`: Newton
+  on the burn until the path leaves the planet with the planned v∞ (read
+  off its hyperbola once clear of the moons). Then a course correction ten
+  days on, aimed with `aimAtDestination`. Aiming the departure itself was
+  tried first: from the Moon to Mars it converged (and was 240 m/s
+  cheaper), from the Moon to Saturn it never did, and the patched-conic
+  departure missed Saturn by 84 million km. The correction costs 40 to
+  190 m/s. The puzzle's fuel is priced from these real burns if they cost
+  more than the plan (the Moon to Mars: 2.0 km/s against 1.7).
+- **Moon to moon** is the planet's porkchop from the moon's position,
+  over one synodic period, homed in as `planToMoon` does.
+- **Home from the Moon is a re-entry at every difficulty** (`goalFor`):
+  the ship is inside the Earth's sphere of influence from the start, so
+  "reach the Earth" means nothing, and almost any path that leaves the
+  Moon without falling in is already an Earth orbit. Easy, Normal and Hard
+  differ in fuel. The aim has no B-plane (no v∞): Newton on the perigee
+  (`aimPerigee`, `refineAim`'s bound branch), first fall only (it once
+  converged on the second pass, nine days later).
+- **From a moon, not to its planet** unless that is the Earth
+  (`settledSpec`): "from Titan to Saturn" would be met at the start.
+- **Sooner rather than later.** Just before one launch window the next,
+  a year on, can be 2% cheaper, and the hint jumped to it. Out of a
+  planet's system, a departure within two months wins unless waiting
+  saves over 3%; among moons, waiting counts 10 m/s a day.
+- **Leaving an orbit is no flyby** (`voyage.cpp`): the low point of the
+  path out of a moon was drawn as a "Moon flyby". A burn made from a bound
+  orbit marks that body until the ship leaves its sphere of influence.
+  (A burn on the way in to a pass doesn't hide the pass.) Also fixed: a
+  flight ending in the air didn't update its closest passes, so the
+  "closest to the Earth" label sat at the start.
+- **Drawing**: a ship parked around a moon rides along with it (the moon's
+  track, after one turn of the parking orbit), instead of a straight
+  line from the start of the stretch to its end.
+- **The start card**: "Or in orbit around one of its moons:" under the
+  places; the "In orbit around it" box hides then. `--puzzle` takes a
+  moon as where from if it comes first: `normal:moon:earth`,
+  `hard:ganymede:europa`, `easy:moon:titan`.
+
+### 41. Free roam: a game with no goal (2026-11-27)
+
+G4: pick a planet or a moon, start in orbit around it, and go anywhere
+with unlimited fuel (`free_roam.hpp`, `orbitsim --free-roam titan`).
+
+- **Played as a Puzzle**, not a new kind of game: `freeRoam()` fills a
+  `Puzzle` with `Goal::Explore` and the body as its "destination", so the
+  session, the planner, the clock, burns, flyby aiming and the drawing all
+  work unchanged. `Goal::Explore` is never met, and a flight with it never
+  stops on arriving or settling into an orbit; crashes, and the Earth's
+  air, still end it (a re-entry is a landing).
+- **Unlimited fuel keeps the mass constant** (`Ship::unlimitedFuel`): the
+  burns are instant, so the mass never changes the path, only what a burn
+  costs. Giving the ship a huge tank instead would make every burn a tiny
+  fraction of it and the numbers meaningless. The game shows the Δv the
+  burns add up to (`VoyageResult::deltaVUsed`): what a real mission would
+  need propellant for.
+- **The start orbit**: the puzzles' parking orbit, except around the giant
+  planets, where the puzzles' long Juno-like ellipse loops out through the
+  moons (so it can't be flown with Kepler's equations, and a year of it
+  takes seconds to predict). Free roam starts on a circle at two radii
+  there, inside all the moons. The orbit is in the plane of the body's own
+  orbit, prograde; the game has no axial tilts, so no equator to use.
+- **How far to look**: a year past the last burn, but only 30 days around
+  a giant planet or its moons. Measured (release build): a year of
+  climbing out among Jupiter's moons took 3 s and 220,000 samples; a year
+  leaving the Earth, 40 ms. As the clock runs past half of what's left,
+  the session asks for a prediction a whole look-ahead past the clock, and
+  the clock waits at the end for it, so free roam goes on for as long as
+  the player likes. Each prediction still flies from the start: fine for a
+  game of months, slower for one of years among moons (rebasing the start
+  on the last fired burn would fix it, if needed).
+- **In the game**: the start card has "A puzzle" / "Free roam"; free roam
+  picks a planet, or one of its moons (those too small to orbit greyed).
+  No Hint, no fuel gauge ("Unlimited. Your burns add up to …"). Add burn
+  puts the burn where the ship is now: pause there first. The view starts
+  centred on the body, a dozen times the orbit's size, and the path is
+  drawn as seen from whatever body the view is centred on (from the Sun
+  when centred on it). The status line says what's coming: a crash, a
+  landing, the next pass by a planet or a moon. Every flyby is marked.
+- **Drawing a parked stretch**: one turn, then the body's own track at a
+  fixed offset is only right for an orbit small next to the body's
+  distance from the view's centre (a ship low around Titan seen from
+  Saturn). Leaving Titan into a wide orbit round Saturn, seen from Titan,
+  that drew a false curve; such stretches are now drawn turn by turn (up
+  to 6,000 points). Seen from Titan, the real path out has a sharp-looking
+  bend: 3.5 days and 210,000 km out the ship has nearly stopped relative
+  to Titan (185 m/s) and turns 90° in half a day, as Saturn's pull makes
+  its bigger, slower orbit fall behind Titan's.
+- **The jog is real.** Seen from Titan after leaving it on 750 m/s, the
+  ship slows to 13 m/s relative to Titan 4.5 days and 239,000 km out, and
+  turns back. Checked twice: the same at 100× tighter tolerances, and the
+  same with the ship and Titan on Kepler orbits with only Saturn pulling.
+  It is Saturn's differential pull (0.01 m/s² there, 60 times Titan's).
+- **A floating origin** (planned for G5, needed now): 9.5 au out a float
+  resolves about 120 km, so a close view of Titan was jagged and jittered
+  by several pixels a frame. Every scene position is now passed relative
+  to what the camera follows (`GameWindow::toScene`, worked out in
+  double). The planets' orbits, the start orbit and the belt are built
+  around an anchor near the camera and placed by `staticPosition`; the
+  path likewise (`pathPosition`), or around the body it's seen from. They
+  are rebuilt round a new anchor only when the camera is more than a
+  thousand camera-distances from it. A side benefit: a path seen from a
+  body no longer has to be rebuilt every frame (10 → 6 ms a frame, debug).
 ---
 
 ## Open questions

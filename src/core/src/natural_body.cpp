@@ -170,8 +170,8 @@ void setBodyCentre(NaturalBody& body, BodyCentre centre) {
 
     // r_sun = r_earth + R_earth(t), with the geocentric part turned from the
     // equator to the ecliptic; the same for the velocity.
-    const Vec3 earthR = planetPosition(Planet::Earth, body.epoch);
-    const Vec3 earthV = planetVelocity(Planet::Earth, body.epoch);
+    const Vec3 earthR = bodyPosition(Body::Earth, body.epoch);
+    const Vec3 earthV = bodyVelocity(Body::Earth, body.epoch);
     if (centre == BodyCentre::Sun) {
         body.position = earthR + equatorialToEcliptic(body.position);
         body.velocity = earthV + equatorialToEcliptic(body.velocity);

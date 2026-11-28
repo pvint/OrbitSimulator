@@ -2,9 +2,13 @@
 #include "display_format.hpp"
 
 #include "orbit/core/angles.hpp"
+#include "orbit/core/astro_time.hpp"
+#include "orbit/core/ephemeris.hpp"
 
 #include <QCoreApplication>
+#include <QDate>
 #include <QLocale>
+#include <QTimeZone>
 
 #include <cmath>
 
@@ -33,6 +37,32 @@ QString duration(double seconds) {
         return tr("%1 h %2 min").arg(totalMinutes / 60).arg(totalMinutes % 60);
     }
     return tr("%1 days").arg(number(seconds / 86400.0, 1));
+}
+
+QString date(double epoch) {
+    // The middle of the minute, so rounding in the calendar conversion
+    // can't tip the date back into the day before at midnight.
+    const orbit::CalendarTime t = orbit::calendarFromEpoch(std::floor(epoch / 60.0) * 60.0 + 1.0);
+    return QLocale().toString(QDate(t.year, t.month, t.day), QStringLiteral("d MMM yyyy"));
+}
+
+QDateTime dateTime(double epoch) {
+    const orbit::CalendarTime t = orbit::calendarFromEpoch(std::floor(epoch / 60.0) * 60.0 + 1.0);
+    return QDateTime(QDate(t.year, t.month, t.day), QTime(t.hour, t.minute), QTimeZone::UTC);
+}
+
+double epochFromDateTime(const QDateTime& when) {
+    const QDateTime utc = when.toUTC();
+    return orbit::epochFromCalendar({utc.date().year(), utc.date().month(), utc.date().day(),
+                                     utc.time().hour(), utc.time().minute(), 0.0});
+}
+
+QString longDistance(double metres) {
+    if (metres < 1e6 * 1000.0) return distance(metres);
+    if (metres < 0.1 * orbit::kAstronomicalUnit) {
+        return tr("%1 million km").arg(number(metres / 1e9, metres < 1e10 ? 2 : 1));
+    }
+    return tr("%1 au").arg(number(metres / orbit::kAstronomicalUnit, 2));
 }
 
 QString pressure(double pascals) { return tr("%1 kPa").arg(number(pascals / 1000.0, 1)); }
@@ -93,6 +123,18 @@ QColor outcomeColor(orbit::Outcome outcome) {
         return {0xfb, 0xbf, 0x24};
     }
     return Qt::white;
+}
+
+QString bodyInText(orbit::Body body, bool start) {
+    switch (body) {
+    case orbit::Body::Earth:
+        return start ? QObject::tr("The Earth") : QObject::tr("the Earth");
+    case orbit::Body::Moon:
+        return start ? QObject::tr("The Moon") : QObject::tr("the Moon");
+    default:
+        break;
+    }
+    return QString::fromUtf8(orbit::bodyName(body).data());
 }
 
 } // namespace display

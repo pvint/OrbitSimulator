@@ -3,8 +3,10 @@
 #pragma once
 
 #include "orbit/core/simulation.hpp"
+#include "orbit/core/solar_system.hpp"
 
 #include <QColor>
+#include <QDateTime>
 #include <QString>
 
 namespace display {
@@ -16,6 +18,13 @@ QString speed(double metresPerSecond); ///< "7,789 m/s"
 QString mass(double kilograms);        ///< "1.2 t" or "850 kg"
 QString angle(double radians);         ///< "28.50°"
 QString pressure(double pascals);      ///< "63.0 kPa"
+QString date(double epoch);            ///< "12 Mar 2027" (epoch: s since J2000, UTC)
+QDateTime dateTime(double epoch);      ///< the same moment as a UTC date and time (to the minute)
+double epochFromDateTime(const QDateTime& when); ///< and back (to the minute)
+QString longDistance(double metres);             ///< "45,200 km", "1.23 million km", "1.52 au"
+/// A body's name inside a sentence: "the Earth", "the Moon", "Mars"
+/// (`start`: at the start of one, "The Earth").
+QString bodyInText(orbit::Body body, bool start = false);
 
 QString outcomeLabel(orbit::Outcome outcome); ///< "Orbit", "Crashed", ...
 QColor outcomeColor(orbit::Outcome outcome);

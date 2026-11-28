@@ -17,15 +17,19 @@ configure_file(version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/orbit/core/
 
 add_library(orbit_core STATIC
     src/aerodynamics.cpp
+    src/asteroid_belt.cpp
     src/astro_time.cpp
     src/atmosphere.cpp
-    src/demo.cpp
     src/ephemeris.cpp
     src/flight_program.cpp
+    src/flyby.cpp
     src/gravity.cpp
     src/earth.cpp
     src/guidance.cpp
     src/integrator.cpp
+    src/free_roam.cpp
+    src/lost_in_space.cpp
+    src/moon_transfer.cpp
     src/lunar_targeting.cpp
     src/mission_parameters.cpp
     src/natural_body.cpp
@@ -37,7 +41,9 @@ add_library(orbit_core STATIC
     src/simulation.cpp
     src/solar_system.cpp
     src/sweep.cpp
+    src/two_body.cpp
     src/vec3.cpp
+    src/voyage.cpp
 )
 add_library(orbit::core ALIAS orbit_core)
 
